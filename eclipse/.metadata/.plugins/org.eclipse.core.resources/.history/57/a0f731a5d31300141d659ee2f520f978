@@ -1,0 +1,24 @@
+package inovo.automation.scheduledsqljobs;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class ScheduledSqlJobsQueue implements Runnable{
+	private boolean _shutdownQueue=false;
+	
+	private ExecutorService _sheduledJobsService=Executors.newCachedThreadPool();
+	
+	public ScheduledSqlJobsQueue(){
+		
+	}
+
+	@Override
+	public void run() {
+		while(!_shutdownQueue){
+			
+			Thread.sleep(30*1024);
+		}
+	}
+	
+	
+}

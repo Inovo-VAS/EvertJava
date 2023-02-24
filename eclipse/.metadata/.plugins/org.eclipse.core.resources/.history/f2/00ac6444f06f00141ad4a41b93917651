@@ -1,0 +1,30 @@
+package inovo.flat.file.leads.importer;
+
+import inovo.db.Database;
+
+import java.util.HashMap;
+
+public class FlatFileRequestCallsImporter implements Runnable {
+
+	private HashMap<String,String> _flatFileRequestCallsImportSettings=null;
+	
+	public FlatFileRequestCallsImporter(HashMap<String,String> flatFileRequestCallsImportSettings){
+		this._flatFileRequestCallsImportSettings=flatFileRequestCallsImportSettings;
+	}
+	
+	@Override
+	public void run() {
+		// TODO Auto-generated method stub
+		this.importFlatFileCalls();
+	}
+
+	private boolean _stopCallImporting=false;
+	
+	public void importFlatFileCalls(){
+		try {
+			Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "", _flatFileRequestCallsImportSettings, this, "");
+		} catch (Exception e) {
+		}
+	}
+	
+}

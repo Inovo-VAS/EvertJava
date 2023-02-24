@@ -1,0 +1,154 @@
+package baasserver;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
+import java.nio.channels.spi.SelectorProvider;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+
+import com.sun.org.apache.xalan.internal.xsltc.compiler.sym;
+
+import baasserver.protocols.IORequestHandle;
+import baasserver.protocols.IOutput;
+import baasserver.protocols.markup.IOMarkupRequestHandle;
+
+public class Client implements Runnable {
+	
+	private SocketChannel _socketChannel=null;
+	private Selector _socketSelector=null;
+	private boolean _shutdownClient=false;
+	
+	private Class<?> _ioRequestHandleClass=null;
+	
+	private Object _ioListLock=new Object(); 
+	
+	private ArrayList<InputStream> _inputs=new ArrayList<InputStream>();
+	private ArrayList<OutputStream> _outputs=new ArrayList<OutputStream>();
+	public Client(String host,int port,Class<?> ioRequestHandleClass) throws IOException{
+		this._ioRequestHandleClass=ioRequestHandleClass;
+		this._socketChannel=SelectorProvider.provider().openSocketChannel();
+		this._socketChannel.configureBlocking(true);
+		this._socketSelector=SelectorProvider.provider().openSelector();
+		this._socketChannel.connect(new InetSocketAddress(host,port));
+		this._socketChannel.register(this._socketSelector ,SelectionKey.OP_CONNECT);
+		this._socketChannel.finishConnect();
+		
+	}
+	
+	@Override
+	public void run() {
+		while(!_shutdownClient){
+			try {
+				while(this._socketSelector.select()>0){
+					if(!_shutdownClient){
+						Iterator<SelectionKey> keyIterator= this._socketSelector.keys().iterator();
+						while(keyIterator.hasNext()){
+							SelectionKey selKey=keyIterator.next();
+							if(!this._shutdownClient){
+								if(selKey.isValid()){
+									if(selKey.isConnectable()){
+										this._socketChannel.finishConnect();
+										ClientInputStream input=null;
+										ClientOutputStream output=null;
+										synchronized (_ioListLock) {
+											if(!_inputs.isEmpty()){
+												input=(ClientInputStream) this._inputs.remove(0);
+												output=(ClientOutputStream) this._outputs.remove(0);
+											}
+										}
+										if(output!=null&&input!=null){
+											new Thread(new ClientSocketHandle(this,this._socketChannel,input,output)).start();
+										}
+									}
+								}
+							}
+						}
+					}
+					else{
+						break;
+					}
+				}
+			} catch (IOException e) {
+				_shutdownClient=true;
+				e.printStackTrace();
+			}
+			if(!_shutdownClient){
+				try {
+					synchronized (this) {
+						this.wait(2);
+					}
+				} catch (InterruptedException e) {
+					_shutdownClient=true;
+					e.printStackTrace();
+				}
+			}
+			else{
+				break;
+			}
+		}
+		try {
+			this._socketSelector.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		try {
+			this._socketChannel.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		new Thread(){
+			public void run() {
+			};
+		}.start();
+	}
+	
+	public IORequestHandle nextIORequestHandle(IOutput output) throws Exception{
+		return (IORequestHandle)this._ioRequestHandleClass.getConstructor(IOutput.class).newInstance(new Object[]{output});
+	}
+	
+	public void inOutStreaming(){
+		synchronized (_ioListLock) {
+			
+			this._inputs.add(new ClientInputStream(this));
+			this._outputs.add(new ClientOutputStream(this));
+		}
+	}
+	
+	public static Client requestInOutStream(String clientClassPath, String host,int port) throws Exception{
+		return requestInOutStream(clientClassPath, host, port, null);
+	}
+	
+	public static Client requestInOutStream(String clientClassPath, String host,int port,Class<?> ioRequestHandleClass) throws Exception{
+		if(ioRequestHandleClass==null) ioRequestHandleClass=IOMarkupRequestHandle.class;
+		clientClassPath=(clientClassPath==null?Client.class.getName():clientClassPath.equals("")?Client.class.getName():clientClassPath);
+		Client client=(Client)baasserver.reflection.REFUtils.findClass(clientClassPath, false).getConstructor(String.class,int.class,Class.class).newInstance(new Object[]{host,port,ioRequestHandleClass});
+		new Thread(client).start();
+		return client;
+	}
+
+	private static boolean _shutdownAll=false;
+	public static void shutDownAll() {
+		_shutdownAll=true;
+	}
+
+	public void shutdownServer() {
+		this._shutdownClient=true;
+	}
+
+	public ClientInputStream inputStream() {
+		return (ClientInputStream) this._inputs.get(0);
+	}
+
+	public ClientOutputStream outputStream() {
+		return (ClientOutputStream) this._outputs.get(0);
+	}
+}

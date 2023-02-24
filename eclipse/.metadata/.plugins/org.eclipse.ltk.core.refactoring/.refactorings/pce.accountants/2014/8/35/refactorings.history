@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Copy 2 elements to &apos;pce.accountants/src/pce.accountants.modules.chat.images&apos;&#x0D;&#x0A;- Original project: &apos;pce.accountants&apos;&#x0D;&#x0A;- Destination element: &apos;pce.accountants/src/pce.accountants.modules.chat.images&apos;&#x0D;&#x0A;- Original elements:&#x0D;&#x0A;     Chat45x45.jpg&#x0D;&#x0A;     Chat90x90.jpg" description="Copy files" destination="/src&lt;pce.accountants.modules.chat.images" element1="src/pce/accountants/modules/images/Chat45x45.jpg" element2="src/pce/accountants/modules/images/Chat90x90.jpg" files="2" flags="589830" folders="0" id="org.eclipse.jdt.ui.copy" policy="org.eclipse.jdt.ui.copyResources" stamp="1409046555786" units="0" version="1.0"/>
+</session>

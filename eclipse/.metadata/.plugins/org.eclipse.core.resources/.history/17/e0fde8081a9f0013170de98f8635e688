@@ -1,0 +1,7 @@
+package baasserver.db.web.system.definitions;
+
+import baasserver.db.web.system.Field;
+
+public class NumericField extends Field {
+
+}

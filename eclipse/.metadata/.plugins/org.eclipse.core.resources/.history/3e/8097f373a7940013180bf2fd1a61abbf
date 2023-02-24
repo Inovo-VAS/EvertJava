@@ -1,0 +1,628 @@
+package baasserver.db.system;
+
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.TreeMap;
+
+import baasserver.io.IOUtils;
+
+
+public class DBManager {
+	
+	private Object _cpds = baasserver.reflection.REFUtils.findClass("com.mchange.v2.c3p0.ComboPooledDataSource", false).getConstructor(null).newInstance(null);
+	
+	private DBSystem _dbsystem=null;
+	
+	private String _dbname;
+	private String _dbuser;
+	private String _dbschema;
+	private String _dbpw;
+	private String _dbhost;
+	private String _dbinstance;
+	private String _dbtype;
+	private String _dbconstring = "";
+	private String _dbtestQuery = "";
+	private Connection _masterCn=null;
+	  
+	private int _maxDBConnections = 20;
+	public DBManager(DBSystem dbsystem,String[] properties) throws Exception{
+		this._dbsystem=dbsystem;
+		this.setDBConnection(properties);
+	}
+	
+	private void setDBConnection(String[] dbproperties) throws Exception {
+	    String dbtype = "";
+	    String dbhost = "";
+	    String dbinstance = "";
+	    String dbname = "";
+	    String dbschema = "";
+	    String dbuser = "";
+	    String dbpw = "";
+	    
+	    for (String dbprop : dbproperties) {
+	      if (dbprop.indexOf("=") > -1) {
+	        String dbpropName = dbprop.substring(0, dbprop.indexOf("=")).trim().toLowerCase();
+	        String dbpropValue = dbprop.substring(dbprop.indexOf("=") + 1).trim();
+	        if ((!dbpropValue.equals("")) || (!dbpropName.equals(""))) {
+	          if ((dbpropName.equals("dbtype")) && (!dbpropValue.equals(""))) {
+	            dbtype = dbpropValue;
+	          }
+	          else if ((dbpropName.equals("dbhost")) && (!dbpropValue.equals(""))) {
+	            dbhost = dbpropValue;
+	          }
+	          else if ((dbpropName.equals("dbinstance")) && (!dbpropValue.equals(""))) {
+	            dbinstance = dbpropValue;
+	          }
+	          else if ((dbpropName.equals("dbuser")) && (!dbpropValue.equals(""))) {
+	            dbuser = dbpropValue;
+	          }
+	          else if ((dbpropName.equals("dbschema")) && (!dbpropValue.equals(""))) {
+		            dbschema = dbpropValue;
+		      }
+	          else if ((dbpropName.equals("dbname")) && (!dbpropValue.equals(""))) {
+	            dbname = dbpropValue;
+	          }
+	          else if ((dbpropName.equals("dbpw")) && (!dbpropValue.equals("")))
+	            dbpw = dbpropValue;
+	        }
+	      }
+	    }
+	    setupdbconnection(dbtype, dbhost, dbinstance, dbname,dbschema, dbuser, dbpw);
+	  }
+	
+	private void setupdbconnection(String dbtype, String dbhost, String dbinstance, String dbname,String dbschema, String dbuser, String dbpw) throws Exception
+	  {
+	    
+	      this._dbtype = dbtype.toLowerCase();
+	      this._dbhost = dbhost;
+	      this._dbinstance = dbinstance;
+	      this._dbname = dbname;
+	      this._dbschema=dbschema;
+	      this._dbuser = dbuser;
+	      this._dbpw = dbpw;
+	      String dbjdbcclass = "";
+	      
+	      int minCon=this._maxDBConnections/10;
+	      if(minCon<=1) {
+	    	  if(minCon+1<this._maxDBConnections){
+	    		  minCon=1;
+	    	  }
+	    	  else{
+	    		  minCon=this._maxDBConnections;
+	    	  }
+	      }
+	      int incCon=this._maxDBConnections/minCon;
+	      if(incCon<minCon) incCon=minCon;
+	      
+	      baasserver.reflection.REFUtils.findMethod("setMinPoolSize", _cpds.getClass(), null, true).invoke(_cpds, new Object[]{minCon});
+	      //_cpds.setMinPoolSize(minCon);
+	      baasserver.reflection.REFUtils.findMethod("setAcquireIncrement", _cpds.getClass(), null, true).invoke(_cpds, new Object[]{incCon});
+	      //_cpds.setAcquireIncrement(incCon);
+	      baasserver.reflection.REFUtils.findMethod("setMaxPoolSize", _cpds.getClass(), null, true).invoke(_cpds, new Object[]{this._maxDBConnections});
+	      //_cpds.setMaxPoolSize(this._maxDBConnections);
+	      baasserver.reflection.REFUtils.findMethod("setBreakAfterAcquireFailure", _cpds.getClass(), null, true).invoke(_cpds, new Object[]{true});
+	      //_cpds.setBreakAfterAcquireFailure(true);
+	     
+	      
+	      if ("sqlserver,postgresql,".contains(this._dbtype)) {
+	        this._dbconstring = ("jdbc:" + this._dbtype + "://" + this._dbhost);
+	        if (this._dbtype.equals("sqlserver")) {
+	          if (!this._dbinstance.equals("")) this._dbconstring = (this._dbconstring + ";instanceName=" + this._dbinstance);
+	          this._dbconstring = (this._dbconstring + ";databaseName=" + this._dbname + ";");
+	          this._dbtestQuery = "SELECT 1";
+	          //baasserver.reflection.REFUtils.findMethod("setDriverClass", _cpds.getClass(), null, true).invoke(_cpds, new Object[]{"com.microsoft.sqlserver.jdbc.SQLServerDriver"});
+	          dbjdbcclass="com.microsoft.sqlserver.jdbc.SQLServerDriver";
+	          
+	        }
+	        else if (this._dbtype.equals("postgresql")) {
+	          this._dbconstring = (this._dbconstring + "/" + this._dbname);
+	          //baasserver.reflection.REFUtils.findMethod("setDriverClass", _cpds.getClass(), null, true).invoke(_cpds, new Object[]{"org.postgresql.Driver"});
+	          dbjdbcclass="org.postgresql.Driver";
+	        }
+	      }
+	      else {
+	        this._dbconstring = "";
+	      }
+	    
+	      baasserver.reflection.REFUtils.findMethod("setDriverClass", _cpds.getClass(), null, true).invoke(_cpds, new Object[]{dbjdbcclass});
+	      //_cpds.setDriverClass( "com.microsoft.sqlserver.jdbc.SQLServerDriver" ); //loads the jdbc driver
+	    baasserver.reflection.REFUtils.findMethod("setJdbcUrl", _cpds.getClass(), null, true).invoke(_cpds, new Object[]{this._dbconstring});
+	    //_cpds.setJdbcUrl( this._dbconstring);
+	    baasserver.reflection.REFUtils.findMethod("setUser", _cpds.getClass(), null, true).invoke(_cpds, new Object[]{this._dbuser});
+	    //_cpds.setUser(this._dbuser);                                  
+	    baasserver.reflection.REFUtils.findMethod("setPassword", _cpds.getClass(), null, true).invoke(_cpds, new Object[]{this._dbpw});
+	    //_cpds.setPassword(this._dbpw);
+	    baasserver.reflection.REFUtils.findMethod("setPreferredTestQuery", _cpds.getClass(), null, true).invoke(_cpds, new Object[]{this._dbtestQuery});
+	    //_cpds.setPreferredTestQuery(_dbtestQuery);
+	    
+	    baasserver.reflection.REFUtils.findMethod("setTestConnectionOnCheckIn", _cpds.getClass(), null, true).invoke(_cpds, new Object[]{true});
+	    baasserver.reflection.REFUtils.findMethod("setIdleConnectionTestPeriod", _cpds.getClass(), null, true).invoke(_cpds, new Object[]{5});
+	    baasserver.reflection.REFUtils.findMethod("setAcquireRetryDelay", _cpds.getClass(), null, true).invoke(_cpds, new Object[]{100});
+	     
+	}
+	
+	public int loginTimeOutInSeconds() {
+		return 10;
+	}
+
+	public int defaultConnectionPoolSize() {
+	    return 20;
+	}
+	
+	public Connection connection() throws Exception{
+		if(_masterCn==null){
+			return (_masterCn=(Connection)baasserver.reflection.REFUtils.findMethod("getConnection", _cpds.getClass(), null, false).invoke(_cpds,null));
+		}
+		else{
+			return _masterCn;
+		}
+	}
+	
+	public Connection nextConnection() throws Exception {
+	    Connection cn = this.connection();
+	    cn.prepareStatement(_dbtestQuery).execute();
+	    return cn;
+	}
+	
+	private void executeRequest(TreeMap<Integer, ArrayList<Object>> resultSetObtained, String sqlStatement, HashMap<String, Object> sqlparams) throws Exception {
+	    ArrayList<Character> sqlStatementarr = new ArrayList<Character>();
+
+	    for (char csql : sqlStatement.toCharArray()) {
+	      sqlStatementarr.add(Character.valueOf(csql));
+	    }
+
+	    if (!sqlStatementarr.isEmpty()) { 
+	    	if (sqlparams == null) sqlparams = new HashMap<String,Object>();
+	    }
+	    ArrayList<Object> sqlParamFound = new ArrayList<Object>();
+
+	    String finalSqlStatement = "";
+	    String testParamString = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdexfgijklmnopqrstuvwxyz0123456789_";
+	    Iterator<Character> sqlstmnti = sqlStatementarr.iterator();
+	    while (sqlstmnti.hasNext()) {
+	      char csql = sqlstmnti.next().charValue();
+	      sqlstmnti.remove();
+	      if (csql == '\'') {
+	        finalSqlStatement = finalSqlStatement + csql;
+	        char lastcsql = 0;
+	        while (sqlstmnti.hasNext()) {
+	          csql = ((Character)sqlstmnti.next()).charValue();
+	          sqlstmnti.remove();
+	          if ((csql == lastcsql) && (csql == '\'')) {
+	            finalSqlStatement = finalSqlStatement + csql;
+	            lastcsql = '\'';
+	          }
+	          else {
+	            if (csql == '\'') {
+	              finalSqlStatement = finalSqlStatement + csql;
+	              break;
+	            }
+
+	            finalSqlStatement = finalSqlStatement + csql;
+
+	            lastcsql = csql;
+	          }
+	        }
+	      } else if (csql == ':') {
+	        String possibleParamName = "";
+	        while (sqlstmnti.hasNext()) {
+	          csql = ((Character)sqlstmnti.next()).charValue();
+	          sqlstmnti.remove();
+	          if (testParamString.indexOf(csql) <= -1) break;
+	          possibleParamName = possibleParamName + csql;
+	        }
+
+	        if (sqlparams.containsKey(possibleParamName.toUpperCase())) {
+	          finalSqlStatement = finalSqlStatement + "?";
+	          sqlParamFound.add(sqlparams.get(possibleParamName.toUpperCase()));
+	        }
+	        else {
+	          finalSqlStatement = finalSqlStatement + ":" + possibleParamName;
+	        }
+	        if (!testParamString.contains((csql+""))) {
+	          finalSqlStatement = finalSqlStatement + csql;
+	        }
+	      }
+	      else if (csql == '<') {
+	        String possibleFlagName = "";
+	        boolean endOfsttmnt = false;
+	        while (sqlstmnti.hasNext()) {
+	          csql = ((Character)sqlstmnti.next()).charValue();
+	          sqlstmnti.remove();
+	          if ("[]() ".indexOf(csql) == -1) {
+	            if (csql == '>') break;
+	            possibleFlagName = possibleFlagName + csql;
+	          }
+	          else
+	          {
+	            endOfsttmnt = true;
+	            break;
+	          }
+	        }
+	        if (possibleFlagName.toLowerCase().trim().equals("dbuser")) {
+	          finalSqlStatement = finalSqlStatement + this._dbuser;
+	        }
+	        else if (possibleFlagName.toLowerCase().trim().equals("dbschema")) {
+	          finalSqlStatement = finalSqlStatement + this._dbschema;
+	        }
+	        else if (possibleFlagName.toLowerCase().trim().equals("dbname")) {
+	        	finalSqlStatement = finalSqlStatement + this._dbname;
+		    }
+	        else {
+	          finalSqlStatement = finalSqlStatement + "<" + possibleFlagName + (possibleFlagName.indexOf(csql) == -1 ? Character.valueOf(csql) : "");
+	        }
+	      }
+	      else if (csql == '|') {
+	        if (sqlstmnti.hasNext()) {
+	          csql = ((Character)sqlstmnti.next()).charValue();
+	          sqlstmnti.remove();
+	          if (csql == '|') {
+	            if (this._dbtype.equals("sqlserver")) {
+	              finalSqlStatement = finalSqlStatement + "+";
+	            }
+	            else
+	              finalSqlStatement = finalSqlStatement + "||";
+	          }
+	          else
+	          {
+	            finalSqlStatement = finalSqlStatement + "|";
+	            finalSqlStatement = finalSqlStatement + csql;
+	          }
+	        }
+	      }
+	      else if (csql == '[') {
+	        finalSqlStatement = finalSqlStatement + (this._dbtype.equals("postgresql") ? '"' : this._dbtype.equals("sqlserver") ? csql : csql);
+	      }
+	      else if (csql == ']') {
+	        finalSqlStatement = finalSqlStatement + (this._dbtype.equals("postgresql") ? '"' : this._dbtype.equals("sqlserver") ? csql : csql);
+	      }
+	      else {
+	        finalSqlStatement = finalSqlStatement + csql;
+	      }
+	    }
+	    Connection cn = nextConnection();
+	    try
+	    {
+	    	String now=(_dbtype.equals("sqlserver")?"GETDATE()":"NOW()");	
+	    	while(finalSqlStatement.indexOf("NOW()")>-1){
+	    		finalSqlStatement=finalSqlStatement.substring(0,finalSqlStatement.indexOf("NOW()"))+now+finalSqlStatement.substring(finalSqlStatement.indexOf("NOW()")+"NOW()".length());
+	    	}
+	    	
+	      PreparedStatement sqlPrepared = cn.prepareStatement(finalSqlStatement);
+	      int sqlParamCount = 0;
+	      while (!sqlParamFound.isEmpty()) {
+	    	  Object paramVal=(String)sqlParamFound.remove(0);
+	    	  if(paramVal instanceof String){
+	    		  sqlPrepared.setString(++sqlParamCount,(String) paramVal);
+	    	  }
+	    	  else if(paramVal instanceof Integer){
+	    		  sqlPrepared.setInt(++sqlParamCount,(Integer) paramVal);
+	    	  }
+	    	  else if(paramVal instanceof Float){
+	    		  sqlPrepared.setFloat(++sqlParamCount,(Float) paramVal);
+	    	  }
+	    	  else if(paramVal instanceof Byte){
+	    		  sqlPrepared.setByte(++sqlParamCount,(Byte) paramVal);
+	    	  }
+	    	  else if(paramVal instanceof Long){
+	    		  sqlPrepared.setLong(++sqlParamCount,(Long) paramVal);
+	    	  }
+	    	  else if(paramVal instanceof Double){
+	    		  sqlPrepared.setDouble(++sqlParamCount,(Double) paramVal);
+	    	  }
+	    	  else if(paramVal instanceof Date){
+	    		  Calendar dateValue=Calendar.getInstance();
+	    		  dateValue.setTime((Date)paramVal);
+	    		  sqlPrepared.setDate(++sqlParamCount,new java.sql.Date(dateValue.getTimeInMillis()));
+	    	  }
+	    	  else if(paramVal instanceof Calendar){
+	    		  sqlPrepared.setDate(++sqlParamCount,new java.sql.Date(((Calendar)paramVal).getTimeInMillis()));
+	    	  }
+	    	  else{
+	    		  if(paramVal instanceof String){
+	    			  sqlPrepared.setString(++sqlParamCount,(String) paramVal);
+	    		  }
+	    		  else{
+	    			  sqlPrepared.setString(++sqlParamCount,String.valueOf(paramVal));
+	    		  }
+	    	  }
+	      }
+
+	      if (sqlPrepared.execute()) {
+	    	resultSetObtained = resultSetObtained == null ? new TreeMap<Integer,ArrayList<Object>>() : resultSetObtained;
+	        ResultSet sqlsetreturned = sqlPrepared.getResultSet();
+	        ResultSetMetaData sqlmetasetreturned = sqlsetreturned.getMetaData();
+
+	        int rowindex = 0;
+
+	        int colCount = sqlmetasetreturned.getColumnCount();
+	        int colindex = 0;
+	        
+	        ArrayList<Object> currentColumns = new ArrayList<Object>();
+	        while(colindex<colCount)
+	        {
+	        	currentColumns.add(sqlmetasetreturned.getColumnName((colindex+=1)));
+	        } 
+
+	        resultSetObtained.put(Integer.valueOf(rowindex++), currentColumns);
+
+	        while (sqlsetreturned.next()) {
+	          colindex = 0;
+	          ArrayList<Object> currentColumnsData = new ArrayList<Object>();
+	          while(colindex<colCount) {
+	            Object colValue = sqlsetreturned.getString((colindex+=1));
+	            colValue = (colValue==null ? "" :  colValue);
+	            currentColumnsData.add(colValue);
+	            if (sqlparams.keySet().contains(currentColumns.get(colindex - 1)))  sqlparams.put((String)currentColumns.get(colindex - 1), currentColumnsData.get(colindex - 1));      
+	          }
+	          resultSetObtained.put(Integer.valueOf(rowindex++), currentColumnsData);
+	        }
+	      }
+	    }
+	    catch (Exception e) {
+	    	debug(this.getClass(), "[E:SQL]"+sqlStatement);
+	    	debug(this.getClass(), "[E:SQL-FINAL]"+finalSqlStatement);
+	    	debug(this.getClass(), "[E:SQL]"+sqlStatement);
+	    	if(sqlparams!=null){
+	    		for(String sqlParamName:sqlparams.keySet()){
+	    			Object sqlParamValue=sqlparams.get(sqlParamName);
+	    			debug(this.getClass(), "[E:SQL-PARAM("+sqlParamName+")]"+(sqlParamValue instanceof String?(String)sqlParamValue:String.valueOf(sqlParamValue)));
+	    		}
+	    	}
+	    	debug(this.getClass(), "[E]"+e.getMessage());
+	      throw e;
+	    }
+	  }
+	
+	public static HashMap<String, Object> extractRowData(TreeMap<Integer, ArrayList<Object>> dbDataSetMap, int rownr)
+	  {
+	    HashMap<String,Object> rowDataMap = new HashMap<String,Object>();
+	    if ((dbDataSetMap != null) && 
+	      (dbDataSetMap.get(Integer.valueOf(0)) != null) && (dbDataSetMap.get(Integer.valueOf(rownr)) != null)) {
+	      int colcount = dbDataSetMap.get(Integer.valueOf(0)).size();
+	      for (int colindex = 0; colindex < colcount; colindex++) {
+	        rowDataMap.put(((String)dbDataSetMap.get(Integer.valueOf(0)).get(colindex)).toUpperCase(), dbDataSetMap.get(Integer.valueOf(rownr)).get(colindex));
+	      }
+	    }
+
+	    return rowDataMap;
+	  }
+	
+	public static void populateDatasetFromInputStream(
+			TreeMap<Integer, ArrayList<Object>> dataSetToFill,
+			String flatfileFormat,InputStream inputDatasetSteam,ArrayList<Object> datasetColumns,char colSep) throws Exception{
+		
+		boolean readColumnsOut=false;
+		if(datasetColumns==null){
+			if(dataSetToFill.size()==0){
+				datasetColumns = new ArrayList<Object>();
+			}
+			else if(dataSetToFill.size()==1){
+				datasetColumns=dataSetToFill.get(0);
+			}
+			else{
+				datasetColumns = new ArrayList<Object>();
+			}
+		}
+		
+		if(datasetColumns.isEmpty()){
+			readColumnsOut=true;
+		}
+		
+		int bavailable=0;
+		boolean intextData=false;
+		byte[] bytesreadout=new byte[1024];
+		char prevc=0;
+		String linefield="";
+		ArrayList<Object> rowArray=new ArrayList<Object>();
+		int rowIndex=0;
+		
+		int colindex=0;
+		int rowcolindex=0;
+		int totalColumns=0;
+		if(!readColumnsOut){
+			dataSetToFill.put(rowIndex++, datasetColumns);
+			totalColumns=datasetColumns.size();
+		}
+		
+		while((bavailable=inputDatasetSteam.read(bytesreadout))>-1){
+			if(bavailable>0){
+				int bcount=0;
+				while(bcount<bavailable){
+					byte bf=bytesreadout[bcount++];
+					char cstrm=((bf==0?' ':(char)bf));
+					if(flatfileFormat.equals("CSV")){
+						if(cstrm==colSep){
+							if(intextData){
+								prevc=cstrm;
+								linefield+=cstrm;
+								continue;
+							}
+							if(readColumnsOut){
+								linefield=linefield.trim().toUpperCase();
+								if(!linefield.equals("")){
+									datasetColumns.add(linefield);
+								}
+							}
+							else{
+								linefield=linefield.trim();
+								if(datasetColumns.get(colindex).equals(linefield.toUpperCase())) colindex++;
+								rowArray.add(linefield.trim());
+								rowcolindex++;
+							}
+							linefield="";
+							prevc=cstrm;
+						}
+						else if(cstrm=='\"'){
+							if(!intextData&&prevc!='\"'){
+								intextData=true;
+								linefield="";
+								prevc=0;
+							}
+							else{
+								if(prevc==cstrm&&prevc=='\"'){
+									linefield+=cstrm;
+									prevc=0;
+								}
+								else if(prevc!=cstrm&&cstrm=='\"'){
+									intextData=false;
+								}
+								else{
+									linefield+=cstrm;
+									prevc=cstrm;
+								}
+							}
+						}
+						else if(cstrm==13){				
+							if(!intextData){prevc=cstrm; continue; }
+							linefield+=cstrm;
+							prevc=cstrm;
+						}
+						else if(cstrm==10){
+							if(intextData){
+								linefield+=cstrm;
+								prevc=cstrm;
+								continue;
+							}
+							else if(readColumnsOut){
+								linefield=linefield.trim().toUpperCase();
+								if(!linefield.equals("")){
+									datasetColumns.add(linefield);
+								}
+								dataSetToFill.put(rowIndex++, datasetColumns);
+								totalColumns=datasetColumns.size();
+								readColumnsOut=false;
+							}
+							else{
+								linefield=linefield.trim();
+								if(datasetColumns.get(colindex).equals(linefield.toUpperCase())) colindex++;
+								rowArray.add(linefield);
+								
+								rowcolindex++;								
+								if(rowcolindex>=totalColumns&&totalColumns>colindex){
+										while(rowArray.size()>totalColumns) rowArray.remove(rowArray.size()-1);
+										dataSetToFill.put(rowIndex++,rowArray);
+								}
+								else{
+									//TODO
+								}
+								rowArray=new ArrayList<Object>();
+							}	
+							rowcolindex=0;
+							colindex=0;
+							linefield="";
+							prevc=cstrm;
+						}
+						else{
+							linefield+=cstrm;
+							prevc=cstrm;
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	public static void populateFlatFileStreamFromDataset(
+			TreeMap<Integer, ArrayList<Object>> dataSetToReadFrom,
+			String flatfileFormat,OutputStream outputDatasetSteam,char colSep,boolean columnsInFirstRow) throws Exception{
+	  for(int rowindex:dataSetToReadFrom.keySet()){
+		  ArrayList<Object> dataRow=new ArrayList<Object>(dataSetToReadFrom.get(rowindex));
+		  if(columnsInFirstRow){
+			  columnsInFirstRow=false;
+			int columnNamesNotEmpty=0;  
+			for(Object dataCol:dataRow){
+				if(!((String)dataCol).equals("")){
+					columnNamesNotEmpty++;
+				}
+			}
+			if(columnNamesNotEmpty<dataRow.size()) continue;
+			boolean isFirstColumn=false;
+			while(!dataRow.isEmpty()){
+					Object dataRowValue=dataRow.remove(0);
+					String colData=(dataRowValue instanceof String?((String)dataRowValue):String.valueOf(dataRowValue)).trim().toUpperCase();
+					if(isFirstColumn){
+						isFirstColumn=false;
+						if(colData.startsWith("ID")){
+							colData="i"+colData.substring(1);
+						}
+					}
+				  byte[] bytesToWrite=("\""+colData.replaceAll("[\"]", "\"\"")+"\"").getBytes();
+				  outputDatasetSteam.write(bytesToWrite);
+				  if(dataRow.size()>0){
+					  outputDatasetSteam.write((byte)colSep);
+				  }
+			  }
+			  
+			  outputDatasetSteam.write("\r\n".getBytes());
+			
+		  }
+		  else{
+			  while(!dataRow.isEmpty()){
+				  Object dataRowValue=dataRow.remove(0);
+				  String cellData=(dataRowValue instanceof String?((String)dataRowValue):String.valueOf(dataRowValue)).trim();
+				  cellData=(cellData.indexOf("\"")>-1?cellData.replaceAll("[\"]", "\"\""):cellData);
+				  byte[] bytesToWrite=(cellData.equals("")?"":(cellData.indexOf("\"")>-1||cellData.indexOf(",")>-1 ? "\""+cellData.replaceAll("[\"]", "\"\"")+"\"":cellData)).getBytes();
+				  outputDatasetSteam.write(bytesToWrite);
+				  if(dataRow.size()>0){
+					  outputDatasetSteam.write((byte)colSep);
+				  }
+			  }
+			  
+			  outputDatasetSteam.write("\r\n".getBytes());
+		  }		  
+	  }
+	  outputDatasetSteam.flush();
+  }
+	
+	public static Object extractRowField(TreeMap<Integer, ArrayList<Object>> dataset, int rowindex, String fieldName,Object nullValue)
+	{
+	    if (dataset.isEmpty()) return nullValue;
+	    if (dataset.size() == 1) {
+	      return nullValue;
+	    }
+	    int colindex = dataset.get(0).indexOf(fieldName.toUpperCase());
+	    if (colindex > -1) {
+	      return  dataset.get(rowindex).get(colindex);
+	    }
+	    return nullValue;
+	}
+
+	public static Object extractRowField(TreeMap<Integer, ArrayList<Object>> dataset, int rowindex, int fieldIndex,Object nullValue)
+	{
+	    if (dataset.isEmpty()) return nullValue;
+	    if (dataset.size() == 1) {
+	      return nullValue;
+	    }
+	    int colindex = fieldIndex;
+	    if ((colindex > -1) && (colindex < dataset.get(0).size())) {
+	      return dataset.get(rowindex).get(colindex);
+	    }
+	    return nullValue;
+	}
+	
+	public static void cleanupDataset(TreeMap<Integer, ArrayList<Object>> dataset)
+	{
+	    if (dataset == null) return;
+	    int rowindex = 0;
+	    while (!dataset.isEmpty()) {
+	      dataset.remove((Integer)(rowindex = dataset.firstKey().intValue()));
+	    }
+	    dataset.keySet().clear();
+	    dataset.clear();
+	    dataset = null;
+	}
+	
+	public static void debug(Class<?> dbManagerClass,String debugMessage){
+		baasserver.io.Logger.debug(dbManagerClass.getName()+":"+debugMessage);
+	}
+}

@@ -1,0 +1,21 @@
+package baasserver.web.system.datagrid;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class DataGridColumn extends IOWidgetHandle {
+
+	public DataGridColumn(IOWidgetHandle parentWidget,
+			IOProcessorHandle processor) throws Exception {
+		super(parentWidget, processor);
+	}
+	
+	public String data(){
+		return this.property("data");
+	}
+	
+	public boolean isHeader(){
+		return ((DataGrid)this.parentWidget()).isProcessingHeaders();
+	}
+
+}

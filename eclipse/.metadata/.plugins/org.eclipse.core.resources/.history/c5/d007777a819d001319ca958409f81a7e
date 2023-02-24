@@ -1,0 +1,139 @@
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.net.URL;
+import java.security.CodeSource;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.TreeMap;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+
+import baasserver.Client;
+//import baasserver.Server;
+import baasserver.db.protocols.DBRequestHandle;
+import baasserver.db.server.DBServer;
+import baasserver.db.system.DBSystem;
+import baasserver.encdec.Base64;
+import baasserver.io.nio.AdvancedClient;
+import baasserver.protocols.markup.IOMarkupRequestHandle;
+import baasserver.remoting.RemoteClient;
+
+public class BaasServerMain {
+
+	/**
+	 * @param args
+	 */
+	
+	public static void main(String[] args) {	
+		String rootpath=BaasServerMain.class.getProtectionDomain().getCodeSource().getLocation().getPath().substring(1);
+		if(rootpath.indexOf(".jar")>-1){
+			rootpath=new File(rootpath).getParent().replaceAll("[\\\\]", "/");
+			rootpath=(rootpath.endsWith("/")?rootpath:rootpath+"/");
+		}
+		baasserver.io.Logger.setLogFilePath(rootpath+"log.log");
+		
+		baasserver.io.Logger.debug(Thread.currentThread().getContextClassLoader().getResource("").getPath().substring(1)+"log.log");
+		baasserver.io.Logger.debug("EnvironmentStarted");
+		
+		
+		CodeSource codesource= BaasServerMain.class.getProtectionDomain().getCodeSource();
+		
+		if(codesource!=null){
+			URL jarurl=codesource.getLocation();
+			try {
+				ZipInputStream zip=new ZipInputStream(jarurl.openStream());
+				ZipEntry zipentry=null;
+				while((zipentry=zip.getNextEntry())!=null){
+					baasserver.io.Logger.debug("zipentry:"+zipentry.getName());
+					baasserver.reflection.REFUtils.loadResourceEntryPath(zipentry.getName());
+				}
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			
+		}
+		try {
+			baasserver.reflection.REFUtils.loadJarPackagesFromPath(Thread.currentThread().getContextClassLoader().getResource("").getPath());
+		} catch (Exception e) {
+			baasserver.io.Logger.debug(e.getMessage());
+		}
+		//try {
+		//	baasserver.reflection.REFUtils.loadJarPackagesFromPath(Thread.currentThread().getContextClassLoader().getResource("").getPath()+"jdbc/");
+		//} catch (Exception e) {
+		//	baasserver.io.Logger.debug("error:jdbc:"+e.getMessage());
+		//}
+		
+		try {
+			DBSystem.registerWebSystem("baasserver.db.system").registerDBManager("INOVO", "dbtype=sqlserver|dbhost=NEMUS|dbinstance=|dbname=SQLPR1|dbuser=PTOOLS|dbpw=PTOOLS|dbschema=PTOOLS".split("[|]")).nextConnection();
+		} catch (Exception e) {
+			baasserver.io.Logger.debug("error:baasserver.db.system:"+e.getMessage());
+		}
+		
+		//Server.initServer(DBServer.class, 2222,DBRequestHandle.class);
+		//Server.initServer(2223,IOMarkupRequestHandle.class);
+		
+		try {
+			/*Client client=new Client("127.0.0.1",2222);
+			//for(int r=0;r<10;r++){
+				client.clientOutputStream().writeln("GET /baasserver/db/web/system/select.sql?PROPERTY:DBURL=//baasserver.db.system/INOVO&PROPERTY:TABLE=TESTTABLE&PROPERTY:FROMDATE=NOW() HTTP/1.1");
+				client.clientOutputStream().flush();
+				client.clientSocketHandle().isDoneWriting(true);
+				client.clientSocketHandle().isDoneReading(true);
+				
+				int bytesReadCount=0;
+				byte[] recieved=new byte[1024];
+				
+				ObjectInputStream ooi=new ObjectInputStream(new Base64.InputStream(client.clientInputStream()));
+				TreeMap<Integer,ArrayList<Object>> testResultSet= (TreeMap<Integer, ArrayList<Object>>) ooi.readObject();
+				if(testResultSet!=null){
+					testResultSet.clear();
+				}
+				
+				//if(r<10){
+				//	client.reConnect();
+				//}
+			//}
+			client.closeConnection();*/
+			
+			/*RemoteClient remoteClient=new RemoteClient("127.0.0.1",2222,"/baasserver/db/web/system/select.sql"){
+				@Override
+				public void prepareHeaders(
+						HashMap<String, String> requestHeaders) {
+					super.prepareHeaders(requestHeaders);
+				}
+				
+				@Override
+				public void prepairRequestParameters(
+						HashMap<String, ArrayList<Object>> requestParameters) {
+					this.prepairStringParameter("TESTPARAM", "TESTPARAMVALUE");
+				}
+			};
+			
+			remoteClient.performRemoteRequest();
+			ObjectInputStream ooi=new ObjectInputStream(new Base64.InputStream(remoteClient.clientInputStream()));
+			TreeMap<Integer,ArrayList<Object>> testResultSet= (TreeMap<Integer, ArrayList<Object>>) ooi.readObject();
+			if(testResultSet!=null){
+				testResultSet.clear();
+			}*/
+			
+			baasserver.io.nio.AdvancedServer.initiateServer(baasserver.db.server.DBServer.class, 3333);
+			
+			
+			
+			//baasserver.io.nio.AdvancedClient advclient=new AdvancedClient("127.0.0.1",3333);
+			//advclient.clientWriteOutputStream().writeln("GET /baasserver/db/web/system/select.sql HTTP/1.1");
+			//advclient.clientWriteOutputStream().writeln("CONNECTION : Close");
+			//advclient.clientWriteOutputStream().flush();
+			
+			//ByteArrayOutputStream bytesout=new ByteArrayOutputStream();
+			
+			//baasserver.io.IOUtils.inputStreamToOutputStream(advclient.clientReadInputStream(), bytesout);
+			
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+}

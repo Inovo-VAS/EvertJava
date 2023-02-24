@@ -1,0 +1,9 @@
+package baasserver.system;
+
+public class BaseSystem {
+
+	
+	public static BaseSystem registerSystem(String systemAllias){
+		
+	}
+}

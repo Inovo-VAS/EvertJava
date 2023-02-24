@@ -1,0 +1,21 @@
+package inovo.queues;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class Queue {
+	
+	private ExecutorService _queueService=Executors.newCachedThreadPool();
+	
+	public Queue(){
+		this.initiate();
+	}
+
+	public void initiate() {
+	}
+
+	public Request queueRequest(Request requestToQueue) throws InterruptedException{
+		requestToQueue.wait();
+		return requestToQueue;
+	}
+}

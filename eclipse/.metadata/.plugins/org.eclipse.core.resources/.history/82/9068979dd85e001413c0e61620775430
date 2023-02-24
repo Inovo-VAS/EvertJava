@@ -1,0 +1,51 @@
+package inovo.presence.administrator;
+
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.TreeMap;
+
+import inovo.db.Database;
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+
+public class ServiceLoads extends InovoHTMLPageWidget {
+
+	public ServiceLoads(InovoWebWidget parentWidget, InputStream inStream) {
+		super(parentWidget, inStream);
+	}
+
+	@Override
+	public void pageContent() throws Exception {
+		TreeMap<Integer,ArrayList<String>> pcoloadset=new TreeMap<Integer, ArrayList<String>>();
+		Database.executeDBRequest(pcoloadset, "PRESENCE", "SELECT RDATE AS LOADCREATIONDATETIME,SERVICEID,ISNULL((SELECT NAME FROM <DBUSER.PCO_OUTBOUNDSERVICE WHERE PCO_OUTBOUNDSERVICE.ID=PCO_OUTBOUNDQUEUE.SERVICEID),'') AS SERVICENAME, LOADID, DESCRIPTION AS LOADNAME,STATUS,(SELECT COUNT(*) AS CALLCOUNT FROM <DBUSER>.PCO_OUTBOUNDQUEUE WHERE PCO_LOAD.SERVICEID=PCO_OUTBOUNDQUEUE.SERVICEID AND PCO_LOAD.LOADID=PCO_OUTBOUNDQUEUE.LOADID) AS LEADCOUNT FROM <DBUSER>.PCO_LOAD ORDER BY PCO_LOAD.SERVICEID,PCO_LOAD.LOADID",null, null);
+		
+		this.startTable("style=border:solid #A9A9A9 1px".split("[|]"));
+			
+			for(Integer rowindex:pcoloadset.keySet()){
+				this.startRow(null);
+				for(String colValue:pcoloadset.get((Integer)rowindex)){
+					if(rowindex==0){
+						this.startColumn("font-size:0.8em");
+					}
+					else{
+						this.startCell("style=border:solid #A9A9A9 1px;font-size:0.8em".split("[|]"));
+					}
+					
+					this.respondString(colValue);
+					
+					if(rowindex==0){
+						this.endColumn();
+					}
+					else{
+						this.endCell();
+					}
+				}
+
+				this.endRow();
+			}
+		this.endTable();
+		
+		Database.cleanupDataset(pcoloadset);
+		pcoloadset=null;
+	}
+}

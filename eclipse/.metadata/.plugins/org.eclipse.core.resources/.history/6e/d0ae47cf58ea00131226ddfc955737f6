@@ -1,0 +1,306 @@
+package lancet.leads.automation;
+
+import inovo.email.smtp.MailContent;
+import inovo.db.Database;
+import inovo.email.smtp.SMTPClient;
+
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.TreeMap;
+
+public class SMSExportQueue implements Runnable {
+	
+	private static SMSExportQueue _smsExportQueue=null;
+	
+	private HashMap<String,ArrayList<File>> _smsFilesToMail=new HashMap<String,ArrayList<File>>();
+	
+	private String _smsexportPath="";
+	
+	private Object _SMSExportQueueLock=new Object();
+	
+	private SMSExportQueue(String smsexportPath){
+		this._smsexportPath=smsexportPath;
+	}
+	
+	private static boolean _shutdown=false;
+	
+	@Override
+	public void run() {
+		while(!_shutdown){
+			try {
+				synchronized (_SMSExportQueueLock) {
+					_SMSExportQueueLock.wait(60+1024);
+				}
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			try {
+				Date todayDate=new SimpleDateFormat("yyyy-MM-dd HH:mm").parse(new SimpleDateFormat("yyy-MM-dd 08:00").format(new Date()));
+				Calendar todayCal=Calendar.getInstance();
+				todayCal.setTime(todayDate);
+				
+				if(todayCal.getTimeInMillis()<Calendar.getInstance().getTimeInMillis()){
+					this.prepairSMSMessages();
+				}
+				
+			} catch (ParseException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			
+		}
+	}
+	
+	private void prepairSMSMessages() {
+		if(_smsexportPath.indexOf("\\")>-1){
+			_smsexportPath=_smsexportPath.replaceAll("[\\]", "/");
+		}
+		while(!_smsexportPath.endsWith("/")) _smsexportPath+="/";
+		
+		try{
+			Database.executeDBRequest(null,"LANCETLEADSAUTOMATION", "UPDATE <DBUSER>.LANCET_SMS_REQUEST SET RECORDHANDLEFLAG=2 WHERE RECORDHANDLEFLAG=1",null,null);
+			TreeMap<Integer,ArrayList<String>> smsRequests=new TreeMap<Integer, ArrayList<String>>();
+			Database.executeDBRequest(smsRequests,"LANCETLEADSAUTOMATION", "SELECT ID AS REQUESTID,REQUESTCREATIONDATETIME,SMS_MESSAGE_ID,REQUESTEDDATETIME FROM <DBUSER>.LANCET_SMS_REQUEST WHERE RECORDHANDLEFLAG=2",null,null);
+			if(smsRequests!=null){
+				if(smsRequests.size()>1){
+					this.debug("START prepairSMSMessages()");
+					TreeMap<Integer,ArrayList<String>> smsmessageset=TreeMap<Integer, ArrayList<String>>();
+					Database.executeDBRequest(smsmessageset,"LANCETLEADSAUTOMATION", "SELECT ID AS SMS_MESSAGE_ID,SMS_GENERATE_FILE_PATH,SMS_MESSAGE_NAME FROM <DBUSER>.LANCET_SMS_MESSAGE",null,null);
+					
+					HashMap<String,String> smsmessagepathmap=new HashMap<String,String>();
+					HashMap<String,String> smsmessagenamemap=new HashMap<String,String>();
+					for(int rowmsmsindex:smsmessageset.keySet()){
+						if(rowmsmsindex==0) continue;
+						smsmessagepathmap.put(smsmessageset.get(rowmsmsindex).get(0), smsmessageset.get(rowmsmsindex).get(1));
+						smsmessagenamemap.put(smsmessageset.get(rowmsmsindex).get(0), smsmessageset.get(rowmsmsindex).get(2));
+					}
+					this.debug("prepairSMSMessages(): PREPAIRED - smsmessageset");
+					HashMap<String,String> smsRequestparams=new HashMap<String,String>();
+					HashMap<String,String> requestedSMSMessageParams=new HashMap<String,String>();
+					HashMap<String,String> smsMessageLayoutParams=new HashMap<String,String>();
+					TreeMap<Integer,ArrayList<String>> smsMessageLayout=null;
+					TreeMap<Integer,ArrayList<String>> requestedSMSMessagesSet=null;
+					
+					this.debug("prepairSMSMessages(): START PROCESSING - smsRequests");
+					for(int rowsmsreqindex:smsRequests.keySet()){
+						if(rowsmsreqindex==0) continue;
+						
+						smsRequestparams.clear();
+						smsRequestparams.putAll(Database.rowData(smsRequests, rowsmsreqindex));
+						
+						if(smsMessageLayout!=null) if(!smsMessageLayout.isEmpty()){
+							Database.cleanupDataset(smsMessageLayout);
+						}
+						
+						smsMessageLayout=Database.executeDBRequest("LANCETLEADSAUTOMATION", "SELECT ID, SMS_MESSAGE_ID,SECTION_TYPE,SECTION_CONTENT,SECTION_ORDER,CREATIONDATE FROM <DBUSER>.LANCET_SMS_MESSAGE_SECTIONS WHERE SMS_MESSAGE_ID=:SMS_MESSAGE_ID ORDER BY SECTION_ORDER", smsRequestparams,null);
+						if(smsMessageLayout==null){
+							this.debug("WARNING - smsMessageLayout is null");
+						}
+						else{
+							if(smsMessageLayout.isEmpty()){
+								this.debug("WARNING - smsMessageLayout is empty");
+							}
+						}
+						if(requestedSMSMessagesSet!=null) if(!requestedSMSMessagesSet.isEmpty()){
+							Database.cleanupDataset(requestedSMSMessagesSet);
+						}
+						
+						requestedSMSMessagesSet=Database.executeDBRequest("LANCETLEADSAUTOMATION", "SELECT SMSREQMSGS.ID AS SMSREQID,SMSREQMSGS.CELLNUMBER,LW.* FROM <DBUSER>.LANCET_SMS_REQUEST_MESSAGES SMSREQMSGS INNER JOIN <DBUSER>.LANCET_ACCOUNTS_VIEW LW ON LW.SOURCE_ID=SMSREQMSGS.SOURCEID AND SMSREQMSGS.GUAR_ID=LW.GUAR_ID WHERE SMS_REQUEST_ID=:REQUESTID", smsRequestparams,null);
+						if(requestedSMSMessagesSet.size()>1){
+							String smsmessageid=smsRequestparams.get("SMS_MESSAGE_ID");
+							String smsFileExportPath=(smsmessagepathmap.containsKey(smsmessageid)? smsmessagepathmap.get(smsmessageid):"");
+							String smsFileExportName=(smsmessagenamemap.containsKey(smsmessageid)? smsmessagenamemap.get(smsmessageid):"");
+							this.debug("smsFileExportPath:"+smsFileExportPath);
+							this.debug("smsFileExportName:"+smsFileExportName);
+							
+							if(smsFileExportPath.equals("")||smsFileExportName.equals("")){
+								continue;
+							}
+						
+							File fileDestinition=new File(smsFileExportPath);
+							if(!fileDestinition.exists()){ this.debug("prepairSMSMessages(): DESTINATION PATH DONT EXSIT - "+smsFileExportPath); continue; }
+							this.debug("prepairSMSMessages(): DESTINATION PATH EXSIT - "+smsFileExportPath);
+							File smsFileToGenerate=new File(smsFileExportPath+formatSMSFileName(smsFileExportName)+new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date())+".csv");
+							
+							//
+							
+							FileOutputStream smsFileOut=new FileOutputStream(smsFileToGenerate);
+							this.debug("prepairSMSMessages(): START PROCESSING - requestedSMSMessagesSet");
+							this.debug("prepairSMSMessages(): PROCESSING - requestedSMSMessagesSet - "+String.valueOf(requestedSMSMessagesSet.size()-1)+" records");
+							for(int rowindexreqmessages:requestedSMSMessagesSet.keySet()){
+								if(rowindexreqmessages==0) continue;
+								requestedSMSMessageParams.clear();
+								requestedSMSMessageParams.putAll(Database.rowData(requestedSMSMessagesSet, rowindexreqmessages));
+								
+								String smsContentGenerated="";
+								String smsnumber=requestedSMSMessageParams.get("CELLNUMBER");
+								while(smsnumber.startsWith("0")) smsnumber=smsnumber.substring(1);
+								
+								if(smsnumber.equals("")) continue;
+								
+								for(int rowindexsmsmmessagelayout:smsMessageLayout.keySet()){
+									if(rowindexsmsmmessagelayout==0) continue;
+									smsMessageLayoutParams.clear();
+									smsMessageLayoutParams.putAll(Database.rowData(smsMessageLayout, rowindexsmsmmessagelayout));
+									if(smsMessageLayoutParams.get("SECTION_TYPE").equals("MESSAGE")){
+										smsContentGenerated+= " "+smsMessageLayoutParams.get("SECTION_CONTENT");
+									}
+									else if(smsMessageLayoutParams.get("SECTION_TYPE").equals("FIELD")){
+										if(requestedSMSMessageParams.containsKey(smsMessageLayoutParams.get("SECTION_CONTENT").trim().toUpperCase())){
+											smsContentGenerated+= " "+requestedSMSMessageParams.get(smsMessageLayoutParams.get("SECTION_CONTENT").trim().toUpperCase());
+										}
+									}
+								}
+								
+								smsFileOut.write(((smsnumber+",\""+(smsContentGenerated=smsContentGenerated.trim()))+"\"\r\n").getBytes());
+								requestedSMSMessageParams.put("SMSMESSAGE", smsContentGenerated);
+								Database.executeDBRequest("LANCETLEADSAUTOMATION", "UPDATE <DBUSER>.LANCET_SMS_REQUEST_MESSAGES SET SMSMESSAGE=:SMSMESSAGE WHERE ID=:SMSREQID", requestedSMSMessageParams,null);
+							}
+							
+							this.debug("prepairSMSMessages(): WRITING SMS FILE - requestedSMSMessagesSet");
+							
+							smsFileOut.flush();
+							smsFileOut.close();
+							this.debug("prepairSMSMessages(): END PROCESSING - requestedSMSMessagesSet");
+							//File tmpFile=new File(smsFileToGenerate.getAbsolutePath());
+							
+							//if(smsFileToGenerate.renameTo(new File()){
+							//	tmpFile.delete();
+								Database.executeDBRequest("LANCETLEADSAUTOMATION", "UPDATE <DBUSER>.LANCET_SMS_REQUEST SET RECORDHANDLEFLAG=3 WHERE ID=:REQUESTID", smsRequestparams,null);
+							//}
+							//else{
+								
+							//}
+								
+							ArrayList<File> smsFiles=_smsFilesToMail.get(smsFileExportName);
+							if(smsFiles==null){
+								_smsFilesToMail.put(smsFileExportName,smsFiles= new ArrayList<File>());
+							}
+							
+							smsFiles.add(smsFileToGenerate);
+							this.debug("ADDED SMS FILE TO MAIL:"+smsFileToGenerate.getName());
+						}
+						else{
+							this.debug("prepairSMSMessages(): END PROCESSING - requestedSMSMessagesSet");
+							Database.executeDBRequest("LANCETLEADSAUTOMATION", "UPDATE <DBUSER>.LANCET_SMS_REQUEST SET RECORDHANDLEFLAG=3 WHERE ID=:REQUESTID", smsRequestparams,null);
+						}
+						Database.cleanupDataset(requestedSMSMessagesSet);
+						requestedSMSMessagesSet=null;
+					}
+					this.debug("prepairSMSMessages(): END PROCESSING - smsRequests");
+					this.debug("END prepairSMSMessages()");
+				}
+				
+			}
+			Database.cleanupDataset(smsRequests);
+			smsRequests=null;
+		}
+		catch(Exception e){
+			this.debug("FAIL prepairSMSMessages():"+e.getMessage());
+		}
+		
+		if(!_smsFilesToMail.isEmpty()){
+			final ArrayList<FileInputStream> smsFilesInputArr=new ArrayList<FileInputStream>(); 
+			this.debug("SEND SMS FILES prepairSMSMessages()");
+			for(final String smsSubject:_smsFilesToMail.keySet()){
+				final ArrayList<File> smsAttFiles=this._smsFilesToMail.get(smsSubject);
+				SMTPClient smtpSMSClient=new SMTPClient("smtp.lancet.co.za");
+				//smtpSMSClient.setOutputWriter(System.out);
+				try {
+					smtpSMSClient.connect();
+					smtpSMSClient.cmdHelo();
+					try {
+						smtpSMSClient.cmdMailContent(new MailContent(smtpSMSClient){
+							@Override
+							public void setupMailContent() {
+								this.setFromAddress("leadsmanager@lancet.co.za");
+								this.addRecipient("ebrahaim.adams@lancet.co.za");
+								this.addRecipient("sunjin.sadanan@lancet.co.za");
+								this.addRecipient("nick.orange@lancet.co.za");
+								this.addRecipient("ashley.volmink@lancet.co.za");
+								this.addRecipient("shaheen.halim@lancet.co.za");
+								this.setSubject(smsSubject);
+								this.setBody(new String[]{"Content-Type:text/plain"}, new ByteArrayInputStream(smsSubject.getBytes()));								
+								try {
+									for(File smtpF:smsAttFiles){
+										FileInputStream smtpFin=new FileInputStream(smtpF);
+										smsFilesInputArr.add(smtpFin);
+										try{
+											this.addAttachment(smtpF.getName(), new String[]{"filename="+smtpF.getName(),"Content-Type:text/csv"},smtpFin);
+										}
+										catch(Exception ein){
+											ein.printStackTrace();
+											System.out.print("ERROR SMTP ATT WRITE:" +ein.getMessage());
+										}
+									}
+								} catch (Exception e) {
+									e.printStackTrace();
+								}
+							}
+						});
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+					smtpSMSClient.cmdQuit();
+				} catch (IOException e) {
+					e.printStackTrace();
+				}				
+			}
+			this.debug("CLEANUP MAIL QUEUE prepairSMSMessages()");
+			while(!_smsFilesToMail.isEmpty()){
+				String smsKey=(String)_smsFilesToMail.keySet().toArray()[0];
+				_smsFilesToMail.remove(smsKey).clear();
+			}
+			while(!smsFilesInputArr.isEmpty()){
+				FileInputStream fin=smsFilesInputArr.remove(0);
+
+				try{
+					fin.close();
+				}
+				catch(Exception efin){
+					
+				}
+			}
+	
+		}
+	}
+
+	private String formatSMSFileName(String smsFileExportName) {
+		if(smsFileExportName==null) return "";
+		String formattedsmsFileExportName="";
+		for(char cs:smsFileExportName.toCharArray()){
+			if("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_".indexOf((""+cs).toUpperCase())>-1){
+				formattedsmsFileExportName+=(""+cs);
+			}
+			else {
+				formattedsmsFileExportName+="_";
+			}
+		}
+		return formattedsmsFileExportName;
+	}
+
+	private void debug(String message) {
+		inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug(message);
+	}
+
+	public static SMSExportQueue smsExportQueue(String smsexportPath){
+		if(_smsExportQueue==null){
+			new Thread(_smsExportQueue=new SMSExportQueue(smsexportPath)).start();
+		}
+		return  _smsExportQueue;
+	}
+
+	public void shutdown() {
+		this._shutdown=true;
+		_SMSExportQueueLock.notifyAll();
+	}
+}

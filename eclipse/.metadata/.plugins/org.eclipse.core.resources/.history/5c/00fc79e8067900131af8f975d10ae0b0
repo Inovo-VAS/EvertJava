@@ -1,0 +1,48 @@
+import java.io.File;
+import java.io.FilenameFilter;
+import java.io.IOException;
+import java.util.jar.JarFile;
+
+import baasserver.Server;
+import baasserver.protocols.markup.IOMarkupRequestHandle;
+
+
+public class BaasServerMain {
+
+	/**
+	 * @param args
+	 */
+	public static void main(String[] args) {	
+		
+		/*try {
+			baasserver.reflection.Compiler.compileAndRunCode();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}*/		
+		
+		File[] jarFilesFound=new File(Thread.currentThread().getContextClassLoader().getResource("").getPath()).listFiles(new FilenameFilter(){
+
+			@Override
+			public boolean accept(File dir, String name) {
+				return name.endsWith(".jar");
+			}
+			
+		});
+		if(jarFilesFound!=null){
+			for(File jarFile:jarFilesFound){
+				try {
+					baasserver.reflection.Utils.loadJarPackagesIntoRootPaths(jarFile.getAbsolutePath());
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+			}
+		}
+		
+		
+		//baasserver.reflection.Utils.loadJarPackagesIntoRootPaths()
+		
+		Server.initServer(2222,IOMarkupRequestHandle.class);
+	}
+
+	
+}

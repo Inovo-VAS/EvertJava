@@ -1,0 +1,105 @@
+package inovo.automation.db;
+
+import inovo.db.Database;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.TreeMap;
+
+public class DBRequest extends SQLRequest {
+	public DBRequest(HashMap<String,String> requestProperties) throws Exception{
+		super(inovo.automation.Queue.generateSchedules(requestProperties.get("DAILY_SCHEDULE").indexOf(";")>-1?requestProperties.get("DAILY_SCHEDULE").substring(0,requestProperties.get("DAILY_SCHEDULE").indexOf(";")).split("[,]"):requestProperties.get("DAILY_SCHEDULE").split("[,]"), "HH:mm"), requestProperties);
+		if(requestProperties.get("DAILY_SCHEDULE").indexOf(";")>-1){
+			this.setRequestDelay(Long.parseLong(requestProperties.get("DAILY_SCHEDULE").substring(requestProperties.get("DAILY_SCHEDULE").indexOf(";")+1))*1024);
+		}
+		ArrayList<String> dbRequestActions=new ArrayList<String>();
+		dbRequestActions.add("PRE_SQL_SELECT_COMMAND");
+		dbRequestActions.add("SQL_SELECT_COMMAND");
+		dbRequestActions.add("CSV_EXPORT_FILENAME_MASK");
+		dbRequestActions.add("MAIL_EXPORT_ADDRESSES");
+		dbRequestActions.add("POST_SQL_SELECT_COMMAND");
+		
+		this.setRequestActions(dbRequestActions);
+	}
+	
+	private String _preSqlStatement="";
+	private String _mainSqlStatement="";
+	private String _postSqlStatement="";
+	private String _exportCSVFileNameMask="";
+	private String _exportCSVFileMailingAddresses="";
+	private Database _dbAllias=null;
+	@Override
+	public void executeDBRequest(Database dballias) throws Exception {
+		this._preSqlStatement=this.property("PRE_SQL_SELECT_COMMAND");
+		this._mainSqlStatement=this.property("SQL_SELECT_COMMAND");
+		this._postSqlStatement=this.property("POST_SQL_SELECT_COMMAND");
+		this._exportCSVFileNameMask=this.property("CSV_EXPORT_FILENAME_MASK");
+		this._exportCSVFileMailingAddresses=this.property("MAIL_EXPORT_ADDRESSES");	
+		
+		this._dbAllias=dballias;
+		this.executeActions();
+	}
+	
+	private TreeMap<Integer,ArrayList<String>> _mainSqlStatementDataSet=null;
+	
+	public void PRE_SQL_SELECT_COMMAND(Database dbAllias) throws Exception{
+		dbAllias.executeDBRequest(dbAllias, _preSqlStatement, null);
+	}
+	
+	public void SQL_SELECT_COMMAND(Database dbAllias) throws Exception{
+		if(_mainSqlStatementDataSet!=null) Database.cleanupDataset(_mainSqlStatementDataSet);
+		_mainSqlStatementDataSet=dbAllias.executeDBRequest(dbAllias, _mainSqlStatement, null);
+	}
+	
+	public void CSV_EXPORT_FILENAME_MASK(TreeMap<Integer,ArrayList<String>> mainSqlStatementDataset) throws Exception{
+		if(!_exportCSVFileNameMask.equals("")){
+			File csvFile=new File(_exportCSVFileNameMask);
+			System.out.println(csvFile.getAbsolutePath());
+			FileOutputStream csvFileOutputDatasetSteam=new FileOutputStream(csvFile);
+			if(_mainSqlStatementDataSet!=null){
+				Database.populateFlatFileStreamFromDataset(_mainSqlStatementDataSet, "CSV", csvFileOutputDatasetSteam, ',');
+			}
+			csvFileOutputDatasetSteam.flush();
+			csvFileOutputDatasetSteam.close();
+		}
+	}
+	
+	public void MAIL_EXPORT_ADDRESSES() throws Exception{
+		_exportCSVFileMailingAddresses="";
+	}
+	
+	public void POST_SQL_SELECT_COMMAND(Database dbAllias) throws Exception{
+		dbAllias.executeDBRequest(dbAllias, _postSqlStatement, null);
+	}
+	
+	@Override
+	public void executeAction(String requestAction) {
+		Method dbrequestActionMethod=inovo.adhoc.AdhocUtils.findMethod(this.getClass().getMethods(), requestAction, false);
+		if(dbrequestActionMethod!=null){
+			try {
+				dbrequestActionMethod.invoke(this, this.dbRequestActionParams(requestAction));
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+	}
+	
+	public Object[] dbRequestActionParams(String requestAction){
+		if(requestAction.equals("PRE_SQL_SELECT_COMMAND")||requestAction.equals("SQL_SELECT_COMMAND")||requestAction.equals("POST_SQL_SELECT_COMMAND")){
+			return new Object[]{this._dbAllias};
+		}
+		else if(requestAction.equals("CSV_EXPORT_FILENAME_MASK")){
+			return new Object[]{this._mainSqlStatementDataSet};
+		}
+		return null;
+	}
+	
+	@Override
+	public boolean canContinue() {
+		return true;
+	}
+}

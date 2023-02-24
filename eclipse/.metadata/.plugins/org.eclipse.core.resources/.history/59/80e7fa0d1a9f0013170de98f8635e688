@@ -1,0 +1,22 @@
+package baasserver.db.web.system.definitions;
+
+import baasserver.db.web.system.Field;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class NumericField extends Field {
+
+	public NumericField(IOWidgetHandle parentWidget, IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+	
+	@Override
+	public String fieldDefinition() {
+		return super.fieldDefinition();
+	}
+	
+	public double defaultValue(){
+		return null;
+	}
+
+}

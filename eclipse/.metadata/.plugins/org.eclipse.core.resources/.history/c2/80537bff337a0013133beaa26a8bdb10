@@ -1,0 +1,43 @@
+package baasserver.reflection;
+
+import java.io.IOException;
+import java.security.SecureClassLoader;
+import java.util.Iterator;
+import java.util.Set;
+
+import javax.tools.FileObject;
+import javax.tools.ForwardingJavaFileManager;
+import javax.tools.JavaFileManager;
+import javax.tools.JavaFileObject;
+import javax.tools.JavaFileObject.Kind;
+
+public class CompilerClassFileManager  extends ForwardingJavaFileManager {
+
+	private CompilerClassFileObject jclassObject;
+	
+	protected CompilerClassFileManager(JavaFileManager fileManager) {
+		super(fileManager);
+	}
+
+	@Override
+    public ClassLoader getClassLoader(Location location) {
+        return new SecureClassLoader() {
+            @Override
+            protected Class<?> findClass(String name)
+                throws ClassNotFoundException {
+                byte[] b = jclassObject.getBytes();
+                return super.defineClass(name, jclassObject
+                    .getBytes(), 0, b.length);
+            }
+        };
+    }
+
+	@Override
+    public JavaFileObject getJavaFileForOutput(Location location,
+        String className, Kind kind, FileObject sibling)
+            throws IOException {
+            jclassObject = new CompilerClassFileObject(className, kind);
+        return jclassObject;
+    }
+
+}

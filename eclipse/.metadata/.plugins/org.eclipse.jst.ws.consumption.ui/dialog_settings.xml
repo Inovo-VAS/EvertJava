@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<section name="Workbench">
+	<list key="org.eclipse.jst.ws.client.type.java">
+		<item value="http://ws.stouf.com/StoufSMS/SMSService.asmx?WSDL"/>
+		<item value="http://10.20.1.153/pcoserverws/pcoserverws.dll/SOAP?wsdl"/>
+	</list>
+</section>

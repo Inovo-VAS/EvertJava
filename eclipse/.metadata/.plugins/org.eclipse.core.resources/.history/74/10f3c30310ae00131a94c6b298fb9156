@@ -1,0 +1,13 @@
+package baasserver.web.system;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class DialogActions extends IOWidgetHandle {
+
+	public DialogActions(IOWidgetHandle parentWidget,
+			IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+
+}

@@ -1,0 +1,29 @@
+import java.rmi.RemoteException;
+
+import org.tempuri.PcowsService;
+import org.tempuri.PcowsServiceProxy;
+
+import PcowsLibrary.PcowsService___InsertOutboundRecord;
+
+
+public class Sequance { 
+
+public static void main(String[] args) { 
+	PcowsServiceProxy pcosvrPcowsServiceProxy=new PcowsServiceProxy();
+	PcowsService___InsertOutboundRecord parameters=new PcowsService___InsertOutboundRecord();
+	parameters.setAServiceId(1000);
+	parameters.setALoadId(100);
+	parameters.setAName("");
+	parameters.setAStatus(1);
+	parameters.setAPhone("9999999999");
+	parameters.setASourceId(123456789);
+	parameters.setAPriority(100);
+	try {
+		pcosvrPcowsServiceProxy.insertOutboundRecord(parameters);
+	} catch (RemoteException e) {
+		// TODO Auto-generated catch block
+		e.printStackTrace();
+	}
+} 
+
+} 

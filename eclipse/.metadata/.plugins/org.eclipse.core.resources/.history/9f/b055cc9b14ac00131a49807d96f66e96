@@ -1,0 +1,19 @@
+package baasserver.web.system;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class Navigation extends ActionElement {
+
+	public Navigation(IOWidgetHandle parentWidget, IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+	
+	public String form(){
+		return "";
+	}
+	
+	public String containerTarget(){
+		return "";
+	}
+}

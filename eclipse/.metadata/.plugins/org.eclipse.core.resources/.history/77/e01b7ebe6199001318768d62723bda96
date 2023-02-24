@@ -1,0 +1,156 @@
+package baasserver.io.nio.handlers;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import baasserver.io.handler.IOHandler;
+import baasserver.io.nio.ServerReaderInputStream;
+import baasserver.io.nio.ServerReaderWriter;
+
+public class RequestHandler extends IOHandler {
+
+	private HashMap<String,ArrayList<String>> _reqParams=new HashMap<String,ArrayList<String>>();
+	private HashMap<String,HashMap<String,String>> _reqParamsProperties=new HashMap<String,HashMap<String,String>>();
+	private HashMap<String,String> _reqRequestHeaders=new HashMap<String,String>();
+	private HashMap<String,String> _reqResponseHeaders=new HashMap<String,String>();
+	private HashMap<String,File> _reqParamFiles=new HashMap<String, File>();
+	
+	private int _reqResponseStatus=200;
+	private String _reqResponseStatusMessage="Ok";
+	
+	private String _reqUrl="";
+	private String _reqCommand="";
+	private String _reqProtocol="";
+	
+	public void readInputStream(InputStream inputStream,int readBufferSize) throws Exception{
+		baasserver.io.IOUtils.inputStreamToIOHandler(inputStream, this,readBufferSize);
+	}
+	
+	private byte[] _currentBytesBeingProcessed=null;
+	private int _currentBytesBeingProcessedIndex=0;
+	
+	@Override
+	public void readFromInputStream(byte[] bytesReadFromStream,
+			InputStream input) {
+		this.processBytesRead(bytesReadFromStream);
+	}
+
+	private enum RequestEnum{
+		none,
+	    command,
+		url,
+		protocol,
+		headerNameRequest,
+		headerValueRequest,
+		contentRequest,
+		headerNameResponse,
+		headerValueResponse,
+		contentResponse,
+		statusResponse,
+		statusMessageResponse
+	}
+	
+	private RequestEnum _requestStageAt=RequestEnum.none;
+	
+	private String _reqHeaderName="";
+	private String _reqHeaderValue="";
+	private void processBytesRead(byte[] bytesReadFromStream) {
+		int bytesReadFromStreamIndex=((_requestStageAt==RequestEnum.command)?bytesReadFromStream.length:0);
+		for(byte br:bytesReadFromStream){
+			bytesReadFromStreamIndex++;
+			switch (_requestStageAt) {
+			case none:
+				 	switch(br){
+				 	case 32:
+				 		_requestStageAt=RequestEnum.url;
+				 		break;
+				 	default:
+				 		this._reqCommand+=(char)br;
+				 	}
+					break;
+			case url:
+					switch(br){
+				 	case 32:
+				 		_requestStageAt=RequestEnum.url;
+				 		break;
+				 	default:
+				 		this._reqUrl+=(char)br;
+				 	}
+			    	break;
+			case protocol:
+					switch(br){
+					case 13:
+						continue;
+					case 10:
+						if(_reqUrl.indexOf("?")>-1){
+							this.processUrlEncodedParams(this._reqUrl.substring(this._reqUrl.indexOf("?")+1).getBytes());
+							this._reqUrl=this._reqUrl.substring(0,this._reqUrl.indexOf("?"));
+						}
+						_requestStageAt=RequestEnum.headerNameRequest;
+						break;
+					default:
+						this._reqUrl+=(char)br;
+				 		
+				 	}
+					break;
+			case headerNameRequest:
+					switch(br){
+					case 58:
+						this._requestStageAt=RequestEnum.headerValueRequest;
+						break;
+					case 10:
+						if(_reqHeaderName.equals("")){
+							this._requestStageAt=RequestEnum.contentResponse;
+						}
+						else{
+							this._reqRequestHeaders.put(_reqHeaderName.trim().toUpperCase(), _reqHeaderValue.trim());
+							this._reqHeaderName="";
+							this._reqHeaderValue="";
+							this._requestStageAt=RequestEnum.headerNameRequest;
+						}
+						break;
+					default:
+						this._reqHeaderName+=(char)br;
+				 	}
+			    	break;
+			case headerValueRequest:
+					switch(br){
+					case 13:
+						continue;
+					case 10:
+						this._requestStageAt=RequestEnum.headerNameRequest;
+						break;
+					default:
+						this._reqHeaderValue+=(char)br;
+				 	}
+		    	break;
+			case contentRequest:
+					byte[] contentBytes=(bytesReadFromStreamIndex==bytesReadFromStream.length?bytesReadFromStream:new byte[bytesReadFromStream.length-bytesReadFromStreamIndex]);
+					if(bytesReadFromStreamIndex<bytesReadFromStream.length){
+						System.arraycopy(bytesReadFromStream, bytesReadFromStreamIndex, contentBytes, 0, contentBytes.length);
+					}
+					this.processContentBytesReceived(contentBytes);
+			    	break;
+			}
+		}
+	}
+	
+	@Override
+	public void reset() {
+		this._reqCommand="";
+		this._reqUrl="";
+		this._reqProtocol="";
+		this._reqHeaderName="";
+		this._reqHeaderValue="";
+	}
+
+	public void processUrlEncodedParams(byte[] bytesUrlEncoded) {
+		for(byte bc:bytesUrlEncoded){
+			char cu=(char)bc;
+			
+		}
+	}
+}

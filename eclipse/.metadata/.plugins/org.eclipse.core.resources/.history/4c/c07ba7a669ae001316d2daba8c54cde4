@@ -1,0 +1,13 @@
+package baasserver.db.server.widgets;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class RegisterDbSystem extends IOWidgetHandle {
+
+	public RegisterDbSystem(IOWidgetHandle parentWidget,
+			IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+
+}

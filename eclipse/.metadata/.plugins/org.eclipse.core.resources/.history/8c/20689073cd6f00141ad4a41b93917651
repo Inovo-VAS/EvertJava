@@ -1,0 +1,15 @@
+package inovo.flat.file.leads.importer;
+
+import java.util.HashMap;
+
+public class FlatFileRequestCallsImporter implements Runnable {
+
+	private HashMap<String,String> _flatFileRequestContentImportSettings=null;
+	
+	@Override
+	public void run() {
+		// TODO Auto-generated method stub
+
+	}
+
+}

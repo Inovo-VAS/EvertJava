@@ -1,0 +1,44 @@
+import inovo.presence.mail.archiver.MailExportQueue;
+import inovo.servlet.InovoCoreEnvironmentManager;
+import java.io.IOException;
+import javax.servlet.ServletContext;
+
+public class InovoEnvironmentManager extends InovoCoreEnvironmentManager
+{
+  
+	@Override
+	public String defaultLocalPath(String suggestedlocalpath) {
+		return super.defaultLocalPath("C:/projects/java/");// suggestedlocalpath);
+	}
+	
+	public void initializeServletContext(ServletContext servletContext)
+	{
+	    super.initializeServletContext(servletContext);
+	    this.log_debug("START MAILEXORTQUEUE");
+	    MailExportQueue.mailEportQueue().initiateQueue();
+	    this.log_debug("STARTED MAILEXORTQUEUE");
+	}
+  
+  @Override
+  public void log_debug(String debugmessage) {
+	super.log_debug(debugmessage);
+  }
+  
+  @Override
+	public void loadServletConfig(String defaultconfigfilename,
+			boolean updateProperties) throws Exception {
+	  super.loadServletConfig(defaultconfigfilename, false);
+		if(this.configProperty("WSMAILSERVICEURL").equals("")){
+			this.setConfigProperty("WSMAILSERVICEURL", "https://165.4.12.13:443/WFSMailExportService");
+		}
+		super.loadServletConfig(defaultconfigfilename, true);
+	}
+  
+  @Override
+	public void disposeServletContext(ServletContext sc) {
+	    this.log_debug("STOPPING MAILEXPORTQUEUE");
+		MailExportQueue.mailEportQueue().shutdownQueue();
+		this.log_debug("STOPPED MAILEXPORTQUEUE");
+		super.disposeServletContext(sc);
+	}
+}

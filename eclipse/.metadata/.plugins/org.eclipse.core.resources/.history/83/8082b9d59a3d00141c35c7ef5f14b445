@@ -1,0 +1,26 @@
+package inovo.presence.administrator;
+
+import inovo.db.Database;
+import inovo.web.InovoWebWidget;
+
+import java.io.InputStream;
+
+
+public class SQLInstallScript extends inovo.presence.web.SQLInstallScript {
+
+	public SQLInstallScript(InovoWebWidget parentWidget, InputStream inStream) {
+		super(parentWidget, inStream);
+	}
+	
+	public void installsqlscript() throws Exception{
+		try{
+			Database.executeDBRequest(null, "LEADSAUTOMATION", this.requestParameter("SQLINSTALLSCRIPT"),null,null);
+			this.showDialog("", ("title=INSTALLING SQL SCRIPT|content=SUCCESFUL".split("[|]"));
+		}
+		catch(Exception esqli){
+			this.showDialog("", ("title=ERROR INSTALLING SQL SCRIPT|content="+esqli.getMessage()).split("[|]"));
+		}
+		
+		
+	}
+}

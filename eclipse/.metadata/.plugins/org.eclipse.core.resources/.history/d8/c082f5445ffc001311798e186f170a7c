@@ -1,0 +1,46 @@
+package inovo.monitoring.monitors;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class Monitor implements Runnable{
+	
+	private static ExecutorService _monitorsServices=null;
+	
+	private static ExecutorService _monitorRequestServices=null;
+	
+	private Monitor _monitorRef=null;
+	public Monitor(){
+		this._monitorRef=this;
+	}
+	
+	public void requestCompleted(MonitorRequest monitorRequest) {
+		
+	}
+	
+	public static void initiateMonitor(Class<?> monitorClass) throws Exception{
+		initiateMonitor((Monitor)monitorClass.newInstance());
+	}
+	
+	public static void initiateMonitor(Monitor monitor){
+		if(_monitorsServices==null){
+			_monitorsServices=Executors.newCachedThreadPool();
+		}
+		_monitorsServices.execute(monitor);
+	}
+
+	private boolean _shutdownMonitor=false;
+	
+	@Override
+	public void run() {
+		if(!this._shutdownMonitor){
+			synchronized (_monitorRef) {
+				try {
+					this._monitorRef.wait();
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+	}
+}

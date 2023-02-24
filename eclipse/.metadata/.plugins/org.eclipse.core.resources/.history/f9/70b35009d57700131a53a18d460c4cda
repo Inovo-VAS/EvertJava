@@ -1,0 +1,17 @@
+package pce.accountants;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+import baasserver.web.system.InputField;
+
+public class Password extends InputField {
+
+	public Password(IOWidgetHandle parentWidget, IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+
+	@Override
+	public String type() {
+		return "password";
+	}
+}

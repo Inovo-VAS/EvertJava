@@ -1,0 +1,28 @@
+package inovo.monitoring.monitors;
+
+public class MonitorRequest implements Runnable{
+
+	private Exception _em=null;
+	private boolean _busyExecuting=false; 
+	
+	private Monitor _monitor=null;
+	public void attachToMonitor(Monitor monitor){
+		this._monitor=monitor;
+	}
+	
+	@Override
+	public void run() {
+		this._busyExecuting=true;
+		this._em=null;
+		try{
+			
+		}
+		catch(Exception e){
+			this._em=e;
+		}
+	}
+	
+	public void executeMonitor(){
+		
+	}
+}

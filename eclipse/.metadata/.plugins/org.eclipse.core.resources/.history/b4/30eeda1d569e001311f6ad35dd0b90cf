@@ -1,0 +1,25 @@
+package baasserver.db.web.system.definitions;
+
+import baasserver.db.web.system.Field;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class IdentityField extends Field {
+	public IdentityField(IOWidgetHandle parentWidget,
+			IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+	
+	@Override
+	public String fieldDefinition() {
+		if(this.dbParentWidget().dbManager().dbType().equals("sqlserver")){
+			//[ID] IDENTITY(1,1) NUMERIC(18,0) NOT NULL
+			//[ID] serial NOT NULL
+			return "["+this.fieldName()+"] IDENTITY(1,1) [numeric](18,0) NOT NULL";
+		}
+		else if(this.dbParentWidget().dbManager().dbType().equals("postgresql")){
+			return "["+this.fieldName()+"] serial NOT NULL";
+		}
+		return super.fieldDefinition();
+	}
+}

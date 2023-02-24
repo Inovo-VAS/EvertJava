@@ -1,0 +1,297 @@
+package baasserver.protocols;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Set;
+
+public class IORequestHandle implements Runnable{
+	private IOutput _output=null;
+	
+	private HashMap<String,ArrayList<String>> _reqParams=new HashMap<String,ArrayList<String>>();
+	private HashMap<String,HashMap<String,String>> _reqParamsProperties=new HashMap<String,HashMap<String,String>>();
+	private HashMap<String,String> _reqRequestHeaders=new HashMap<String,String>();
+	private HashMap<String,String> _reqResponseHeaders=new HashMap<String,String>();
+	private HashMap<String,File> _reqParamFiles=new HashMap<String, File>();
+	
+	private int _reqResponseStatus=200;
+	private String _reqResponseStatusMessage="Ok";
+	
+	public IORequestHandle(IOutput output){
+		this._output=output;
+	}
+	
+	public void setReqResponseStatus(int reqResponseStatus,String reqResponseStatusMessage){
+		this._reqResponseStatus=reqResponseStatus;
+		this._reqResponseStatusMessage=reqResponseStatusMessage;
+	}
+	
+	public void readBytesArrays(ArrayList<byte[]> byteArrays) throws Exception{
+		while(!byteArrays.isEmpty()){
+			this.readBytesArrays(byteArrays.remove(0));
+		}
+	}
+
+	public void readBytesArrays(byte[] bytesToRead) throws Exception {
+		_output.readBytes(bytesToRead);
+	}
+	
+	public void writeBytesArrays(ArrayList<byte[]> byteArrays){
+		while(!byteArrays.isEmpty()){
+			this.writeBytes(byteArrays.remove(0));
+		}
+	}
+	
+	public void writeBytes(byte[] bytesToWrite){
+		this.writeBytes(bytesToWrite,false);
+	}
+	
+	public void writeBytes(byte[] bytesToWrite,boolean preAppend){
+		if(preAppend){
+			this._output.writeBytesAppendTop(bytesToWrite);
+		}
+		else{
+			this._output.writeBytes(bytesToWrite);
+		}
+	}
+	
+	public String reqCommand(){
+		return "";
+	}
+	
+	public String reqURL(){
+		return "";
+	}
+	
+	public String reqURLExtension(){
+		return (this.reqURL().indexOf(".")>-1?this.reqURL().substring(this.reqURL().lastIndexOf(".")+1):"");
+	}
+	
+	public String reqProtocol(){
+		return "";
+	}
+	
+	public String requestHeader(String headerName){
+		String headerValue=this._reqRequestHeaders.get(headerName.toUpperCase());
+		return (headerValue==null?"":headerValue);
+	}
+	
+	public Set<String> requestHeaderNames(){
+		return this._reqRequestHeaders.keySet();
+	}
+	
+	public void setRequestHeader(String headerName,String headerValue){
+		this._reqRequestHeaders.put(headerName.toUpperCase(), headerValue);
+	}
+	
+	public String responseHeader(String headerName){
+		String headerValue=this._reqResponseHeaders.get(headerName.toUpperCase());
+		return (headerValue==null?"":headerValue);
+	}
+	
+	public void setResponseHeader(String headerName,String headerValue){
+		this._reqResponseHeaders.put(headerName.toUpperCase(), headerValue);
+	}
+	
+	public Set<String> responseHeaderNames(){
+		return this._reqResponseHeaders.keySet();
+	}
+	
+	public void setReqParameter(String paramName,String paramValue){
+		this.setReqParameter(paramName, paramValue, false);
+	}
+	
+	public void setReqParameter(String paramName,String paramValue,boolean overrideValues){
+		ArrayList<String> reqParam=this.reqParameter(paramName=paramName.toUpperCase());
+		if(reqParam==null){
+			this._reqParams.put(paramName,(reqParam=new ArrayList<String>()));
+		}
+		if(overrideValues) reqParam.clear();
+		if(!(paramValue=(paramValue==null?"":paramValue.trim())).equals("")){
+			reqParam.add(paramValue);
+		}
+	}
+	
+	public File reqParameterFile(String paramName) throws Exception{
+		if(!this._reqParamFiles.containsKey(paramName=paramName.toUpperCase())){
+			this._reqParamFiles.put(paramName, File.createTempFile("ses", "ses"));
+		}
+		return this._reqParamFiles.get(paramName);
+	}
+	
+	public FileInputStream reqParameterFileStream(String paramName) throws Exception{
+		if(this._reqParamFiles.containsKey(paramName=paramName.toUpperCase())){
+			return new FileInputStream(this._reqParamFiles.get(paramName));
+		}
+		return null;
+	}
+	
+	public void writeEmbeddedResource(String embeddedResourcePath) throws Exception{
+		InputStream bytesIn=(InputStream) baasserver.reflection.REFUtils.getResourceAsStream(embeddedResourcePath);
+		if(bytesIn!=null){				
+			int bytesAvailable=0;
+			byte[] bytesOutRead=new byte[8912];
+			
+			while((bytesAvailable=bytesIn.read(bytesOutRead))>-1){
+				if(bytesAvailable>0){
+					byte[] bytesToWrite=new byte[bytesAvailable];
+					System.arraycopy(bytesOutRead, 0, bytesToWrite, 0, bytesAvailable);
+					this.writeBytes(bytesToWrite);
+				}
+			}
+		}
+	}
+	
+	public void writeEmbeddedResourceToAleternateOutputStream(String embeddedResourcePath,OutputStream altoutput) throws Exception{
+		InputStream bytesIn=(InputStream) this.getClass().getResourceAsStream(embeddedResourcePath);
+		if(bytesIn!=null){				
+			int bytesAvailable=0;
+			byte[] bytesOutRead=new byte[8912];
+			
+			while((bytesAvailable=bytesIn.read(bytesOutRead))>-1){
+				if(bytesAvailable>0){
+					byte[] bytesToWrite=new byte[bytesAvailable];
+					System.arraycopy(bytesOutRead, 0, bytesToWrite, 0, bytesAvailable);
+					altoutput.write(bytesToWrite);
+				}
+			}
+		}
+	}
+	
+	public void setReqParameterProperty(String paramName,String propName,String propValue){
+		if((paramName=(paramName==null?"":paramName).toUpperCase()).equals("")||(propName=(propName==null?"":propName).toUpperCase()).equals("")||(propValue=(propValue==null?"":propValue)).equals("")){
+			return;
+		}
+		
+		HashMap<String,String> paramProperties=this._reqParamsProperties.get(paramName);
+		if(paramProperties==null){
+			this._reqParamsProperties.put(paramName, (paramProperties=new HashMap<String,String>()));
+		}
+		
+		paramProperties.put(propName, propValue);
+	}
+	
+	public String reqParameterString(String paramName){
+		ArrayList<String> reqParam=this.reqParameter(paramName);
+		return (reqParam==null?"":reqParam.isEmpty()?"":reqParam.get(0));
+	}
+	
+	public ArrayList<String> reqParameter(String paramName){
+		return this._reqParams.get(paramName.toUpperCase());
+	}
+
+	public void performHandle() throws Exception{
+		String reqUrlNoExtension=reqURL();
+		if(reqUrlNoExtension.lastIndexOf(".")>-1){
+			reqUrlNoExtension=reqUrlNoExtension.substring(0,reqUrlNoExtension.lastIndexOf("."));
+		}
+		Class<?> classFound=baasserver.reflection.REFUtils.findClass(reqUrlNoExtension.substring(0,reqUrlNoExtension.lastIndexOf("/")), reqUrlNoExtension.substring(reqUrlNoExtension.lastIndexOf("/")+1),false);
+		this.processWidget(classFound);
+	}
+
+	public void processWidget(Class<?> classFound) throws Exception{
+		if(classFound==null){
+			this.writeEmbeddedResource(this.reqURL());
+		}
+		else{
+			Method methProcessorInstance=this.getClass().getMethod("processHandlerClass",(Class<?>[])null);
+			IOProcessorHandle processor=(IOProcessorHandle)((Class) methProcessorInstance.invoke(this, (Object[])null)).getConstructor(IOProcessorHandle.class, Class.class,IORequestHandle.class).newInstance(new Object[]{null,classFound,this});
+			processor.process();
+			processor.cleanupProcessor();
+		}
+	}
+
+	public void preProcessResponseHeaders(){
+		for(String responseHeaderName:this.responseHeaderNames()){
+			this.processReqResponseHeader(responseHeaderName.toUpperCase(), this._reqResponseHeaders.get(responseHeaderName));
+		}
+		this.processReqResponseStatus(this._reqResponseStatus,this._reqResponseStatusMessage);
+		this._reqResponseHeaders.clear();		
+	}
+	
+	public void processReqResponseHeader(String responseHeaderName, String reqResponseHeaderValue) {
+		this.writeBytes((responseHeaderName+": "+reqResponseHeaderValue+"\r\n").getBytes(), true);
+	}
+
+	public void processReqResponseStatus(int reqResponseStatus,String reqResponseStatusMessage) {
+		this.writeBytes((this.reqProtocol()+ " "+String.valueOf(reqResponseStatus)+" "+reqResponseStatusMessage+"\r\n").getBytes(), true);
+	}
+
+	public void readNextBytes() {
+		this._output.canReadNextBytes();
+	}
+
+	public String reqBaseNameSpace(){
+		String baseNameSpace=this.getClass().getName();
+		return (baseNameSpace.indexOf(".")>-1?baseNameSpace.substring(0,baseNameSpace.indexOf(".")):"baasserver");
+	}
+	
+	@Override
+	public void run() {		
+	}
+
+	public boolean reqDone() {
+		return false;
+	}
+	
+	public void cleanupRequest(){
+		while(!_reqParams.isEmpty()){
+			_reqParams.remove(_reqParams.keySet().toArray()[0]).clear();
+		}
+		while(!_reqParamsProperties.isEmpty()){
+			_reqParamsProperties.remove(_reqParamsProperties.keySet().toArray()[0]).clear();
+		}
+		while(!_reqRequestHeaders.isEmpty()){
+			_reqRequestHeaders.remove(_reqRequestHeaders.keySet().toArray()[0]);
+		}
+		while(!_reqResponseHeaders.isEmpty()){
+			_reqResponseHeaders.remove(_reqResponseHeaders.keySet().toArray()[0]);
+		}
+		while(!_reqParamFiles.isEmpty()){
+			_reqParamFiles.remove(_reqParamFiles.keySet().toArray()[0]).delete();
+		}
+	}
+	
+	public static Class<?> processHandlerClass(){
+		return IOProcessorHandle.class;
+	}
+	
+	public void debug(String debugMessage){
+		baasserver.io.Logger.debug(baasserver.reflection.REFUtils.formatClassName(this.getClass().getName())+":"+debugMessage);
+	}
+	
+	private boolean _shutdownAll=false;
+	private boolean _shutdownRequestEnvironment=false;
+	
+	public void shutdownRequestEnvironment(){
+		_shutdownRequestEnvironment=true;
+	}
+	
+	public boolean canShutdownRequestEnvironment(){
+		return _shutdownRequestEnvironment;
+	}
+	
+	public void shutdownAll(){
+		this._shutdownAll=true;
+	}
+	
+	public boolean canShutdownAll(){
+		return this._shutdownAll;
+	}
+
+	public Set<String> reqParameterNames() {
+		return this._reqParams.keySet();
+	}
+	
+	private InputStream _input=null;
+	private OutputStream _out=null;
+	
+	public void setIO(InputStream input, OutputStream output) {
+		this._input=input;
+		this._out=output;
+	}
+}

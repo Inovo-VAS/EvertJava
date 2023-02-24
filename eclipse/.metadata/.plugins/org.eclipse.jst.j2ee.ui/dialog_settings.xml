@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<section name="Workbench">
+	<item key="J2EE_EXPORT_OVERWRITE" value="true"/>
+	<item key="J2EE_EXPORT_SOURCE" value="false"/>
+	<list key="MRU_RUNTIME_STORE">
+		<item value="Apache Tomcat v7.0"/>
+		<item value="Apache Tomcat v7.0 (2)"/>
+	</list>
+	<list key="J2EE_EXPORT_JST_WEB">
+		<item value="D:\projects\inovo\java\builds\InovoLocking\InovoLocking.war"/>
+		<item value="D:\projects\clients\inovo\java\builds\avon\InovoAvonCollections.war"/>
+		<item value="D:\projects\java\inovo\InovoQAGroupManager\InovoQAGroupManager.war"/>
+		<item value="D:\projects\clients\inovo\java\builds\InovoDHAQa\InovoDHAQa.war"/>
+		<item value="D:\projects\clients\inovo\java\builds\InovoLocking\InovoLocking.war"/>
+	</list>
+</section>

@@ -1,0 +1,495 @@
+package baasserver.protocols;
+
+import java.io.InputStream;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import baasserver.brokers.CodingScriptBroker;
+import baasserver.protocols.markup.IOMarkupProcessorHandle;
+
+public class IOProcessorHandle implements Runnable{
+	
+	private IOWidgetHandle _widgetHandle=null;
+	private IORequestHandle _requestHandle=null;
+	private IOProcessorHandle _mainProcessorHandle=null;
+	private CodingScriptBroker _codingScriptBroker=null;
+	private IOWidgetHandle _currentWidget=null;
+	
+	private Exception _e=null;
+	
+	public IOProcessorHandle(IOProcessorHandle mainProcessorHandle, Class<?> widgetHandleclass, IORequestHandle requestHandle) throws Exception{
+		this._mainProcessorHandle=(mainProcessorHandle==null?this:mainProcessorHandle);
+		this._requestHandle=requestHandle;
+		this._widgetHandle=IOWidgetHandle.newIOWidgetHandle(widgetHandleclass,null, this._mainProcessorHandle);
+	}
+	
+	public void process() throws Exception{
+		this.initializeProcess();
+		
+		if(_mainProcessorHandle==this){
+			for(String reqParamName:this.requestHandle().reqParameterNames()){
+				if(reqParamName.toUpperCase().startsWith("PROPERTY:")){
+					this._widgetHandle.setProperty(reqParamName.substring("PROPERTY:".length()),this.requestHandle().reqParameterString(reqParamName));
+				}
+			}
+		}
+		
+		this._codingScriptBroker=new CodingScriptBroker(this);
+		//Method inputStreamMaskPath=baasserver.reflection.REFUtils.findMethod("inputStreamMaskPath",this.widgetHandle().getClass(),new Class<?>[0]);
+		//if(inputStreamMaskPath!=null){
+		//	processInputMaskStream(IOMarkupProcessorHandle.class.getResourceAsStream((String) inputStreamMaskPath.invoke(this.widgetHandle(),(Object[])null)));
+		//}
+	}
+	
+	public void initializeProcess() {
+		this.setStartProcessorPar('<');
+		this.setEndProcessorPar('>');
+	}
+	
+	public void setStartProcessorPar(char startProcessorPar){
+		this._startProcessorPar=startProcessorPar;
+	}
+	
+	public char startProcessorPar(){
+		return this._startProcessorPar;
+	}
+	
+	public void setEndProcessorPar(char endProcessorPar){
+		this._endProcessorPar=endProcessorPar;
+	}
+	
+	public char endProcessorPar(){
+		return this._endProcessorPar;
+	}
+
+	public void writeBytes(byte[]bytesToWrite){
+		this.requestHandle().writeBytes(bytesToWrite);
+	}
+	
+	public CodingScriptBroker codingScriptBroker(){
+		return this._codingScriptBroker;
+	}
+	
+	public void processInputMaskStream(InputStream inputMaskStream) throws Exception{
+		if(inputMaskStream==null) return;
+		int maskBufferSize=0;
+		byte[] maskBufferRead=new byte[8912];
+		while((maskBufferSize=inputMaskStream.read(maskBufferRead,0,maskBufferRead.length))>-1){
+			if(maskBufferSize>0){
+				byte [] actualMaskBuffer=new byte[maskBufferSize];
+				System.arraycopy(maskBufferRead, 0, actualMaskBuffer, 0, maskBufferSize);
+				this.processMaskBytes(actualMaskBuffer,0);					
+			}
+		}
+	}
+	
+	public IOWidgetHandle widgetHandle(){
+		return this._widgetHandle;
+	}
+	
+	public IORequestHandle requestHandle(){
+		return this._requestHandle;
+	}
+	
+	@Override
+	public void run() {
+		try{
+			this.process();
+		}
+		catch(Exception e){
+			this._e=e;
+			debug("ERROR:"+e.getMessage());
+		}
+	}
+	
+	public Exception exception(){
+		return this._e;
+	}
+	
+	public void loadMaskCodeByte(byte br) throws Exception{
+		this.loadMaskCodeByte(br, true);
+	}
+	
+	public void loadMaskCodeByte(byte br,boolean debug) throws Exception{
+		char cc=(char)br;
+		this.codingScriptBroker().loadMaskCodeByte(br, debug);
+	}
+	
+	public void cleanupProcessor(){
+		
+	}
+	
+	private byte _matchStartByte=0;
+	private byte _matchNextStartByte=0;
+	private byte _matchEndByte=0;
+
+	private char _startProcessorPar=0;
+	private char _endProcessorPar=0;
+	
+	private void processSingleMaskByte(byte mb) throws Exception{
+		
+		if(_matchStartByte==0&&_matchEndByte==0){
+			if(mb==(char)this._startProcessorPar){
+				_matchStartByte=mb;
+			}
+			else{
+				_bytesToRespond.add((Byte)mb);
+			}
+		}
+		else if(_matchStartByte==(char)this._startProcessorPar&&_matchEndByte==0){
+			if(_matchNextStartByte==0){
+				_matchNextStartByte=mb;
+				if(_matchNextStartByte==(byte)'!'){
+					_bytesToRespond.add((Byte)(byte)this._startProcessorPar);
+					_bytesToRespond.add((Byte)_matchNextStartByte);
+					_matchStartByte=0;
+					_matchNextStartByte=0;
+				}
+				else if(_matchNextStartByte==(byte)'/'){
+					_matchEndByte=_matchNextStartByte;
+					_matchStartByte=0;
+					_matchNextStartByte=0;
+				}
+				else{
+					this.processSingleMaskByte(_matchNextStartByte);
+				}
+			}
+			else{
+				if(mb==(byte)' '||mb==(byte)this._endProcessorPar){
+					if(this._widgetTagRead.equals("")){
+						_widgetTagRead=_currentWidgetStartTag.substring(0,_currentWidgetStartTag.length()).trim();
+						_currentWidgetStartTag=_currentWidgetStartTag.substring(_currentWidgetStartTag.length()).trim();
+						
+						if(mb==(byte)this._endProcessorPar){
+							this.processSingleMaskByte(mb);
+						}
+					}
+					else{
+						if(mb==(byte)this._endProcessorPar){
+							this._widgetTagProperties=(_currentWidgetStartTag.endsWith("/")?_currentWidgetStartTag.substring(0,_currentWidgetStartTag.length()-1):_currentWidgetStartTag);
+							if(_widgetTagRead.equals("widget")){
+								this.generateWidgetProperties();
+								if(!_currentWidgetStartTag.endsWith("/")){
+									_widgetEndTagRefs.add(0,(this._startProcessorPar+"/"+_widgetTagRead+this._endProcessorPar));
+								}
+								_widgetTagRead="";
+								_currentWidgetStartTag="";
+								_widgetTagProperties="";
+								_matchNextStartByte=0;
+								_matchStartByte=0;
+							}
+							else{
+								if(this._invalidWidgetTags.indexOf(this._widgetTagRead)>-1){
+									if(this._startProcessorPar=='<'){
+										for(byte bt:(this._startProcessorPar+this._widgetTagRead+(_currentWidgetStartTag.equals("")?"":" "+this._currentWidgetStartTag)+this._endProcessorPar).getBytes()){
+											this._bytesToRespond.add(bt);
+										}
+									}
+									_widgetTagRead="";
+									_currentWidgetStartTag="";
+									_widgetTagProperties="";
+									_matchNextStartByte=0;
+									_matchStartByte=0;
+								}
+								else{
+									if(_validWidgetTags.containsKey(this._widgetTagRead)){
+										IOWidgetHandle nextwidget=(_addedStartWidget?IOWidgetHandle.newIOWidgetHandle(_validWidgetTags.get(_widgetTagRead), this._currentWidget, this):this._currentWidget);
+										if(!_addedStartWidget) _addedStartWidget=true;
+										
+										this._currentWidgets.add(this._currentWidget=nextwidget);
+										
+										if(this._currentWidget.widgetHasMaskPaths())
+										while(!this._currentWidget.widgetLayoutMaskPaths().isEmpty()){
+											this._widgetStreamMaskPaths.add(0,this._currentWidget.widgetLayoutMaskPaths().remove(0));
+										}
+										
+										this.generateWidgetProperties();
+										
+										if(!_currentWidgetStartTag.endsWith("/")){
+											_widgetEndTagRefs.add(0,(this._startProcessorPar+"/"+_widgetTagRead+this._endProcessorPar));
+											_widgetTagRead="";
+											_currentWidgetStartTag="";
+											_widgetTagProperties="";
+											_matchNextStartByte=0;
+											_matchStartByte=0;
+										}
+										else{
+											_widgetTagRead="";
+											_currentWidgetStartTag="";
+											_widgetTagProperties="";
+											_matchNextStartByte=0;
+											_matchStartByte=0;
+											_matchEndByte=0;
+											
+											IOWidgetHandle currentWidget=this._currentWidget;
+											String possibleWidgetMaskPath="";
+											if(!(possibleWidgetMaskPath=currentWidget.nextlayoutStreamMaskPath()).equals("")){
+												this.processInputMaskStream(baasserver.reflection.REFUtils.getResourceAsStream(possibleWidgetMaskPath));
+											}
+											if(currentWidget.parentWidget()!=null&&possibleWidgetMaskPath.equals("")){
+												this._currentWidget=currentWidget.parentWidget();
+											}
+										}										
+									}
+									else{
+										String possibleWidgetClassPath=this._widgetTagRead;
+										Class<?> possibleWidgetClass=null;
+										if(possibleWidgetClassPath.indexOf(".")>-1){
+											debug("TEST FOR [possibleWidgetClassPath] - "+possibleWidgetClassPath);
+											possibleWidgetClass=baasserver.reflection.REFUtils.findClass(possibleWidgetClassPath, true);
+										}										
+										else{
+											debug("TEST FOR [ .reqUrl()+possibleWidgetClassPath] - "+this.requestHandle().reqURL().substring(1,this.requestHandle().reqURL().lastIndexOf("/"))+"."+possibleWidgetClassPath);
+											possibleWidgetClass=baasserver.reflection.REFUtils.findClass(this.requestHandle().reqURL().substring(1,this.requestHandle().reqURL().lastIndexOf("/"))+"."+possibleWidgetClassPath, true);
+											if(possibleWidgetClass==null){
+												debug("TEST FOR - "+"baasserver.web.system"+"."+possibleWidgetClassPath);
+												possibleWidgetClass=baasserver.reflection.REFUtils.findClass("baasserver.web.system"+"."+possibleWidgetClassPath, true);
+											}
+										}
+										if(possibleWidgetClass==null){
+											this._invalidWidgetTags.add(_widgetTagRead);
+											debug("ADD INVALID TAG - "+_widgetTagRead);
+											this.processSingleMaskByte(mb);
+										}
+										else{
+											_validWidgetTags.put(_widgetTagRead, possibleWidgetClass);
+											this.processSingleMaskByte(mb);
+										}
+									}
+								}
+							}
+						}
+						else{
+							_currentWidgetStartTag+=(char)mb;
+						}
+					}	
+				}
+				else{
+					_currentWidgetStartTag+=(char)mb;
+				}
+			}
+		}
+		else if(_matchStartByte==0&&_matchEndByte==(byte)'/'){
+			if(mb==(byte)'>'){
+				this._prevmb=0;
+				if(_widgetEndTagRefs.contains(this._startProcessorPar+"/"+this._widgetTagRead+this._endProcessorPar)){	
+					
+					if(!_widgetTagRead.equals("widget")){
+							
+							IOWidgetHandle currentWidget=_currentWidget;
+							
+							this.codingScriptBroker().putCodingReadPhrase(this.codingScriptBroker().codingSpecificIndex("handleWidgetContent"));
+							this.codingScriptBroker().putCodingReadContent(currentWidget);
+							this.codingScriptBroker().putCodingReadContent((this._widgetProperties.containsKey(_currentWidget)?this._widgetProperties.remove(_currentWidget):(HashMap<String,String>)null));
+							this.codingScriptBroker().putCodingReadPhrase(this.codingScriptBroker().codingSpecificIndex(";"));
+					
+					}
+					
+					if(_processorResponseBufferIndex>0){
+						byte[] processorResponseBuffer=new byte[_processorResponseBufferIndex];
+						System.arraycopy(_processorResponseBuffer, 0, processorResponseBuffer, 0, _processorResponseBufferIndex);
+						_processorResponseBufferIndex=0;
+						
+						this.codingScriptBroker().appendStringTocoding(new String(processorResponseBuffer));
+					}
+					
+					this._matchEndByte=0;
+					if(!this._widgetTagRead.equals("widget")){
+						_widgetEndTagRefs.remove((this._startProcessorPar+"/"+_widgetTagRead+this._endProcessorPar));
+						
+						
+						this._widgetTagRead="";
+						if(this._currentWidget.widgetHasMaskPaths()){
+							if(!this._widgetStreamMaskPaths.isEmpty()){
+								this.processInputMaskStream(baasserver.reflection.REFUtils.getResourceAsStream(this._widgetStreamMaskPaths.remove(0)));
+							}
+						}
+						if(!_nolayoutMaskPaths){
+							if(this._startProcessorPar=='<'){
+								this.codingScriptBroker().appendStringTocoding("<script type=\"text/javascript\">");
+							}
+						}
+						
+						if(this._currentWidget.widgetHashActiveScriptPaths()){
+							ArrayList<String> currentActiveScriptsMaskPaths=this._currentWidget.widgetActiveScriptsMaskPaths();
+							while(!currentActiveScriptsMaskPaths.isEmpty()){
+								this.processInputMaskStream(baasserver.reflection.REFUtils.getResourceAsStream(currentActiveScriptsMaskPaths.remove(0)));
+							}
+						}
+						if(!_nolayoutMaskPaths){
+							if(this._startProcessorPar=='<'){
+								this.codingScriptBroker().appendStringTocoding("</script>");
+							}
+						}
+						if(this._currentWidgets.size()==1){
+							this._currentWidget=this._currentWidgets.get(0);
+						}
+						else{
+							this._currentWidget=this._currentWidgets.remove(0);
+						}
+					}
+					else if(this._widgetTagRead.equals("widget")){
+						_widgetTagRead="";
+						if(!this._widgetStreamMaskPaths.isEmpty()){
+							this.processInputMaskStream(this.widgetHandle().getClass().getResourceAsStream(this._widgetStreamMaskPaths.remove(0)));
+							this.processMaskBytes((this._startProcessorPar+"/widget"+this._endProcessorPar).getBytes(), 0);
+						}
+						else{
+							_widgetEndTagRefs.remove((this._startProcessorPar+"/"+this._widgetTagRead+this._endProcessorPar));
+						}
+					}
+				}
+				else{
+					this._matchEndByte=0;
+					if(this._startProcessorPar=='<'){
+						for(byte bt:(this._startProcessorPar+"/"+this._widgetTagRead+this._endProcessorPar).getBytes()){
+							this._bytesToRespond.add(bt);
+						}
+					}
+					this._widgetTagRead="";
+					_currentWidgetStartTag="";
+					_widgetTagProperties="";
+					_matchNextStartByte=0;
+					_matchStartByte=0;
+					_matchEndByte=0;
+				}
+			}
+			else{
+				this._widgetTagRead+=(char)mb;
+			}
+		}
+	}
+
+	public void processMaskBytes(byte[] maskContentBuffer, int maskContentBufferCount) throws Exception{
+		while(maskContentBufferCount<maskContentBuffer.length){
+			byte mb=maskContentBuffer[maskContentBufferCount++];
+			if(_codeSecCount==2&&mb!=(byte)'%'){
+				_prevmb=mb;
+				this.loadMaskCodeByte((byte)mb);
+				continue;
+			}
+			else if(_codeSecCount==2&&mb==(byte)'%'){
+				this.loadMaskCodeByte((byte)_prevmb);
+				_prevmb=mb;
+				_codeSecCount--;
+				continue;
+			}
+			else if(_codeSecCount==1&&_prevmb==(byte)'%'&&mb!=(byte)this._endProcessorPar){
+				_codeSecCount++;
+				this.loadMaskCodeByte((byte)_prevmb);
+				this.loadMaskCodeByte((byte)mb);
+				_prevmb=mb;
+				continue;
+			}
+			else if(_codeSecCount==1&&_prevmb==(byte)'%'&&mb==(byte)this._endProcessorPar){
+				 _codeSecCount=0;
+				 _prevmb=0;
+				 // TODO performCodeAsItIsGenerated
+				 continue;
+			}
+			else if(_codeSecCount==1&&_prevmb==(byte)this._startProcessorPar&&mb==(byte)'%'){
+				_codeSecCount++;
+				_prevmb=0;
+				
+				if(_matchStartByte>0){
+					if(!this._widgetTagRead.equals("")){
+						for(byte wb:(this._startProcessorPar+this._widgetTagRead+(this._currentWidgetStartTag.equals("")?"":" "+this._currentWidgetStartTag)).getBytes()){
+							_processorResponseBuffer[_processorResponseBufferIndex++]=wb;
+							if(_processorResponseBuffer.length==_processorResponseBufferIndex){
+								this.codingScriptBroker().appendStringTocoding(new String(_processorResponseBuffer));
+								_processorResponseBufferIndex=0;
+							}
+						}
+						if(_processorResponseBufferIndex>0){
+							byte[] processorResponseBuffer=new byte[_processorResponseBufferIndex];
+							System.arraycopy(_processorResponseBuffer, 0, processorResponseBuffer, 0, _processorResponseBufferIndex);
+							this.codingScriptBroker().appendStringTocoding(new String(processorResponseBuffer));
+							_processorResponseBufferIndex=0;
+						}
+						if(this._invalidWidgetTags.indexOf(this._widgetTagRead)==-1){
+							this._invalidWidgetTags.add(_widgetTagRead);
+						}
+						this._widgetTagRead="";
+						this._currentWidgetStartTag="";
+					}
+					_matchStartByte=0;
+					_matchNextStartByte=0;
+				}
+				else{
+					if(_processorResponseBufferIndex>0){
+						byte[] processorResponseBuffer=new byte[_processorResponseBufferIndex];
+						System.arraycopy(_processorResponseBuffer, 0, processorResponseBuffer, 0, _processorResponseBufferIndex);
+						_processorResponseBufferIndex=0;
+						this.codingScriptBroker().appendStringTocoding(new String(processorResponseBuffer));
+					 }
+					continue;
+				}
+			}
+			else if(_codeSecCount==1&&_prevmb==(byte)this._startProcessorPar&&mb!=(byte)'%'){
+				_maskBytesToProcess.add((Byte)_prevmb);
+				_maskBytesToProcess.add((Byte)mb);
+				_codeSecCount=0;
+				_prevmb=mb;
+			}
+			else if(_codeSecCount==0&&mb==(byte)this._startProcessorPar){
+				_codeSecCount++;
+				_prevmb=mb;
+				continue;
+			}
+			else if(_codeSecCount==0&&mb!=(byte)this._startProcessorPar){
+				_prevmb=mb;
+				_maskBytesToProcess.add((Byte)mb);
+			}
+			
+			while(!_maskBytesToProcess.isEmpty()){
+				this.processSingleMaskByte(mb=_maskBytesToProcess.remove(0));
+				
+				if(!_unmatchStartTags.isEmpty()){
+					while(!_unmatchStartTags.isEmpty()){
+						byte[]unmatchStartTag=_unmatchStartTags.remove(0);
+						for(byte ub:unmatchStartTag){
+							_bytesToRespond.add((Byte)ub);
+						}
+						unmatchStartTag=null;
+					}
+				}
+				
+				if(!_unmatchEndTags.isEmpty()){
+					while(!_unmatchEndTags.isEmpty()){
+						byte[]unmatchEndTag=_unmatchEndTags.remove(0);
+						for(byte ub:unmatchEndTag){
+							_bytesToRespond.add((Byte)ub);
+						}
+						unmatchEndTag=null;
+					}
+				}
+				
+				while(!_bytesToRespond.isEmpty()){
+					byte br=_bytesToRespond.remove(0);
+					_processorResponseBuffer[_processorResponseBufferIndex++]=br;
+					if(_processorResponseBuffer.length==_processorResponseBufferIndex){
+						this.codingScriptBroker().appendStringTocoding(new String(_processorResponseBuffer));
+						_processorResponseBufferIndex=0;
+					}
+				}				
+			}
+		}
+		
+		if(_processorResponseBufferIndex>0){
+			byte[] processorResponseBuffer=new byte[_processorResponseBufferIndex];
+			System.arraycopy(_processorResponseBuffer, 0, processorResponseBuffer, 0, _processorResponseBufferIndex);
+			_processorResponseBufferIndex=0;
+			
+			this.codingScriptBroker().appendStringTocoding(new String(processorResponseBuffer));
+			
+			_processorResponseBufferIndex=0;
+		}
+	}
+	
+	public void debug(String debugMessage){
+		baasserver.io.Logger.debug(baasserver.reflection.REFUtils.formatClassName(this.getClass().getName())+":"+debugMessage);
+	}
+
+	
+}

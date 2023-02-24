@@ -1,0 +1,17 @@
+package baasserver.db.web.system.definitions;
+
+import baasserver.db.web.system.Field;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class IdenytityField extends Field {
+	public IdenytityField(IOWidgetHandle parentWidget,
+			IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+	
+	@Override
+	public String fieldDefinition() {
+		
+	}
+}

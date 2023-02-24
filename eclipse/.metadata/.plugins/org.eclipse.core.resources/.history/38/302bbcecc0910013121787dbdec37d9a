@@ -1,0 +1,394 @@
+package baasserver.db.system;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.TreeMap;
+
+import baasserver.io.IOUtils;
+
+
+public class DBManager {
+	
+	private Object _cpds = baasserver.reflection.REFUtils.findClass("com.mchange.v2.c3p0.ComboPooledDataSource", false).getConstructor(null).newInstance(null);
+	
+	private DBSystem _dbsystem=null;
+	
+	private String _dbname;
+	private String _dbuser;
+	private String _dbschema;
+	private String _dbpw;
+	private String _dbhost;
+	private String _dbinstance;
+	private String _dbtype;
+	private String _dbconstring = "";
+	private Connection _masterCn=null;
+	  
+	private int _maxDBConnections = 20;
+	public DBManager(DBSystem dbsystem,String[] properties) throws Exception{
+		this._dbsystem=dbsystem;
+		this.setDBConnection(properties);
+	}
+	
+	private void setDBConnection(String[] dbproperties) throws Exception {
+	    String dbtype = "";
+	    String dbhost = "";
+	    String dbinstance = "";
+	    String dbname = "";
+	    String dbschema = "";
+	    String dbuser = "";
+	    String dbpw = "";
+
+	    for (String dbprop : dbproperties) {
+	      if (dbprop.indexOf("=") > -1) {
+	        String dbpropName = dbprop.substring(0, dbprop.indexOf("=")).trim().toLowerCase();
+	        String dbpropValue = dbprop.substring(dbprop.indexOf("=") + 1).trim();
+	        if ((!dbpropValue.equals("")) || (!dbpropName.equals(""))) {
+	          if ((dbpropName.equals("dbtype")) && (!dbpropValue.equals(""))) {
+	            dbtype = dbpropValue;
+	          }
+	          else if ((dbpropName.equals("dbhost")) && (!dbpropValue.equals(""))) {
+	            dbhost = dbpropValue;
+	          }
+	          else if ((dbpropName.equals("dbinstance")) && (!dbpropValue.equals(""))) {
+	            dbinstance = dbpropValue;
+	          }
+	          else if ((dbpropName.equals("dbuser")) && (!dbpropValue.equals(""))) {
+	            dbuser = dbpropValue;
+	          }
+	          else if ((dbpropName.equals("dbschema")) && (!dbpropValue.equals(""))) {
+		            dbschema = dbpropValue;
+		      }
+	          else if ((dbpropName.equals("dbname")) && (!dbpropValue.equals(""))) {
+	            dbname = dbpropValue;
+	          }
+	          else if ((dbpropName.equals("dbpw")) && (!dbpropValue.equals("")))
+	            dbpw = dbpropValue;
+	        }
+	      }
+	    }
+	    setupdbconnection(dbtype, dbhost, dbinstance, dbname,dbschema, dbuser, dbpw);
+	  }
+	
+	private void setupdbconnection(String dbtype, String dbhost, String dbinstance, String dbname,String dbschema, String dbuser, String dbpw) throws Exception
+	  {
+	    synchronized (this) {
+	      this._dbtype = dbtype.toLowerCase();
+	      this._dbhost = dbhost;
+	      this._dbinstance = dbinstance;
+	      this._dbname = dbname;
+	      this._dbschema=dbschema;
+	      this._dbuser = dbuser;
+	      this._dbpw = dbpw;
+	      
+	      int minCon=this._maxDBConnections/10;
+	      if(minCon<=1) {
+	    	  if(minCon+1<this._maxDBConnections){
+	    		  minCon=1;
+	    	  }
+	    	  else{
+	    		  minCon=this._maxDBConnections;
+	    	  }
+	      }
+	      int incCon=this._maxDBConnections/minCon;
+	      if(incCon<minCon) incCon=minCon;
+	      
+	      baasserver.reflection.REFUtils.findMethod("setMinPoolSize", _cpds.getClass(), null, true).invoke(_cpds, new Object[]{minCon});
+	      //_cpds.setMinPoolSize(minCon);
+	      baasserver.reflection.REFUtils.findMethod("setAcquireIncrement", _cpds.getClass(), null, true).invoke(_cpds, new Object[]{incCon});
+	      //_cpds.setAcquireIncrement(incCon);
+	      baasserver.reflection.REFUtils.findMethod("setMaxPoolSize", _cpds.getClass(), null, true).invoke(_cpds, new Object[]{this._maxDBConnections});
+	      //_cpds.setMaxPoolSize(this._maxDBConnections);
+	      
+	      if ("sqlserver,postgresql,".contains(this._dbtype)) {
+	        this._dbconstring = ("jdbc:" + this._dbtype + "://" + this._dbhost);
+	        if (this._dbtype.equals("sqlserver")) {
+	          if (!this._dbinstance.equals("")) this._dbconstring = (this._dbconstring + ";instanceName=" + this._dbinstance);
+	          this._dbconstring = (this._dbconstring + ";databaseName=" + this._dbname + ";");
+	          
+	          baasserver.reflection.REFUtils.findMethod("setDriverClass", _cpds.getClass(), null, true).invoke(_cpds, new Object[]{"com.microsoft.sqlserver.jdbc.SQLServerDriver"});
+	          //_cpds.setDriverClass( "com.microsoft.sqlserver.jdbc.SQLServerDriver" ); //loads the jdbc driver
+	          
+	        }
+	        else if (this._dbtype.equals("postgresql")) {
+	          this._dbconstring = (this._dbconstring + "/" + this._dbname);
+	          baasserver.reflection.REFUtils.findMethod("setDriverClass", _cpds.getClass(), null, true).invoke(_cpds, new Object[]{"org.postgresql.Driver"});
+	          //_cpds.setDriverClass( "org.postgresql.Driver" ); //loads the jdbc driver
+	        }
+	      }
+	      else {
+	        this._dbconstring = "";
+	      }
+	    }
+	    
+	    baasserver.reflection.REFUtils.findMethod("setJdbcUrl", _cpds.getClass(), null, true).invoke(_cpds, new Object[]{this._dbconstring});
+	    //_cpds.setJdbcUrl( this._dbconstring);
+	    baasserver.reflection.REFUtils.findMethod("setUser", _cpds.getClass(), null, true).invoke(_cpds, new Object[]{this._dbuser});
+	    //_cpds.setUser(this._dbuser);                                  
+	    baasserver.reflection.REFUtils.findMethod("setPassword", _cpds.getClass(), null, true).invoke(_cpds, new Object[]{this._dbpw});
+	    //_cpds.setPassword(this._dbpw); 
+	}
+	
+	public int defaultConnectionPoolSize() {
+	    return 20;
+	}
+	
+	public Connection connection() throws Exception{
+		if(_masterCn==null){
+			return (_masterCn=(Connection)baasserver.reflection.REFUtils.findMethod("getConnection", _cpds.getClass(), null, false).invoke(_cpds,null));
+		}
+		else{
+			return _masterCn;
+		}
+	}
+	
+	public Connection nextConnection() throws Exception {
+	    Connection cn = this.connection();// null;
+	    try{
+	    	cn.prepareCall("SELECT 1 AS [TESTVAL]").execute();
+	    }
+	    catch(Exception ex){
+	    	try{
+	    		cn=connection();
+	    	}
+	    	catch(Exception e){
+	    		throw ex;
+	    	}
+	    }
+	    return cn;
+	}
+	
+	private void executeRequest(TreeMap<Integer, ArrayList<Object>> resultSetObtained, String sqlStatement, HashMap<String, Object> sqlparams) throws Exception {
+	    ArrayList<Character> sqlStatementarr = new ArrayList<Character>();
+
+	    for (char csql : sqlStatement.toCharArray()) {
+	      sqlStatementarr.add(Character.valueOf(csql));
+	    }
+
+	    if (!sqlStatementarr.isEmpty()) { 
+	    	if (sqlparams == null) sqlparams = new HashMap<String,Object>();
+	    }
+	    ArrayList<Object> sqlParamFound = new ArrayList<Object>();
+
+	    String finalSqlStatement = "";
+	    String testParamString = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdexfgijklmnopqrstuvwxyz0123456789_";
+	    Iterator<Character> sqlstmnti = sqlStatementarr.iterator();
+	    while (sqlstmnti.hasNext()) {
+	      char csql = sqlstmnti.next().charValue();
+	      sqlstmnti.remove();
+	      if (csql == '\'') {
+	        finalSqlStatement = finalSqlStatement + csql;
+	        char lastcsql = 0;
+	        while (sqlstmnti.hasNext()) {
+	          csql = ((Character)sqlstmnti.next()).charValue();
+	          sqlstmnti.remove();
+	          if ((csql == lastcsql) && (csql == '\'')) {
+	            finalSqlStatement = finalSqlStatement + csql;
+	            lastcsql = '\'';
+	          }
+	          else {
+	            if (csql == '\'') {
+	              finalSqlStatement = finalSqlStatement + csql;
+	              break;
+	            }
+
+	            finalSqlStatement = finalSqlStatement + csql;
+
+	            lastcsql = csql;
+	          }
+	        }
+	      } else if (csql == ':') {
+	        String possibleParamName = "";
+	        while (sqlstmnti.hasNext()) {
+	          csql = ((Character)sqlstmnti.next()).charValue();
+	          sqlstmnti.remove();
+	          if (testParamString.indexOf(csql) <= -1) break;
+	          possibleParamName = possibleParamName + csql;
+	        }
+
+	        if (sqlparams.containsKey(possibleParamName.toUpperCase())) {
+	          finalSqlStatement = finalSqlStatement + "?";
+	          sqlParamFound.add(sqlparams.get(possibleParamName.toUpperCase()));
+	        }
+	        else {
+	          finalSqlStatement = finalSqlStatement + ":" + possibleParamName;
+	        }
+	        if (!testParamString.contains((csql+""))) {
+	          finalSqlStatement = finalSqlStatement + csql;
+	        }
+	      }
+	      else if (csql == '<') {
+	        String possibleFlagName = "";
+	        boolean endOfsttmnt = false;
+	        while (sqlstmnti.hasNext()) {
+	          csql = ((Character)sqlstmnti.next()).charValue();
+	          sqlstmnti.remove();
+	          if ("[]() ".indexOf(csql) == -1) {
+	            if (csql == '>') break;
+	            possibleFlagName = possibleFlagName + csql;
+	          }
+	          else
+	          {
+	            endOfsttmnt = true;
+	            break;
+	          }
+	        }
+	        if (possibleFlagName.toLowerCase().trim().equals("dbuser")) {
+	          finalSqlStatement = finalSqlStatement + this._dbuser;
+	        }
+	        else if (possibleFlagName.toLowerCase().trim().equals("dbschema")) {
+	          finalSqlStatement = finalSqlStatement + this._dbschema;
+	        }
+	        else if (possibleFlagName.toLowerCase().trim().equals("dbname")) {
+	        	finalSqlStatement = finalSqlStatement + this._dbname;
+		    }
+	        else {
+	          finalSqlStatement = finalSqlStatement + "<" + possibleFlagName + (possibleFlagName.indexOf(csql) == -1 ? Character.valueOf(csql) : "");
+	        }
+	      }
+	      else if (csql == '|') {
+	        if (sqlstmnti.hasNext()) {
+	          csql = ((Character)sqlstmnti.next()).charValue();
+	          sqlstmnti.remove();
+	          if (csql == '|') {
+	            if (this._dbtype.equals("sqlserver")) {
+	              finalSqlStatement = finalSqlStatement + "+";
+	            }
+	            else
+	              finalSqlStatement = finalSqlStatement + "||";
+	          }
+	          else
+	          {
+	            finalSqlStatement = finalSqlStatement + "|";
+	            finalSqlStatement = finalSqlStatement + csql;
+	          }
+	        }
+	      }
+	      else if (csql == '[') {
+	        finalSqlStatement = finalSqlStatement + (this._dbtype.equals("postgresql") ? '"' : this._dbtype.equals("sqlserver") ? csql : csql);
+	      }
+	      else if (csql == ']') {
+	        finalSqlStatement = finalSqlStatement + (this._dbtype.equals("postgresql") ? '"' : this._dbtype.equals("sqlserver") ? csql : csql);
+	      }
+	      else {
+	        finalSqlStatement = finalSqlStatement + csql;
+	      }
+	    }
+	    Connection cn = nextConnection();
+	    try
+	    {
+	    	String now=(_dbtype.equals("sqlserver")?"GETDATE()":"NOW()");	
+	    	while(finalSqlStatement.indexOf("NOW()")>-1){
+	    		finalSqlStatement=finalSqlStatement.substring(0,finalSqlStatement.indexOf("NOW()"))+now+finalSqlStatement.substring(finalSqlStatement.indexOf("NOW()")+"NOW()".length());
+	    	}
+	    	
+	      PreparedStatement sqlPrepared = cn.prepareStatement(finalSqlStatement);
+	      int sqlParamCount = 0;
+	      while (!sqlParamFound.isEmpty()) {
+	    	  Object paramVal=(String)sqlParamFound.remove(0);
+	    	  if(paramVal instanceof String){
+	    		  sqlPrepared.setString(++sqlParamCount,(String) paramVal);
+	    	  }
+	    	  else if(paramVal instanceof Integer){
+	    		  sqlPrepared.setInt(++sqlParamCount,(Integer) paramVal);
+	    	  }
+	    	  else if(paramVal instanceof Float){
+	    		  sqlPrepared.setFloat(++sqlParamCount,(Float) paramVal);
+	    	  }
+	    	  else if(paramVal instanceof Byte){
+	    		  sqlPrepared.setByte(++sqlParamCount,(Byte) paramVal);
+	    	  }
+	    	  else if(paramVal instanceof Long){
+	    		  sqlPrepared.setLong(++sqlParamCount,(Long) paramVal);
+	    	  }
+	    	  else if(paramVal instanceof Double){
+	    		  sqlPrepared.setDouble(++sqlParamCount,(Double) paramVal);
+	    	  }
+	    	  else if(paramVal instanceof Date){
+	    		  Calendar dateValue=Calendar.getInstance();
+	    		  dateValue.setTime((Date)paramVal);
+	    		  sqlPrepared.setDate(++sqlParamCount,new java.sql.Date(dateValue.getTimeInMillis()));
+	    	  }
+	    	  else if(paramVal instanceof Calendar){
+	    		  sqlPrepared.setDate(++sqlParamCount,new java.sql.Date(((Calendar)paramVal).getTimeInMillis()));
+	    	  }
+	    	  else{
+	    		  if(paramVal instanceof String){
+	    			  sqlPrepared.setString(++sqlParamCount,(String) paramVal);
+	    		  }
+	    		  else{
+	    			  sqlPrepared.setString(++sqlParamCount,String.valueOf(paramVal));
+	    		  }
+	    	  }
+	      }
+
+	      if (sqlPrepared.execute()) {
+	    	resultSetObtained = resultSetObtained == null ? new TreeMap<Integer,ArrayList<Object>>() : resultSetObtained;
+	        ResultSet sqlsetreturned = sqlPrepared.getResultSet();
+	        ResultSetMetaData sqlmetasetreturned = sqlsetreturned.getMetaData();
+
+	        int rowindex = 0;
+
+	        int colCount = sqlmetasetreturned.getColumnCount();
+	        int colindex = 0;
+	        
+	        ArrayList<Object> currentColumns = new ArrayList<Object>();
+	        while(colindex<colCount)
+	        {
+	        	currentColumns.add(sqlmetasetreturned.getColumnName((colindex+=1)));
+	        } 
+
+	        resultSetObtained.put(Integer.valueOf(rowindex++), currentColumns);
+
+	        while (sqlsetreturned.next()) {
+	          colindex = 0;
+	          ArrayList<Object> currentColumnsData = new ArrayList<Object>();
+	          while(colindex<colCount) {
+	            Object colValue = sqlsetreturned.getString((colindex+=1));
+	            colValue = (colValue==null ? "" :  colValue);
+	            currentColumnsData.add(colValue);
+	            if (sqlparams.keySet().contains(currentColumns.get(colindex - 1)))  sqlparams.put((String)currentColumns.get(colindex - 1), currentColumnsData.get(colindex - 1));      
+	          }
+	          resultSetObtained.put(Integer.valueOf(rowindex++), currentColumnsData);
+	        }
+	      }
+	    }
+	    catch (Exception e) {
+	    	debug(this.getClass(), "[E:SQL]"+sqlStatement);
+	    	debug(this.getClass(), "[E:SQL-FINAL]"+finalSqlStatement);
+	    	debug(this.getClass(), "[E:SQL]"+sqlStatement);
+	    	if(sqlparams!=null){
+	    		for(String sqlParamName:sqlparams.keySet()){
+	    			Object sqlParamValue=sqlparams.get(sqlParamName);
+	    			debug(this.getClass(), "[E:SQL-PARAM("+sqlParamName+")]"+(sqlParamValue instanceof String?(String)sqlParamValue:String.valueOf(sqlParamValue)));
+	    		}
+	    	}
+	    	debug(this.getClass(), "[E]"+e.getMessage());
+	      throw e;
+	    }
+	  }
+	
+	public static HashMap<String, Object> rowData(TreeMap<Integer, ArrayList<Object>> dbDataSetMap, int rownr)
+	  {
+	    HashMap<String,Object> rowDataMap = new HashMap<String,Object>();
+	    if ((dbDataSetMap != null) && 
+	      (dbDataSetMap.get(Integer.valueOf(0)) != null) && (dbDataSetMap.get(Integer.valueOf(rownr)) != null)) {
+	      int colcount = dbDataSetMap.get(Integer.valueOf(0)).size();
+	      for (int colindex = 0; colindex < colcount; colindex++) {
+	        rowDataMap.put((String)dbDataSetMap.get(Integer.valueOf(0))).get(colindex)).toUpperCase(), (String)((ArrayList)dbDataSetMap.get(Integer.valueOf(rownr))).get(colindex));
+	      }
+	    }
+
+	    return rowDataMap;
+	  }
+	
+	public static void debug(Class<?> dbManagerClass,String debugMessage){
+		baasserver.io.Logger.debug(dbManagerClass.getName()+":"+debugMessage);
+	}
+}

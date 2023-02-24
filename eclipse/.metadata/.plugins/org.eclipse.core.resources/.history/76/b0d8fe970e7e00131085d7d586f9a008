@@ -1,0 +1,56 @@
+import java.util.Calendar;
+
+import inovo.automation.Queue;
+import inovo.automation.Request;
+import inovo.servlet.InovoCoreEnvironmentManager;
+import javax.servlet.ServletContext;
+
+public class InovoEnvironmentManager extends InovoCoreEnvironmentManager
+{
+	private Queue _testQueue=null;
+  public void initializeServletContext(ServletContext sc)
+  {
+    super.initializeServletContext(sc);
+    try {
+		this._testQueue=new Queue(){
+			@Override
+			public void initiate() throws Exception{
+				try {
+					Calendar startCal=Calendar.getInstance();
+					Calendar endCal=startCal.getInstance();
+					endCal.add(Calendar.HOUR, 1);
+					this.queueRequest(new Request(Queue.generateSchedules(startCal,endCal,5*1000)){
+						@Override
+						public void executeRequest() {
+							System.out.println("Execute Request");
+						}
+						@Override
+						public long requestDelay() {
+							return 2*1024;
+						}
+					},false);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+		};
+		this._testQueue.kill();
+	} catch (Exception e) {
+		System.out.println(e.getMessage());
+	}
+  }
+
+  public String defaultLocalPath(String suggestedlocalpah)
+  {
+    return super.defaultLocalPath("C:/projects/java/");
+  }
+
+  public void disposeServletContext(ServletContext sc)
+  {
+	super.disposeServletContext(sc);
+	if(this._testQueue!=null){
+		this._testQueue.killAllQueues();
+	}
+	System.out.println("Automation Stopped");
+  }
+}

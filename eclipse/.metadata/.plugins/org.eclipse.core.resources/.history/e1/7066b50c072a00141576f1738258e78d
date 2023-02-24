@@ -1,0 +1,50 @@
+package saas.workflow;
+
+import java.util.ArrayList;
+
+public class Process {
+
+	private ArrayList<Process> _processes=null;
+	
+	private class ProcessWorker extends Thread {
+        public void run() {
+            Runnable r;
+
+            while (true) {
+                synchronized(_processes) {
+                    while (_processes.isEmpty()) {
+                        try
+                        {
+                        	_processes.wait();
+                        }
+                        catch (InterruptedException ignored)
+                        {
+                        }
+                    }
+
+                    r = (Runnable) _processes.remove(0);
+                }
+
+                try {
+                    r.run();
+                }
+                catch (RuntimeException e) {
+                }
+            }
+        }
+    }
+	
+	public void execute(Runnable r) {
+		this._processWorkers.add(new ProcessWorker());
+        synchronized(this._processes) {
+            queue.addLast(r);
+            queue.notify();
+        }
+    }
+	
+	private ArrayList<ProcessWorker> _processWorkers=new ArrayList<Process.ProcessWorker>();
+	
+	public Process(){
+		
+	}
+}

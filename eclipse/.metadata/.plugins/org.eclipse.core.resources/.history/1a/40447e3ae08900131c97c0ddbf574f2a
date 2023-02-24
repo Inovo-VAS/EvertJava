@@ -1,0 +1,2710 @@
+package baasserver.protocols.markup;
+
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.TreeMap;
+
+import com.sun.org.apache.bcel.internal.generic.CPInstruction;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IORequestHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class IOMarkupProcessorHandle extends IOProcessorHandle {
+	
+	public IOMarkupProcessorHandle(IOProcessorHandle mainProcessorHandle, Class<?> widgetHandleclass, IORequestHandle requestHandle) throws Exception{
+		super(mainProcessorHandle, widgetHandleclass,requestHandle);
+	}
+	
+	private byte[] _processorResponseBuffer=new byte[8912];
+	private int _processorResponseBufferIndex=0;
+	private IOWidgetHandle _currentWidget=null;
+	private ArrayList<IOWidgetHandle> _currentWidgets=new ArrayList<IOWidgetHandle>();
+	
+	private ArrayList<String> _widgetEndTagRefs=new ArrayList<String>();
+	private ArrayList<String> _widgetStreamMaskPaths=new ArrayList<String>();
+	
+	private String _widgetTagRead="";
+	private String _widgetTagProperties="";
+	
+	private int _codeSecCount=0;
+	private ArrayList<Byte> _bytesToRespond=new ArrayList<Byte>();
+	private ArrayList<Byte> _maskBytesToProcess=new ArrayList<Byte>();
+	private boolean _addedStartWidget=false;
+	private boolean _nolayoutMaskPaths=false;
+	private char _startProcessorPar=0;
+	private char _endProcessorPar=0;
+	//private maskCodeStage _lastMaskCodeStage=maskCodeStage.noStage;
+	
+	@Override
+	public void process() throws Exception {
+		super.process();
+		this._startProcessorPar='<';
+		this._endProcessorPar='>';
+		
+		if(_currentWidget==null){
+			_currentWidget=this.widgetHandle();
+		}
+		String currentWidgetClassName=this._currentWidget.fullWidgetClassName();
+		if(currentWidgetClassName.indexOf("@")>-1){
+			currentWidgetClassName=currentWidgetClassName.substring(0,currentWidgetClassName.indexOf("@"));
+		}
+		
+		if((_nolayoutMaskPaths=this._currentWidget.widgetLayoutMaskPaths().isEmpty())){
+			this.processMaskBytes((this._startProcessorPar+currentWidgetClassName+_endProcessorPar+_startProcessorPar+"/"+currentWidgetClassName+_endProcessorPar).getBytes(),0);
+		}
+		else{
+			_addedStartWidget=true;
+			this._widgetStreamMaskPaths=this._currentWidget.widgetLayoutMaskPaths();
+			
+			//this._maskCodeStagesRead.add(maskCodeStage.handleWidgetContent);
+			//this._maskCodeContentRead.add(this._currentWidget);
+			//this._maskCodeContentRead.add(new HashMap<String,String>());
+			//this._maskCodeStagesRead.add(maskCodeStage.commit);
+			
+			this.putCodingReadPhrase(codingSpecificIndex("handleWidgetContent"));
+			this.putCodingReadContent(this._currentWidget);
+			this.putCodingReadContent(new HashMap<String,String>());
+			this.putCodingReadPhrase(codingSpecificIndex(";"));
+			
+			this.processInputMaskStream(baasserver.reflection.REFUtils.getResourceAsStream(this._widgetStreamMaskPaths.remove(0)));
+		}
+		
+		//this.executeMaskCodeChar(';');
+		
+		//performMaskCodeStages();
+		
+		this.putCodingReadPhrase(codingSpecificIndex(";"));
+		
+		this.performCodingRead();
+	}
+	
+	private int _codingSpecificLength=0;
+	private ArrayList<String> _codingSpecific=new ArrayList<String>(codingSpecific(
+				new String[]{";", // 0
+						"=", // 1
+						"{","}", //2,3
+						"(",")", //4,5
+						",", //6
+						"if","else", //7,8
+						"for","while", //9,10
+						"\"", //11
+						"method", //12
+						"params", //13
+						"widget", //14
+						"handleWidgetContent", //15
+						"respond" //16
+					}
+				));
+	
+	private TreeMap<Long,Integer> _codingReadPhrases=new TreeMap<Long,Integer>();
+	private TreeMap<Long,ArrayList<Object>> _codingReadContent=new TreeMap<Long,ArrayList<Object>>();
+	private long _codingReadPhrasesIndex=0;
+	
+	private int _codingIndex=-1;
+	private int _codingIndexStage=-1;
+	private int _codingPrevIndexStage=-1;
+	private String _codingPhrase="";
+	
+	private int codingSpecificIndex(String codingPhraseToTest){
+		if(codingPhraseToTest.length()>this._codingSpecificLength){
+			return -1;
+		}
+		return this._codingSpecific.indexOf(codingPhraseToTest);
+	}
+
+	private Object _returnValue=null;
+	private ArrayList<Object> _returnValues=new ArrayList<Object>();
+	private ArrayList<Method> _methodsFound=new ArrayList<Method>();
+	private ArrayList<ArrayList<Object>> _methodParamsFound=new ArrayList<ArrayList<Object>>();
+	private ArrayList<Object> _objectValues=new ArrayList<Object>();
+	private ArrayList<Integer> _bracketCodingOwnerIndexes=new ArrayList<Integer>();
+	
+	private int _commitCodingRespondIndex=-1;
+	private boolean _returnValFromMethod=false;
+	private boolean _executeCodeBlock=false;
+	private int _codingBraseLevels=0;
+	private HashMap<Integer,Integer> _codingValidBraseLevels=new HashMap<Integer,Integer>();
+	private HashMap<Integer,Integer> _codingInValidBraseLevels=new HashMap<Integer,Integer>();
+	
+	private void performCodingRead() throws Exception{
+		
+		for(long codingSetIndex:this._codingReadPhrases.keySet()){
+			 this._codingIndexStage=this._codingReadPhrases.get((Long) codingSetIndex);
+			 if(!this.canExecuteCoding(codingSetIndex,this._codingIndexStage)){
+				this._codingPrevIndexStage=this._codingIndexStage;
+				break;
+			 }
+			 if(this.codingSpecificIndex(";")==this._codingIndexStage){
+				 if(this._commitCodingRespondIndex==this.codingSpecificIndex("respond")){
+					 if(!this._returnValues.isEmpty()) this._returnValue=this._returnValues.remove(0);
+					 if(this._returnValue!=null){
+						 if(this._returnValue instanceof String){
+							 this.requestHandle().writeBytes(((String)_returnValue).getBytes());
+						 }
+						 else{
+							 this.requestHandle().writeBytes(String.valueOf(_returnValue).getBytes());
+						 }
+					 }
+				 }
+				 this._commitCodingRespondIndex=-1;
+			 }
+			 else if(this.codingSpecificIndex("respond")==this._codingIndexStage){ 
+				 _commitCodingRespondIndex=this._codingIndexStage;
+			 }
+			 else if(this.codingSpecificIndex("\"")==this._codingIndexStage){
+				 this._returnValues.add(this.getCodingReadContent(codingSetIndex).remove(0));
+				 if(!this._bracketCodingOwnerIndexes.isEmpty()){
+					 if(this._bracketCodingOwnerIndexes.get(this._bracketCodingOwnerIndexes.size()-1)==this.codingSpecificIndex("method")){
+						 if(!this._methodParamsFound.isEmpty()) this._methodParamsFound.get(0).add(this._returnValues.remove(0));
+					 }
+				 }
+			 }
+			 else if(this.codingSpecificIndex(",")==this._codingIndexStage){
+				 
+			 }
+			 else if(this.codingSpecificIndex("(")==this._codingIndexStage){
+				 this._bracketCodingOwnerIndexes.add((_codingPrevIndexStage!=_codingIndexStage?_codingPrevIndexStage:this._codingIndexStage));
+			 }
+			 else if(this.codingSpecificIndex(")")==this._codingIndexStage){
+				 int codeBracketOwnerIndex=this._bracketCodingOwnerIndexes.remove(this._bracketCodingOwnerIndexes.size()-1);
+				 _returnValFromMethod=false;
+				 if(codeBracketOwnerIndex==this.codingSpecificIndex("method")){
+					 if(!this._methodsFound.isEmpty()){
+						 Method methodToInvoke=this._methodsFound.remove(0);
+						 Object[] paramsFound=null;
+						 
+						 ArrayList<Object> params=this._methodParamsFound.remove(0);
+						 if(params.isEmpty()){
+							 paramsFound=null;
+						 }
+						 else{
+							 paramsFound=params.toArray();
+							 if(methodToInvoke.getParameterTypes().length!=paramsFound.length){
+								Class<?>[] paramTypes=new Class<?>[paramsFound.length];
+								for(int paramIndex=0;paramIndex<paramsFound.length;paramIndex++){
+									paramTypes[paramIndex]=paramsFound[paramIndex].getClass();
+								}
+								methodToInvoke=baasserver.reflection.REFUtils.findMethod(methodToInvoke.getName(), _objectValues.get(0).getClass(),paramTypes, false);
+							 }
+							 
+							 params.clear();
+						 }
+						 
+						 params=null;
+						 
+						 if(methodToInvoke.getReturnType().equals(Void.TYPE)){
+							 methodToInvoke.invoke(_objectValues.remove(0), paramsFound);
+						 }
+						 else{
+							this._returnValue=methodToInvoke.invoke(_objectValues.remove(0), paramsFound);
+							this._returnValFromMethod=true;
+						 }
+					 }
+				 }
+				 else if(codeBracketOwnerIndex==this.codingSpecificIndex("if")){
+					 if((boolean)this._returnValue){
+						 this._executeCodeBlock=true;
+						 this._codingIndexStage=this.codingSpecificIndex("if");
+					 }
+				 }
+			 }
+			 else if(this.codingSpecificIndex("{")==this._codingIndexStage){
+				 if(this._executeCodeBlock){
+					 _codingValidBraseLevels.put(this._codingBraseLevels++, this._codingPrevIndexStage);
+					 this._executeCodeBlock=false;
+				 }
+				 else{
+					 _codingInValidBraseLevels.put(this._codingBraseLevels++, this._codingPrevIndexStage);
+				 }
+			 }
+			 else if(this.codingSpecificIndex("}")==this._codingIndexStage){
+				 if((this._codingBraseLevels-=1)==0){
+					 
+				 }
+				 _commitCodingRespondIndex=this._codingIndexStage;
+			 }
+			 else if(this.codingSpecificIndex("if")==this._codingIndexStage){
+				 
+			 }
+			 else if(this.codingSpecificIndex("else")==this._codingIndexStage){
+				 
+			 }
+			 else if(this.codingSpecificIndex("for")==this._codingIndexStage){
+				 
+			 }
+			 else if(this.codingSpecificIndex("while")==this._codingIndexStage){
+				 
+			 }
+			 else if(this.codingSpecificIndex("handleWidgetContent")==this._codingIndexStage){
+				 ((IOWidgetHandle) this.getCodingReadContent(codingSetIndex).remove(0)).handelContent((HashMap<String,String>)this.getCodingReadContent(codingSetIndex).remove(0), this);
+				 
+				 _commitCodingRespondIndex=this._codingIndexStage;
+			 }
+			 else if(this.codingSpecificIndex("widget")==this._codingIndexStage){
+				this._objectValues.add(_codingReadContent.get((Long)codingSetIndex).remove(0));
+			 }
+			 else if(this.codingSpecificIndex("method")==this._codingIndexStage){
+				String methodName=(String)this.getCodingReadContent(codingSetIndex).remove(0);
+				Class objClass=null;
+				if(methodName.charAt(0)=='.'){
+					methodName=methodName.substring(1);
+					if(_returnValFromMethod){
+						this._objectValues.add(this._returnValue);
+						this._returnValFromMethod=false;
+					}
+					objClass=this._objectValues.get(0).getClass();
+				}
+				else{
+					objClass=Class.forName(methodName.substring(0,methodName.lastIndexOf(".")));
+					_objectValues.add(objClass);
+				}
+				
+				Method methodFound=baasserver.reflection.REFUtils.findMethod(methodName, objClass, null,true);
+				if(methodFound!=null){
+					//Class<?>[] methodParamTypes= methodFound.getParameterTypes();
+					this._methodParamsFound.add(new ArrayList<Object>());
+					//this._codingIndexStage=this.codingSpecificIndex("params");
+					//this._codingIndexStage=(methodParamTypes.length==0?this._codingIndexStage:this.codingSpecificIndex("params"));
+					this._methodsFound.add(methodFound);
+				}
+			 }
+			 this._codingPrevIndexStage=this._codingIndexStage;
+		}
+	}
+	
+	private boolean canExecuteCoding(int codingIndexStageToTest) {
+		if(!this._codingValidBraseLevels.isEmpty()){
+			if(((Integer)this._codingValidBraseLevels.get((Integer)this._codingBraseLevels)==codingIndexStageToTest)){
+				return true;
+			}
+		}
+		if(!this._codingInValidBraseLevels.isEmpty()){
+			if(((Integer)this._codingInValidBraseLevels.get((Integer)this._codingBraseLevels)==codingIndexStageToTest)){
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private int putCodingReadPhrase(int codingPhraseIndex) {
+		if(codingPhraseIndex>-1){
+			this._codingReadPhrases.put((Long)(_codingReadPhrasesIndex+=1),codingPhraseIndex);
+			this._codingPhrase="";
+		}
+		return codingPhraseIndex;
+	}
+	
+	private void putCodingReadContent(Object codingReadContent) {
+		ArrayList<Object> codingReadContentRead=null;
+		if(this._codingReadContent.containsKey((Long)this._codingReadPhrasesIndex)){
+			codingReadContentRead=this._codingReadContent.get((Long)this._codingReadPhrasesIndex);
+		}
+		else{
+			_codingReadContent.put((Long)this._codingReadPhrasesIndex, (codingReadContentRead=new ArrayList<Object>()));
+		}
+		codingReadContentRead.add(codingReadContent);
+	}
+	
+	private void appendStringTocoding(String stringToAppend) {
+		this.putCodingReadPhrase(codingSpecificIndex("respond"));
+		this.putCodingReadPhrase(codingSpecificIndex("\""));
+		this.putCodingReadContent(stringToAppend);
+		this.putCodingReadPhrase(codingSpecificIndex(";"));
+	}
+
+	private ArrayList<Object> getCodingReadContent(long codingReadContentIndex) {
+		return this._codingReadContent.get((Long)codingReadContentIndex);
+	}
+
+	private ArrayList<String> codingSpecific(String[] codingWords) {
+		 ArrayList<String> codingSpecific=new ArrayList<String>();
+		for(String codingW:codingWords){
+			if(_codingSpecificLength<codingW.length()) _codingSpecificLength=codingW.length();
+			codingSpecific.add(codingW);
+		}
+		return codingSpecific;
+	}
+	
+	private void nextMaskCodeCharToExecute(char cc) {
+		if(this._codingIndexStage==this.codingSpecificIndex("\"")){
+			if(this.codingSpecificIndex((cc+""))==this.codingSpecificIndex("\"")){
+				String codingString=this._codingPhrase;
+				this.putCodingReadPhrase(this.codingSpecificIndex("\""));
+				this.putCodingReadContent(codingString);
+				this._codingIndexStage=-1;
+			}
+			else{
+				this._codingPhrase+=cc;
+			}
+		}
+		else{
+			this._codingPhrase+=cc;
+			switch(cc){
+			case '=':
+				if(this._prevCC==0||"{}();".indexOf(_prevCC)>-1){
+					this.putCodingReadPhrase(this.codingSpecificIndex("respond"));
+				}
+				else{
+					this.putCodingReadPhrase(this.codingSpecificIndex((cc+"")));
+				}
+				break;
+			case '(':
+				this._codingPhrase=this._codingPhrase.substring(0,this._codingPhrase.length()-1);
+				if(!this._codingPhrase.equals("")){
+					String methodName=this._codingPhrase;
+					this.putCodingReadPhrase(this.codingSpecificIndex("method"));
+					this.putCodingReadContent(methodName);
+				}
+				this.putCodingReadPhrase(this.codingSpecificIndex((cc+"")));
+				break;
+			case ')':
+				this.putCodingReadPhrase(this.codingSpecificIndex((cc+"")));
+				break;
+			case '{':
+				this.putCodingReadPhrase(this.codingSpecificIndex((cc+"")));
+				break;
+			case '}':
+				this.putCodingReadPhrase(this.codingSpecificIndex((cc+"")));
+				break;
+			case ',':
+				this.putCodingReadPhrase(this.codingSpecificIndex((cc+"")));
+				break;
+			case ';':
+				this.putCodingReadPhrase(this.codingSpecificIndex((cc+"")));
+				break;
+			case '\"':
+				this._codingIndexStage=this.codingSpecificIndex((cc+""));
+				this._codingPhrase="";
+				break;
+			default:
+				if(this._codingPhrase.length()<=this._codingSpecificLength){
+					if((this._codingIndexStage=this.putCodingReadPhrase(this.codingSpecificIndex(this._codingPhrase)))>-1){
+						if(this._codingIndexStage==this.codingSpecificIndex("widget")){ //widget
+							this.putCodingReadContent(this._currentWidget);
+						}
+					}
+					else{
+						
+					}
+				}
+				else{
+					
+				}
+				break;
+			}
+		}
+	}
+
+	private byte _prevmb=0;
+	private HashMap<IOWidgetHandle,HashMap<String,String>> _widgetProperties=new HashMap<IOWidgetHandle,HashMap<String,String>>();
+	public void processMaskBytes(byte[] maskContentBuffer, int maskContentBufferCount) throws Exception{
+		while(maskContentBufferCount<maskContentBuffer.length){
+			byte mb=maskContentBuffer[maskContentBufferCount++];
+			if(_codeSecCount==2&&mb!=(byte)'%'){
+				_prevmb=mb;
+				this.loadMaskCodeByte((byte)mb);
+				continue;
+			}
+			else if(_codeSecCount==2&&mb==(byte)'%'){
+				this.loadMaskCodeByte((byte)_prevmb);
+				_prevmb=mb;
+				_codeSecCount--;
+				continue;
+			}
+			else if(_codeSecCount==1&&_prevmb==(byte)'%'&&mb!=(byte)this._endProcessorPar){
+				_codeSecCount++;
+				this.loadMaskCodeByte((byte)_prevmb);
+				this.loadMaskCodeByte((byte)mb);
+				_prevmb=mb;
+				continue;
+			}
+			else if(_codeSecCount==1&&_prevmb==(byte)'%'&&mb==(byte)this._endProcessorPar){
+				 _codeSecCount=0;
+				 _prevmb=0;
+				 
+				 if(_processorResponseBufferIndex>0){
+					byte[] processorResponseBuffer=new byte[_processorResponseBufferIndex];
+					System.arraycopy(_processorResponseBuffer, 0, processorResponseBuffer, 0, _processorResponseBufferIndex);
+					_processorResponseBufferIndex=0;
+					this.appendStringTocoding(new String(processorResponseBuffer));
+					//this.maskCodeStageToUse(maskCodeStage.respond);
+					//this.maskCodeStageToUse(maskCodeStage.String);
+					//this.maskCodeContentToRead(new String(processorResponseBuffer));
+					//this.maskCodeStageToUse(maskCodeStage.commit);
+				 }
+				 this.processMaskCodeBytes();
+				 continue;
+			}
+			else if(_codeSecCount==1&&_prevmb==(byte)this._startProcessorPar&&mb==(byte)'%'){
+				_codeSecCount++;
+				_prevmb=0;
+				
+				if(_matchStartByte>0){
+					if(!this._widgetTagRead.equals("")){
+						for(byte wb:(this._startProcessorPar+this._widgetTagRead+(this._currentWidgetStartTag.equals("")?"":" "+this._currentWidgetStartTag)).getBytes()){
+							_processorResponseBuffer[_processorResponseBufferIndex++]=wb;
+							if(_processorResponseBuffer.length==_processorResponseBufferIndex){
+								//this.maskCodeStageToUse(maskCodeStage.respond);
+								//this.maskCodeStageToUse(maskCodeStage.String);
+								//this.maskCodeContentToRead(new String(_processorResponseBuffer));
+								//this.maskCodeStageToUse(maskCodeStage.commit);
+								this.appendStringTocoding(new String(_processorResponseBuffer));
+								_processorResponseBufferIndex=0;
+							}
+						}
+						if(_processorResponseBufferIndex>0){
+							byte[] processorResponseBuffer=new byte[_processorResponseBufferIndex];
+							System.arraycopy(_processorResponseBuffer, 0, processorResponseBuffer, 0, _processorResponseBufferIndex);
+							//_processorResponseBufferIndex=0;
+							//this.maskCodeStageToUse(maskCodeStage.respond);
+							//this.maskCodeStageToUse(maskCodeStage.String);
+							//this.maskCodeContentToRead(new String(processorResponseBuffer));
+							//this.maskCodeStageToUse(maskCodeStage.commit);
+							this.appendStringTocoding(new String(processorResponseBuffer));
+							_processorResponseBufferIndex=0;
+						}
+						if(this._invalidWidgetTags.indexOf(this._widgetTagRead)==-1){
+							this._invalidWidgetTags.add(_widgetTagRead);
+						}
+						this._widgetTagRead="";
+						this._currentWidgetStartTag="";
+					}
+					_matchStartByte=0;
+					_matchNextStartByte=0;
+				}
+				else{
+					continue;
+				}
+			}
+			else if(_codeSecCount==1&&_prevmb==(byte)this._startProcessorPar&&mb!=(byte)'%'){
+				_maskBytesToProcess.add((Byte)_prevmb);
+				_maskBytesToProcess.add((Byte)mb);
+				_codeSecCount=0;
+				_prevmb=mb;
+			}
+			else if(_codeSecCount==0&&mb==(byte)this._startProcessorPar){
+				_codeSecCount++;
+				_prevmb=mb;
+				continue;
+			}
+			else if(_codeSecCount==0&&mb!=(byte)this._startProcessorPar){
+				_prevmb=mb;
+				_maskBytesToProcess.add((Byte)mb);
+			}
+			
+			while(!_maskBytesToProcess.isEmpty()){
+				this.processSingleMaskByte(mb=_maskBytesToProcess.remove(0));
+				
+				if(!_unmatchStartTags.isEmpty()){
+					while(!_unmatchStartTags.isEmpty()){
+						byte[]unmatchStartTag=_unmatchStartTags.remove(0);
+						for(byte ub:unmatchStartTag){
+							_bytesToRespond.add((Byte)ub);
+						}
+						unmatchStartTag=null;
+					}
+				}
+				
+				if(!_unmatchEndTags.isEmpty()){
+					while(!_unmatchEndTags.isEmpty()){
+						byte[]unmatchEndTag=_unmatchEndTags.remove(0);
+						for(byte ub:unmatchEndTag){
+							_bytesToRespond.add((Byte)ub);
+						}
+						unmatchEndTag=null;
+					}
+				}
+				
+				while(!_bytesToRespond.isEmpty()){
+					byte br=_bytesToRespond.remove(0);
+					_processorResponseBuffer[_processorResponseBufferIndex++]=br;
+					if(_processorResponseBuffer.length==_processorResponseBufferIndex){
+						//this.maskCodeStageToUse(maskCodeStage.respond);
+						//this.maskCodeStageToUse(maskCodeStage.String);
+						//this.maskCodeContentToRead(new String(_processorResponseBuffer));
+						//this.maskCodeStageToUse(maskCodeStage.commit);
+						this.appendStringTocoding(new String(_processorResponseBuffer));
+						_processorResponseBufferIndex=0;
+					}
+				}				
+			}
+		}
+		
+		if(_processorResponseBufferIndex>0){
+			byte[] processorResponseBuffer=new byte[_processorResponseBufferIndex];
+			System.arraycopy(_processorResponseBuffer, 0, processorResponseBuffer, 0, _processorResponseBufferIndex);
+			_processorResponseBufferIndex=0;
+			
+			/*this.maskCodeStageToUse(maskCodeStage.respond);
+			this.maskCodeStageToUse(maskCodeStage.String);
+			this.maskCodeContentToRead(new String(processorResponseBuffer));
+			this.maskCodeStageToUse(maskCodeStage.commit);*/
+			
+			this.appendStringTocoding(new String(processorResponseBuffer));
+			
+			_processorResponseBufferIndex=0;
+		}
+	}
+
+	private void processSingleMaskByte(byte mb) throws Exception{
+		
+		if(_matchStartByte==0&&_matchEndByte==0){
+			if(mb==(char)this._startProcessorPar){
+				_matchStartByte=mb;
+			}
+			else{
+				_bytesToRespond.add((Byte)mb);
+			}
+		}
+		else if(_matchStartByte==(char)this._startProcessorPar&&_matchEndByte==0){
+			if(_matchNextStartByte==0){
+				_matchNextStartByte=mb;
+				if(_matchNextStartByte==(byte)'!'){
+					_bytesToRespond.add((Byte)(byte)this._startProcessorPar);
+					_bytesToRespond.add((Byte)_matchNextStartByte);
+					_matchStartByte=0;
+					_matchNextStartByte=0;
+				}
+				else if(_matchNextStartByte==(byte)'/'){
+					_matchEndByte=_matchNextStartByte;
+					_matchStartByte=0;
+					_matchNextStartByte=0;
+				}
+				else{
+					this.processSingleMaskByte(_matchNextStartByte);
+				}
+			}
+			else{
+				if(mb==(byte)' '||mb==(byte)this._endProcessorPar){
+					if(this._widgetTagRead.equals("")){
+						_widgetTagRead=_currentWidgetStartTag.substring(0,_currentWidgetStartTag.length()).trim();
+						_currentWidgetStartTag=_currentWidgetStartTag.substring(_currentWidgetStartTag.length()).trim();
+						
+						if(mb==(byte)this._endProcessorPar){
+							this.processSingleMaskByte(mb);
+						}
+					}
+					else{
+						if(mb==(byte)this._endProcessorPar){
+							this._widgetTagProperties=(_currentWidgetStartTag.endsWith("/")?_currentWidgetStartTag.substring(0,_currentWidgetStartTag.length()-1):_currentWidgetStartTag);
+							if(_widgetTagRead.equals("widget")){
+								this.generateWidgetProperties();
+								if(!_currentWidgetStartTag.endsWith("/")){
+									_widgetEndTagRefs.add(0,(this._startProcessorPar+"/"+_widgetTagRead+this._endProcessorPar));
+								}
+								_widgetTagRead="";
+								_currentWidgetStartTag="";
+								_widgetTagProperties="";
+								_matchNextStartByte=0;
+								_matchStartByte=0;
+							}
+							else{
+								if(this._invalidWidgetTags.indexOf(this._widgetTagRead)>-1){
+									if(this._startProcessorPar=='<'){
+										for(byte bt:(this._startProcessorPar+this._widgetTagRead+(_currentWidgetStartTag.equals("")?"":" "+this._currentWidgetStartTag)+this._endProcessorPar).getBytes()){
+											this._bytesToRespond.add(bt);
+										}
+									}
+									_widgetTagRead="";
+									_currentWidgetStartTag="";
+									_widgetTagProperties="";
+									_matchNextStartByte=0;
+									_matchStartByte=0;
+								}
+								else{
+									if(_validWidgetTags.containsKey(this._widgetTagRead)){
+										IOWidgetHandle nextwidget=(_addedStartWidget?IOWidgetHandle.newIOWidgetHandle(_validWidgetTags.get(_widgetTagRead), this._currentWidget, this):this._currentWidget);
+										if(!_addedStartWidget) _addedStartWidget=true;
+										
+										this._currentWidgets.add(this._currentWidget=nextwidget);
+										
+										if(this._currentWidget.widgetHasMaskPaths())
+										while(!this._currentWidget.widgetLayoutMaskPaths().isEmpty()){
+											this._widgetStreamMaskPaths.add(0,this._currentWidget.widgetLayoutMaskPaths().remove(0));
+										}
+										
+										this.generateWidgetProperties();
+										
+										if(!_currentWidgetStartTag.endsWith("/")){
+											_widgetEndTagRefs.add(0,(this._startProcessorPar+"/"+_widgetTagRead+this._endProcessorPar));
+											_widgetTagRead="";
+											_currentWidgetStartTag="";
+											_widgetTagProperties="";
+											_matchNextStartByte=0;
+											_matchStartByte=0;
+										}
+										else{
+											_widgetTagRead="";
+											_currentWidgetStartTag="";
+											_widgetTagProperties="";
+											_matchNextStartByte=0;
+											_matchStartByte=0;
+											_matchEndByte=0;
+											
+											IOWidgetHandle currentWidget=this._currentWidget;
+											String possibleWidgetMaskPath="";
+											if(!(possibleWidgetMaskPath=currentWidget.nextlayoutStreamMaskPath()).equals("")){
+												this.processInputMaskStream(baasserver.reflection.REFUtils.getResourceAsStream(possibleWidgetMaskPath));
+											}
+											if(currentWidget.parentWidget()!=null&&possibleWidgetMaskPath.equals("")){
+												this._currentWidget=currentWidget.parentWidget();
+											}
+										}										
+									}
+									else{
+										String possibleWidgetClassPath=this._widgetTagRead;
+										Class<?> possibleWidgetClass=null;
+										if(possibleWidgetClassPath.indexOf(".")>-1){
+											debug("TEST FOR [possibleWidgetClassPath] - "+possibleWidgetClassPath);
+											possibleWidgetClass=baasserver.reflection.REFUtils.findClass(possibleWidgetClassPath, true);
+										}										
+										else{
+											debug("TEST FOR [ .reqUrl()+possibleWidgetClassPath] - "+this.requestHandle().reqURL().substring(1,this.requestHandle().reqURL().lastIndexOf("/"))+"."+possibleWidgetClassPath);
+											possibleWidgetClass=baasserver.reflection.REFUtils.findClass(this.requestHandle().reqURL().substring(1,this.requestHandle().reqURL().lastIndexOf("/"))+"."+possibleWidgetClassPath, true);
+											if(possibleWidgetClass==null){
+												debug("TEST FOR - "+"baasserver.web.system"+"."+possibleWidgetClassPath);
+												possibleWidgetClass=baasserver.reflection.REFUtils.findClass("baasserver.web.system"+"."+possibleWidgetClassPath, true);
+											}
+										}
+										if(possibleWidgetClass==null){
+											this._invalidWidgetTags.add(_widgetTagRead);
+											debug("ADD INVALID TAG - "+_widgetTagRead);
+											this.processSingleMaskByte(mb);
+										}
+										else{
+											_validWidgetTags.put(_widgetTagRead, possibleWidgetClass);
+											this.processSingleMaskByte(mb);
+										}
+									}
+								}
+							}
+						}
+						else{
+							_currentWidgetStartTag+=(char)mb;
+						}
+					}	
+				}
+				else{
+					_currentWidgetStartTag+=(char)mb;
+				}
+			}
+		}
+		else if(_matchStartByte==0&&_matchEndByte==(byte)'/'){
+			if(mb==(byte)'>'){
+				this._prevmb=0;
+				if(_widgetEndTagRefs.contains(this._startProcessorPar+"/"+this._widgetTagRead+this._endProcessorPar)){	
+					
+					if(!_widgetTagRead.equals("widget")){
+							
+							IOWidgetHandle currentWidget=_currentWidget;
+							//this.maskCodeStageToUse(maskCodeStage.handleWidgetContent);
+							//this.maskCodeContentToRead(currentWidget);
+							//this.maskCodeContentToRead((this._widgetProperties.containsKey(_currentWidget)?this._widgetProperties.remove(_currentWidget):(HashMap<String,String>)null));
+							//this.maskCodeStageToUse(maskCodeStage.commit);
+							
+							this.putCodingReadPhrase(codingSpecificIndex("handleWidgetContent"));
+							this.putCodingReadContent(currentWidget);
+							this.putCodingReadContent((this._widgetProperties.containsKey(_currentWidget)?this._widgetProperties.remove(_currentWidget):(HashMap<String,String>)null));
+							this.putCodingReadPhrase(codingSpecificIndex(";"));
+					
+					}
+					
+					if(_processorResponseBufferIndex>0){
+						byte[] processorResponseBuffer=new byte[_processorResponseBufferIndex];
+						System.arraycopy(_processorResponseBuffer, 0, processorResponseBuffer, 0, _processorResponseBufferIndex);
+						_processorResponseBufferIndex=0;
+						//this.maskCodeStageToUse(maskCodeStage.respond);
+						//this.maskCodeStageToUse(maskCodeStage.String);
+						//this.maskCodeContentToRead(new String(processorResponseBuffer));
+						//this.maskCodeStageToUse(maskCodeStage.commit);
+						
+						this.putCodingReadPhrase(codingSpecificIndex("respond"));
+						this.putCodingReadPhrase(codingSpecificIndex("\""));
+						this.putCodingReadContent(new String(processorResponseBuffer));
+						this.putCodingReadPhrase(codingSpecificIndex(";"));
+					}
+					
+					this._matchEndByte=0;
+					if(!this._widgetTagRead.equals("widget")){
+						_widgetEndTagRefs.remove((this._startProcessorPar+"/"+_widgetTagRead+this._endProcessorPar));
+						
+						
+						this._widgetTagRead="";
+						if(this._currentWidget.widgetHasMaskPaths()){
+							if(!this._widgetStreamMaskPaths.isEmpty()){
+								this.processInputMaskStream(baasserver.reflection.REFUtils.getResourceAsStream(this._widgetStreamMaskPaths.remove(0)));
+							}
+						}
+						if(!_nolayoutMaskPaths){
+							if(this._startProcessorPar=='<'){
+								//this.maskCodeStageToUse(maskCodeStage.respond);
+								//this.maskCodeStageToUse(maskCodeStage.String);
+								//this.maskCodeContentToRead("<script type=\"text/javascript\">");
+								//this.maskCodeStageToUse(maskCodeStage.commit);
+								this.putCodingReadPhrase(codingSpecificIndex("respond"));
+								this.putCodingReadPhrase(codingSpecificIndex("\""));
+								this.putCodingReadContent("<script type=\"text/javascript\">");
+								this.putCodingReadPhrase(codingSpecificIndex(";"));
+							}
+						}
+						
+						if(this._currentWidget.widgetHashActiveScriptPaths()){
+							//this.maskCodeStageToUse(maskCodeStage.activeScript);
+							ArrayList<String> currentActiveScriptsMaskPaths=this._currentWidget.widgetActiveScriptsMaskPaths();
+							while(!currentActiveScriptsMaskPaths.isEmpty()){
+								this.processInputMaskStream(baasserver.reflection.REFUtils.getResourceAsStream(currentActiveScriptsMaskPaths.remove(0)));
+							}
+							//this.maskCodeStageToUse(maskCodeStage.activeScriptEnd);
+						}
+						if(!_nolayoutMaskPaths){
+							if(this._startProcessorPar=='<'){
+								//this.maskCodeStageToUse(maskCodeStage.respond);
+								//this.maskCodeStageToUse(maskCodeStage.String);
+								//this.maskCodeContentToRead("</script>");
+								//this.maskCodeStageToUse(maskCodeStage.commit);
+								this.putCodingReadPhrase(codingSpecificIndex("respond"));
+								this.putCodingReadPhrase(codingSpecificIndex("\""));
+								this.putCodingReadContent("</script>");
+								this.putCodingReadPhrase(codingSpecificIndex(";"));
+							}
+						}
+						if(this._currentWidgets.size()==1){
+							this._currentWidget=this._currentWidgets.get(0);
+						}
+						else{
+							this._currentWidget=this._currentWidgets.remove(0);
+						}
+					}
+					else if(this._widgetTagRead.equals("widget")){
+						_widgetTagRead="";
+						if(!this._widgetStreamMaskPaths.isEmpty()){
+							this.processInputMaskStream(this.widgetHandle().getClass().getResourceAsStream(this._widgetStreamMaskPaths.remove(0)));
+							this.processMaskBytes((this._startProcessorPar+"/widget"+this._endProcessorPar).getBytes(), 0);
+						}
+						else{
+							_widgetEndTagRefs.remove((this._startProcessorPar+"/"+this._widgetTagRead+this._endProcessorPar));
+						}
+					}
+				}
+				else{
+					this._matchEndByte=0;
+					if(this._startProcessorPar=='<'){
+						for(byte bt:(this._startProcessorPar+"/"+this._widgetTagRead+this._endProcessorPar).getBytes()){
+							this._bytesToRespond.add(bt);
+						}
+					}
+					this._widgetTagRead="";
+					_currentWidgetStartTag="";
+					_widgetTagProperties="";
+					_matchNextStartByte=0;
+					_matchStartByte=0;
+					_matchEndByte=0;
+				}
+			}
+			else{
+				this._widgetTagRead+=(char)mb;
+			}
+		}
+	}
+
+	private void generateWidgetProperties() {
+		if(!this._widgetTagProperties.equals("")){
+			HashMap<String,String> maskProperties=new HashMap<String,String>();
+			
+			if(!_widgetTagProperties.equals("")){
+				String propName="";
+				String propValue="";
+				boolean maskPropNameFound=false;
+				boolean maskPropValueFound=false;
+				
+				for(char cp:_widgetTagProperties.toCharArray()){
+					if(!maskPropNameFound){
+						if(cp=='='){
+							maskPropNameFound=true;
+							
+						}
+						else if(cp!=' '){
+							propName+=cp;
+						}
+					}
+					else{
+						if(!maskPropValueFound&&cp=='\"'){
+							maskPropValueFound=true;
+						}
+						else if(maskPropValueFound&&cp=='\"'){
+							maskPropNameFound=false;
+							maskPropValueFound=false;
+							
+							if(!propName.equals("")){
+								maskProperties.put(propName.toUpperCase(),(propValue.startsWith(":")?requestHandle().reqParameterString(propValue.substring(1)):propValue));
+							}
+							
+							propName="";
+							propValue="";
+						}
+						else if(maskPropValueFound&&cp!='\"'){
+							propValue+=cp;
+						}
+					}
+				}
+			}
+			this._widgetProperties.put(this._currentWidget,maskProperties);
+		}
+	}
+
+	private String _currentWidgetStartTag="";
+	private ArrayList<String> _invalidWidgetTags=new ArrayList<String>();
+	private HashMap<String,Class<?>> _validWidgetTags=new HashMap<String,Class<?>>();
+	private ArrayList<byte[]> _unmatchStartTags=new ArrayList<byte[]>();
+	private ArrayList<byte[]> _unmatchEndTags=new ArrayList<byte[]>();
+	private byte _matchStartByte=0;
+	private byte _matchNextStartByte=0;
+	private byte _matchEndByte=0;
+	
+	private ArrayList<byte[]> _maskCode=new ArrayList<byte[]>();
+	public void processMaskCodeBytes() throws Exception{
+		if(_currentMaskCodeBytesIndex>0){
+			byte[] maskCodeBytes=new byte[_currentMaskCodeBytesIndex];
+			System.arraycopy(_currentMaskCodeBytes, 0, maskCodeBytes, 0, _currentMaskCodeBytesIndex);
+			_maskCode.add(maskCodeBytes);
+			_currentMaskCodeBytesIndex=0;
+		}
+		
+		while(!_maskCode.isEmpty()){
+			//this.executeMaskCodeBytes(_maskCode.remove(0),0);
+		}
+	}
+	
+	/*enum maskCodeStage{
+		noStage,
+		respond,
+		elemName,
+		String,
+		widget,
+		method,
+		bracket,
+		bracketCode,
+		endBracket,
+		brase,
+		endBrase,
+		params,
+		commit,
+		forloop,
+		forIterator,
+		whileloop,
+		loopCondition,
+		loopConditionEnd,
+		loopCode,
+		codeBlockEnd,		
+		handleWidgetContent,
+		activeScript,
+		activeScriptEnd,
+		ifSection,
+		elseIfSection,
+		elseSection,
+		endIfSection,
+		assign,
+		and,
+		or,
+		not,
+		is,
+		greaterEqual,
+		lessEqual,
+		notEqual,
+		equal,
+		greater,
+		less
+	}*/
+	
+	//private maskCodeStage _maskCodeStage=maskCodeStage.noStage;
+	//private maskCodeStage _maskCodeStageAt=maskCodeStage.noStage;
+	//private maskCodeStage _prevMaskCodeStageAt=maskCodeStage.noStage;
+	//private maskCodeStage _maskCodeStageLoop=maskCodeStage.noStage;
+	//private maskCodeStage _maskCodeStageConditionOwner=maskCodeStage.noStage;
+	//private long _maskCodeStageConditionLevel=0;
+	private ArrayList<Long> _maskCodeStageConditionLevelsToExecute=new ArrayList<Long>();
+	private ArrayList<Long> _maskCodeStageConditionLevelsToIgnore=new ArrayList<Long>();
+	
+	private long _maskCodeStageBrasesLevel=0;
+	//private HashMap<Long,maskCodeStage> _maskCodeStageBrasesLevelStages=new HashMap<Long,maskCodeStage>();
+	
+	//private maskCodeStage _maskCodeStageCodeBlockOwner=maskCodeStage.noStage;
+	//private ArrayList<maskCodeStage> _maskCodeStageCodeBlockOwnersFound=new ArrayList<maskCodeStage>();
+	
+	//private ArrayList<maskCodeStage> _maskCodeStagesRead=new ArrayList<maskCodeStage>();
+	private ArrayList<Object> _maskCodeContentRead=new ArrayList<Object>();
+	private String _maskString="";
+	private String _maskNumber="";
+	
+	//private ArrayList<maskCodeStage> _bracketCodeStages=new ArrayList<maskCodeStage>(); 
+	private ArrayList<Object> _bracketCodeContentRead=new ArrayList<Object>();
+	//private ArrayList<maskCodeStage> _bracketCodeStageRead=new ArrayList<maskCodeStage>();
+	
+	/*public boolean performMaskCodeStage(maskCodeStage performedMaskStage) throws Exception{
+		String methodName="";
+		
+		switch(performedMaskStage){
+		case commit:
+			if(this._lastMaskCodeStage!=maskCodeStage.noStage){
+				if(this.canExecuteMaskCode()){
+					switch(this._lastMaskCodeStage){
+					case respond:
+						Object returnValue=_returnValues.remove(0);
+						if(returnValue instanceof String){
+							if(!((String)returnValue).equals("")){
+								this.requestHandle().writeBytes(((String)returnValue).getBytes());
+							}
+						}
+						else if(returnValue!=null){
+							this.requestHandle().writeBytes(String.valueOf(returnValue).getBytes());
+						}
+							break;
+						default:
+							break;
+					}
+				}
+				else{
+					
+				}
+				this._lastMaskCodeStage=maskCodeStage.noStage;
+			}
+			break;
+		case widget:
+			if(canExecuteMaskCode()){
+				this._returnValues.add(this.nextProcessMaskCodeContent());
+			}
+			else{
+				this.nextProcessMaskCodeContent();
+			}
+			break;
+		case method:
+			if(canExecuteMaskCode()){
+				//this._methodNames.add((String)this.nextProcessMaskCodeContent());
+				this._bracketCodeStages.add(maskCodeStage.method);
+			}
+			else{
+				this.nextProcessMaskCodeContent();
+			}
+			break;
+		case bracketCode:
+			this._bracketCodeStageRead.addAll((ArrayList<maskCodeStage>)this.nextProcessMaskCodeContent());
+			this._bracketCodeContentRead.addAll((ArrayList<Object>)this.nextProcessMaskCodeContent());	
+			break;
+		case respond:
+			this._lastMaskCodeStage=maskCodeStage.respond;
+			break;
+		case String:
+			this._returnValues.add(this.nextProcessMaskCodeContent());
+			break;
+		case handleWidgetContent:
+			this._lastMaskCodeStage=performedMaskStage;
+			if(this.canExecuteMaskCode()){
+				((IOWidgetHandle) this.nextProcessMaskCodeContent()).handelContent((HashMap<String, String>) this.nextProcessMaskCodeContent(), this);
+			}
+			else{
+				this.nextProcessMaskCodeContent();
+				this.nextProcessMaskCodeContent();
+			}
+			break;
+		}
+		
+		/*switch(performedMaskStage){
+		case commit:
+			if(this._methodReturnValue!=null){
+				if(this._lastMaskCodeStage==maskCodeStage.respond){
+					if(this.canExecuteMaskCode()){
+						if(this._methodReturnValue instanceof String){
+							if(!((String)this._methodReturnValue).equals("")){
+								this.requestHandle().writeBytes(((String)this._methodReturnValue).getBytes());
+								this._methodReturnValue=null;
+							}
+						}
+						else if(this._methodReturnValue!=null){
+							this.requestHandle().writeBytes(String.valueOf(this._methodReturnValue).getBytes());
+							this._methodReturnValue=null;
+						}
+					}
+				}
+			}
+			this._lastMaskCodeStage=maskCodeStage.noStage;
+			break;
+		case respond:
+			this._lastMaskCodeStage=maskCodeStage.respond;
+			break;
+		case String:
+			if(this.canExecuteMaskCode()){
+				this._methodReturnValue=this.nextProcessMaskCodeContent();
+			}
+			else{
+				this.nextProcessMaskCodeContent();
+			}
+			break;
+		case widget:
+			if(this.canExecuteMaskCode()){
+				this._methodReturnValue=this._currentWidget=(IOWidgetHandle) this.nextProcessMaskCodeContent();
+			}
+			else{
+				this.nextProcessMaskCodeContent();
+			}
+			break;
+		case method:
+			boolean canExecuteCode=this.canExecuteMaskCode();
+			if(canExecuteCode){
+				this._maskCodeElemName=(String) this.nextProcessMaskCodeContent();
+			}
+			else{
+				//method name
+				this.nextProcessMaskCodeContent();
+			}
+			break;
+		case bracket:	
+			if(this.canExecuteMaskCode()){
+				if(this._incMaskCodeBracketStageLevelMesure){
+					_maskCodeBracketStageLevelMesuresFound.add((Long)(this._maskCodeBracketStageLevelMesure=this._maskCodeBracketStageLevel));
+					this._incMaskCodeBracketStageLevelMesure=false;
+				}
+				if(this._maskCodeBracketStageLevel++==_maskCodeBracketStageLevelMesure){
+					
+				}
+			}
+			else{
+					
+			}
+			break;
+		case endBracket:
+			if(this.canExecuteMaskCode()){
+				_maskCodeBracketStageLevel--;
+				
+			}
+			else{
+				
+			}
+			break;
+		case bracketCode:
+			if(this.canExecuteMaskCode()){
+				this._incMaskCodeBracketStageLevelMesure=true;
+				this._prevMaskCodeStageAt=this._maskCodeStageAt;
+				this._maskBracketCodeStagesFoundToRead.put((Long)(_maskBracketCodeStagesLevel++),this._maskBracketCodeStages=new ArrayList<maskCodeStage>((ArrayList<maskCodeStage>)this.nextProcessMaskCodeContent()));
+				this._maskBracketCodeContentsFoundToRead.put((Long)(_maskBracketCodeContentReadLevel++),this._maskBracketCodeContentRead=new ArrayList<Object>((ArrayList<Object>)this.nextProcessMaskCodeContent()));
+				this._maskCodeStageAt=maskCodeStage.bracketCode;
+			}
+			else{
+				this.nextProcessMaskCodeStage();
+				this.nextProcessMaskCodeContent();
+				this.nextProcessMaskCodeContent();
+			}
+			break;
+		case handleWidgetContent:
+			this._lastMaskCodeStage=performedMaskStage;
+			this._currentWidget=(IOWidgetHandle) this.nextProcessMaskCodeContent();
+			if(this.canExecuteMaskCode()){
+				this._currentWidget.handelContent((HashMap<String, String>) this.nextProcessMaskCodeContent(), this);
+			}
+			else{
+				this.nextProcessMaskCodeContent();
+			}
+			break;
+		}
+		/*switch(performedMaskStage){
+			case commit:
+				if(this._methodReturnValue!=null){
+					if(this._lastMaskCodeStage==maskCodeStage.respond){
+						if(this.canExecuteMaskCode()){
+							if(this._methodReturnValue instanceof String){
+								if(!((String)this._methodReturnValue).equals("")){
+									this.requestHandle().writeBytes(((String)this._methodReturnValue).getBytes());
+									this._methodReturnValue=null;
+								}
+							}
+							else if(this._methodReturnValue!=null){
+								this.requestHandle().writeBytes(String.valueOf(this._methodReturnValue).getBytes());
+								this._methodReturnValue=null;
+							}
+						}
+					}
+				}
+				break;
+			case respond:
+				this._lastMaskCodeStage=performedMaskStage;
+				break;
+			case handleWidgetContent:
+				this._lastMaskCodeStage=performedMaskStage;
+				this._currentWidget=(IOWidgetHandle) this.nextProcessMaskCodeContent();
+				if(this.canExecuteMaskCode()){
+					this._currentWidget.handelContent((HashMap<String, String>) this.nextProcessMaskCodeContent(), this);
+				}
+				else{
+					this.nextProcessMaskCodeContent();
+				}
+				break;
+			case ifSection:
+				this._maskCodeStageConditionOwner=maskCodeStage.ifSection;
+				if(this._maskCodeStageConditionLevel>=0){
+					if(this._maskCodeStageConditionLevelsToExecute.contains((Long)this._maskCodeStageConditionLevel)){
+						this._maskCodeStageConditionLevelsToExecute.add((Long)(this._maskCodeStageConditionLevel+=1));
+					}
+					else if(this._maskCodeStageConditionLevelsToIgnore.contains((Long)this._maskCodeStageConditionLevel)){
+						this._maskCodeStageConditionLevelsToIgnore.add((Long)(this._maskCodeStageConditionLevel+=1));
+					}
+					else{
+						this._maskCodeStageConditionLevel++;
+					}
+				}
+				break;
+			case elseIfSection:
+				this._maskCodeStageConditionOwner=maskCodeStage.elseIfSection;
+				break;
+			case elseSection:
+				this._maskCodeStageConditionOwner=maskCodeStage.elseSection;
+				break;
+			case endIfSection:
+				if(this._maskCodeStageConditionLevel>=1){
+					if(this._maskCodeStageConditionLevelsToExecute.contains((Long)this._maskCodeStageConditionLevel)){
+						this._maskCodeStageConditionLevelsToExecute.remove((Long)(this._maskCodeStageConditionLevel));
+					}
+					if(this._maskCodeStageConditionLevelsToIgnore.contains((Long)this._maskCodeStageConditionLevel)){
+						this._maskCodeStageConditionLevelsToIgnore.remove((Long)(this._maskCodeStageConditionLevel));
+					}
+					this._maskCodeStageConditionLevel--;
+				}
+				break;
+			case bracketCode:
+				if(this.canExecuteMaskCode()){
+					this._maskBracketCodeStages=new ArrayList<maskCodeStage>((ArrayList<maskCodeStage>) this.nextProcessMaskCodeContent());
+					this._maskBracketCodeContentRead=new ArrayList<Object>((ArrayList<Object>) this.nextProcessMaskCodeContent());
+					this._prevMaskCodeStageAt=this._maskCodeStageAt;
+					this._maskCodeStageAt=maskCodeStage.bracketCode;
+				}
+				else{
+					this.nextProcessMaskCodeContent();
+					this.nextProcessMaskCodeContent();
+				}
+				break;
+			case bracket:
+				if(this._maskCodeBracketStageLevel++==0){
+					this._methodReturnValue=null;
+				}
+				break;
+			case endBracket:
+				long currentMaskCodeBracketStageLevel=0;
+				if(this._maskCodeBracketStageLevel--==1){
+					if(this._methodReturnValue!=null){
+						if(this._maskCodeStageConditionOwner==maskCodeStage.ifSection||this._maskCodeStageConditionOwner==maskCodeStage.elseIfSection){
+							if(this._methodReturnValue.equals(true)){
+								this._maskCodeStageConditionLevelsToExecute.add((Long)this._maskCodeStageConditionLevel);
+								this._methodReturnValue=null;
+							}
+							else if(this._methodReturnValue.equals(false)){
+								this._maskCodeStageConditionLevelsToIgnore.add((Long)this._maskCodeStageConditionLevel);
+							}
+						}
+					}
+					this._maskCodeStageAt=this._prevMaskCodeStageAt;
+				}
+				break;
+			case brase:
+					maskCodeStage currentMaskCodeStageOwner=this._maskCodeStageConditionOwner;
+					this._maskCodeStageBrasesLevelStages.put((Long)(_maskCodeBracketStageLevel+=1), currentMaskCodeStageOwner);
+				break;
+			case endBrase:
+					this._maskCodeStageConditionOwner=this._maskCodeStageBrasesLevelStages.remove((Long)(_maskCodeBracketStageLevel--));
+				break;
+			case widget:
+				if(this.canExecuteMaskCode()){
+					this._methodReturnValue=(this._currentWidget=(IOWidgetHandle) this.nextProcessMaskCodeContent());
+				}
+				else{
+					this.nextProcessMaskCodeContent();
+				}
+				break;
+			case method:
+				boolean canExecuteMethod=this.canExecuteMaskCode();
+				methodName=(String) this.nextProcessMaskCodeContent();
+				if(methodName.charAt(0)=='.'){
+					methodName=methodName.substring(1);
+				}
+				if(((performedMaskStage=this.nextProcessMaskCodeStage())==maskCodeStage.bracket)){
+					if((performedMaskStage=this.nextProcessMaskCodeStage())==maskCodeStage.params){
+						_maskMethodParamsContent=(ArrayList<Object>)this.nextProcessMaskCodeContent();
+						if(_maskMethodParamsContent.isEmpty()){
+							if(canExecuteMethod) this._methodReturnValue=this._methodReturnValue.getClass().getMethod(methodName,(Class<?>[]) null).invoke(this._methodReturnValue,(Object[]) null);
+						}
+						else{
+							Object[] paramValues=_maskMethodParamsContent.toArray();
+							Class<?>[] paramValuesType=new Class<?>[paramValues.length]; 
+							for(int paramValIndex=0;paramValIndex<paramValues.length;paramValIndex++){
+								paramValuesType[paramValIndex]=paramValues[paramValIndex].getClass();
+							}
+							if(methodName.equals("equals")&&paramValues.length==1){
+								paramValuesType[0]=Object.class;
+							}
+							baasserver.reflection.REFUtils.methodParameterTypes(baasserver.reflection.REFUtils.findMethod(methodName, this._methodReturnValue.getClass(),paramValuesType));
+							if(paramValues.length==paramValuesType.length){
+								if(canExecuteMethod) this._methodReturnValue=this._methodReturnValue.getClass().getMethod(methodName, paramValuesType).invoke(this._methodReturnValue, paramValues);
+							}
+						}
+					}
+					if((performedMaskStage=this.nextProcessMaskCodeStage())!=maskCodeStage.endBracket){
+						return false;
+					}
+				}
+				
+				break;
+			case String:
+				if(this.canExecuteMaskCode()){
+					this._methodReturnValue=nextProcessMaskCodeContent();
+				}
+				else{
+					nextProcessMaskCodeContent();
+				}
+				break;
+			default:
+				break;
+		}
+		return true;
+		/*switch(performedMaskStage){
+		case commit:
+		
+		//if(performedMaskStage==maskCodeStage.commit){
+			if(this._methodReturnValue!=null){
+				if(this._lastMaskCodeStage==maskCodeStage.respond){
+					if(this._methodReturnValue instanceof String){
+						if(!((String)this._methodReturnValue).equals("")){
+							this.requestHandle().writeBytes(((String)this._methodReturnValue).getBytes());
+							this._methodReturnValue=null;
+						}
+					}
+					else if(this._methodReturnValue!=null){
+						this.requestHandle().writeBytes(String.valueOf(this._methodReturnValue).getBytes());
+						this._methodReturnValue=null;
+					}
+				}
+			}
+		//}
+			break;
+		case handleWidgetContent:
+		//else if(performedMaskStage==maskCodeStage.handleWidgetContent){
+			this._lastMaskCodeStage=performedMaskStage;
+			this._currentWidget=(IOWidgetHandle) this.nextProcessMaskCodeContent();
+			this._currentWidget.handelContent((HashMap<String, String>) this.nextProcessMaskCodeContent(), this);
+		//}
+			break;
+		case respond:
+		//else if(performedMaskStage==maskCodeStage.respond){
+			this._lastMaskCodeStage=performedMaskStage;
+		//}
+			break;
+		case String:
+		//else if(performedMaskStage==maskCodeStage.String){
+			this._methodReturnValue=(String)this.nextProcessMaskCodeContent();
+		//}
+			break;
+		case widget:
+		//else if(performedMaskStage==maskCodeStage.widget){
+			this._methodReturnValue=(this._currentWidget=(IOWidgetHandle) this.nextProcessMaskCodeContent());
+		//}
+			break;
+		case forIterator:
+		//else if(performedMaskStage==maskCodeStage.forIterator){
+			this._methodReturnValue=this._loopIteratorValue;
+		//}
+			break;
+		case method:
+		//else if(performedMaskStage==maskCodeStage.method){
+				methodName=(String)this.nextProcessMaskCodeContent();
+			if(((performedMaskStage=this.nextProcessMaskCodeStage())==maskCodeStage.brase)){
+				if((performedMaskStage=this.nextProcessMaskCodeStage())==maskCodeStage.params){
+					_maskMethodParamsContent=(ArrayList<Object>)this.nextProcessMaskCodeContent();
+					if(_maskMethodParamsContent.isEmpty()){
+						this._methodReturnValue=this._methodReturnValue.getClass().getMethod(methodName,(Class<?>[]) null).invoke(this._methodReturnValue,(Object[]) null);
+					}
+					else{
+						Object[] paramValues=_maskMethodParamsContent.toArray();
+						Class<?>[] paramValuesType=new Class<?>[paramValues.length]; 
+						for(int paramValIndex=0;paramValIndex<paramValues.length;paramValIndex++){
+							paramValuesType[paramValIndex]=paramValues[paramValIndex].getClass();
+						}
+						if(methodName.equals("equals")&&paramValues.length==1){
+							paramValuesType[0]=Object.class;
+						}
+						baasserver.reflection.REFUtils.methodParameterTypes(baasserver.reflection.REFUtils.findMethod(methodName, this._methodReturnValue.getClass(),paramValuesType));
+						if(paramValues.length==paramValuesType.length){
+							this._methodReturnValue=this._methodReturnValue.getClass().getMethod(methodName, paramValuesType).invoke(this._methodReturnValue, paramValues);
+						}
+					}
+				}
+				if((performedMaskStage=this.nextProcessMaskCodeStage())!=maskCodeStage.endBrase){
+					return false;
+				}
+			}
+		//}
+			break;
+		case forloop:
+		//else if(performedMaskStage==maskCodeStage.forloop||performedMaskStage==maskCodeStage.whileloop){
+			this.loopPerformStageCode(performedMaskStage);
+		//}
+			break;
+		case whileloop:
+				this.loopPerformStageCode(performedMaskStage);
+			break;
+		case loopConditionEnd:
+		//else if(performedMaskStage==maskCodeStage.loopConditionEnd){
+			this._lastMaskCodeStage=performedMaskStage;
+			maskCodeStage loopStageType=(maskCodeStage) this._loopMaskCodeSettings.get("type");
+			if(loopStageType==maskCodeStage.forloop){
+				if(this._methodReturnValue instanceof ArrayList){
+					this._loopMaskCodeSettings.put("iterator",(ArrayList)this._methodReturnValue);
+				}
+				else{
+					ArrayList<Object> loopIterator=new ArrayList<Object>();
+					for(Object objVal:(Object[])this._methodReturnValue){
+						loopIterator.add(objVal);
+					}
+					this._loopMaskCodeSettings.put("iterator",loopIterator);
+				}
+				this._loopIterator=(ArrayList) this._loopMaskCodeSettings.get("iterator");
+				this._loopIteratorValue=this._loopIterator.remove(0);
+			}
+			this._maskCodeStageAt=maskCodeStage.loopCode;
+		//}
+			break;
+		case codeBlockEnd:
+		//else if(performedMaskStage==maskCodeStage.codeBlockEnd){
+			this._lastMaskCodeStage=performedMaskStage;
+			if(this._maskCodeStageAt==maskCodeStage.loopCode){
+				if((maskCodeStage)this._loopMaskCodeSettings.get("type")==maskCodeStage.forloop){
+					if(this._loopIterator.isEmpty()){
+						HashMap<String,Object> parentLoopCodeSettings=(this._loopMaskCodeSettings.containsKey("parent-loop-settings")?(HashMap<String, Object>) this._loopMaskCodeSettings.get("parent-loop-settings"):null);
+						if(parentLoopCodeSettings!=null){
+							if((maskCodeStage)parentLoopCodeSettings.get("type")==maskCodeStage.forloop){
+								this._loopIterator=(ArrayList) parentLoopCodeSettings.get("iterator");
+								this._loopIteratorValue=(this._loopIterator.isEmpty()?null:this._loopIterator.get(0));
+							}
+							else if((maskCodeStage)parentLoopCodeSettings.get("type")==maskCodeStage.whileloop){
+								this._loopConditionMaskCodeStages=new ArrayList<maskCodeStage>((ArrayList<maskCodeStage>) parentLoopCodeSettings.get("condition-stages"));
+								this._loopConditionMaskCodeContentRead=new ArrayList<Object>((ArrayList<Object>) parentLoopCodeSettings.get("condition-content"));
+								this._maskCodeStageAt=maskCodeStage.loopCondition;
+							}
+							
+							this._loopMaskCodeStages=(ArrayList<maskCodeStage>) parentLoopCodeSettings.get("current-code-stages");
+							this._loopMaskCodeContentRead=(ArrayList<Object>) parentLoopCodeSettings.get("current-code-content");
+							
+							this._loopMaskCodeSettings=parentLoopCodeSettings;
+							this._maskCodeStageAt=maskCodeStage.loopCode;
+						}
+						else{
+							this._loopMaskCodeSettings=parentLoopCodeSettings;
+							this._maskCodeStageAt=maskCodeStage.noStage;
+						}
+					}
+					else{
+						this._loopIteratorValue=this._loopIterator.remove(0);
+						this._loopMaskCodeStages=new ArrayList<maskCodeStage>((ArrayList<maskCodeStage>) this._loopMaskCodeSettings.get("code-stages"));
+						this._loopMaskCodeContentRead=new ArrayList<Object>((ArrayList<Object>) this._loopMaskCodeSettings.get("code-content"));
+						this._maskCodeStageAt=maskCodeStage.loopCode;
+					}
+				}
+			}
+		//}
+			break;
+		case ifSection:
+		//else if(performedMaskStage==maskCodeStage.ifCondition){
+			this._lastMaskCodeStage=performedMaskStage;
+			_maskCodeStageConditionOwner=maskCodeStage.ifSection;
+		//}
+			break;
+		case elseIfSection:
+			//else if(performedMaskStage==maskCodeStage.elseSection){
+				this._lastMaskCodeStage=performedMaskStage;
+				_maskCodeStageConditionOwner=maskCodeStage.elseIfSection;
+			//}
+				break;
+		case elseSection:
+		//else if(performedMaskStage==maskCodeStage.elseSection){
+			this._lastMaskCodeStage=performedMaskStage;
+			_maskCodeStageConditionOwner=maskCodeStage.elseSection;
+		//}
+			break;
+		case endIfSection:
+			//else if(performedMaskStage==maskCodeStage.elseSection){
+				this._lastMaskCodeStage=performedMaskStage;
+				_maskCodeStageConditionOwner=maskCodeStage.elseSection;
+			//}
+				break;
+		case brase:
+		//else if(performedMaskStage==maskCodeStage.brase){
+			if(_maskCodeBraseStageLevel>=0){
+				_maskCodeBraseStageLevel++;
+			}
+		//}
+			break;
+		case braseCode:
+			this._prevMaskCodeStageAt=this._maskCodeStageAt;
+			this._maskBraseCodeStages=(ArrayList<maskCodeStage>) this.nextProcessMaskCodeContent();
+			this._maskBraseCodeContentRead=(ArrayList<Object>) this.nextProcessMaskCodeContent();
+			this._maskCodeStageAt=maskCodeStage.braseCode;
+			break;
+		case endBrase:
+		//else if(performedMaskStage==maskCodeStage.endBrase){
+			if(_maskCodeBraseStageLevel>=1){
+				if((_maskCodeBraseStageLevel-=1)==0){
+					this._maskCodeStageAt=this._prevMaskCodeStageAt;
+					if(_maskCodeStageConditionOwner==maskCodeStage.whileloop){
+						
+					}
+					else if(_maskCodeStageConditionOwner==maskCodeStage.ifSection){
+						
+					}
+				}
+			}
+		//}
+			break;
+			default:
+		//else if(_maskLogicOperatorsList.contains(performedMaskStage)){
+			if(_maskLogicOperatorsList.contains(performedMaskStage)){
+				switch (performedMaskStage) {
+				case and:
+					
+					break;
+				case equal:
+					
+					break;
+				case greater:
+					
+					break;
+				case greaterEqual:
+						
+					break;
+				case is:
+					
+					break;
+				case less:
+					
+					break;
+				case lessEqual:
+					
+					break;
+				case not:
+					
+					break;
+				case notEqual:
+					
+					break;
+				case or:
+					
+					break;
+				}
+			}
+		}
+	
+		//}
+		return true;
+	}*/
+	
+	/*private boolean canExecuteMaskCode() {
+		if(this._maskCodeStageConditionLevelsToExecute.contains((Long)this._maskCodeBracketStageLevel)){
+			return true;
+		}
+		else if(this._maskCodeStageConditionLevelsToIgnore.contains((Long)this._maskCodeBracketStageLevel)){
+			return false;
+		}
+		return true;
+	}*/
+
+
+	/*private void loopPerformStageCode(maskCodeStage performedMaskStage) {
+		this._lastMaskCodeStage=performedMaskStage;
+		this._loopMaskCodeSettings=(HashMap<String, Object>) this.nextProcessMaskCodeContent();
+		HashMap<String,Object> parentMaskCodeLoopSettings=(HashMap<String, Object>) this._loopMaskCodeSettings.get("parent-loop-settings");
+		
+		if(parentMaskCodeLoopSettings!=null){
+			parentMaskCodeLoopSettings.put("current-code-stages",new ArrayList<maskCodeStage>(this._loopMaskCodeStages));
+			parentMaskCodeLoopSettings.put("current-code-content",new ArrayList<Object>(this._loopMaskCodeContentRead));
+		}
+		
+		this._maskCodeStageAt=maskCodeStage.loopCondition;
+		
+		this._loopConditionMaskCodeStages=new ArrayList<maskCodeStage>((ArrayList<maskCodeStage>) this._loopMaskCodeSettings.get("condition-stages"));
+		this._loopConditionMaskCodeContentRead=new ArrayList<Object>((ArrayList<Object>) this._loopMaskCodeSettings.get("condition-content"));
+		
+		this._loopMaskCodeStages=new ArrayList<maskCodeStage>((ArrayList<maskCodeStage>) this._loopMaskCodeSettings.get("code-stages"));
+		this._loopMaskCodeContentRead=new ArrayList<Object>((ArrayList<Object>) this._loopMaskCodeSettings.get("code-content"));
+	}*/
+
+	//private maskCodeStage _performedMaskStage=maskCodeStage.noStage;
+	/*private void performMaskCodeStages() throws Exception{
+		this._maskCodeStageConditionOwner=maskCodeStage.noStage;
+		this._maskCodeStageConditionLevel=0;
+		this._maskCodeBracketStageLevel=0;
+		this._maskCodeElemName="";
+		this._maskCodeStage=maskCodeStage.noStage;
+		this._maskCodeStageAt=maskCodeStage.noStage;
+		this._maskCodeStageCodeBlockOwnersFound.clear();
+		this._maskCodeStageLoop=maskCodeStage.noStage;
+		
+		this._maskParamsContentCapture=false;
+		this._performedMaskStage=maskCodeStage.noStage;
+		
+		while(!this.processMaskCodeStages().isEmpty()){
+			if(!this.performMaskCodeStage(_performedMaskStage=this.nextProcessMaskCodeStage())){
+				break;
+			}
+		}
+	}*/
+	
+	/*private maskCodeStage nextProcessMaskCodeStage(){
+		switch(this._maskCodeStageAt){
+		case noStage:
+		//if(this._maskCodeStageAt==maskCodeStage.noStage){
+			return this._maskCodeStagesRead.remove(0);
+		//}
+		case loopCondition:
+		//else if(this._maskCodeStageAt==maskCodeStage.loopCondition){
+			return this._loopConditionMaskCodeStages.remove(0);
+		//}
+		case loopCode:
+		//else if(this._maskCodeStageAt==maskCodeStage.loopCode){
+			return this._loopMaskCodeStages.remove(0);
+		//}
+		case bracketCode:
+		//else if(this._maskCodeStageAt==maskCodeStage.braseCode){
+			return this._maskBracketCodeStages.remove(0);
+		//}
+		default:
+			return maskCodeStage.noStage;
+		}
+	}*/
+	
+	/*private ArrayList<maskCodeStage> processMaskCodeStages(){
+		switch(this._maskCodeStageAt){
+		case noStage:
+		//if(this._maskCodeStageAt==maskCodeStage.noStage){
+			return this._maskCodeStagesRead;
+		//}
+		case loopCondition:
+		//else if(this._maskCodeStageAt==maskCodeStage.loopCondition){
+			return this._loopConditionMaskCodeStages;
+		//}
+		case loopCode:
+		//else if(this._maskCodeStageAt==maskCodeStage.loopCode){
+			return this._loopMaskCodeStages;
+		//}
+		case bracketCode:
+		//else if(this._maskCodeStageAt==maskCodeStage.braseCode){
+			return this._maskBracketCodeStages;
+		//}
+		}
+		
+		return this._maskCodeStagesRead;
+	}*/
+	
+	/*private Object nextProcessMaskCodeContent(){
+		switch(this._maskCodeStageAt){
+		case noStage:
+		//if(this._maskCodeStageAt==maskCodeStage.noStage){
+			return this._maskCodeContentRead.remove(0);
+		//}
+		case loopCondition:	
+		//else if(this._maskCodeStageAt==maskCodeStage.loopCondition){
+			return this._loopConditionMaskCodeContentRead.remove(0);
+		//}
+		case loopCode:
+		//else if(this._maskCodeStageAt==maskCodeStage.loopCode){
+			return this._loopMaskCodeContentRead.remove(0);
+		//}
+		case bracketCode:
+		//else if(this._maskCodeStageAt==maskCodeStage.braseCode){
+			return this._maskBracketCodeContentRead.remove(0);
+		//}
+		//else{
+		default:
+			return this._maskCodeContentRead.remove(0);
+		}
+	}*/
+		
+	private String _maskCodeElemName="";
+	private ArrayList<Object> _maskMethodParamsContent=null;
+	private boolean _maskParamsContentCapture=false;
+	
+	//private ArrayList<maskCodeStage> _loopMaskCodeStages=null;
+	private ArrayList<Object> _loopMaskCodeContentRead=null;
+	private HashMap<String,Object> _loopMaskCodeSettings=null;
+	private ArrayList<?> _loopIterator=null;
+	private Object _loopIteratorValue=null;
+	
+	//private ArrayList<maskCodeStage> _maskBracketCodeStages=null;
+	private long _maskBracketCodeStagesLevel=0;
+	//private HashMap<Long,ArrayList<maskCodeStage>> _maskBracketCodeStagesFoundToRead=new HashMap<Long,ArrayList<maskCodeStage>>();
+	private ArrayList<Object> _maskBracketCodeContentRead=null;
+	private long _maskBracketCodeContentReadLevel=0;
+	private HashMap<Long,ArrayList<Object>> _maskBracketCodeContentsFoundToRead=new HashMap<Long,ArrayList<Object>>();
+	
+	//private ArrayList<maskCodeStage> _loopConditionMaskCodeStages=null;
+	private ArrayList<Object> _loopConditionMaskCodeContentRead=null;
+	private HashMap<String,Object> _parentLoopMaskCodeSettings=null;
+	//private ArrayList<maskCodeStage> _maskLogicOperatorsList=new ArrayList<maskCodeStage>(logicMaskOperators());
+	private long _maskCodeBracketStageLevel=0;
+	//private long _maskCodeBraseStageLevel=0;
+	private char _prevCC=0;
+	/*public void executeMaskCodeBytes(byte[] codeBytes,int codeBytesCount) throws Exception{
+		while(codeBytesCount<codeBytes.length){
+			char cc=(char)codeBytes[codeBytesCount++];
+			System.out.print(cc);
+			if(this._maskCodeStage==maskCodeStage.String){
+				this.nextMaskCodeCharToExecute(cc);
+			}
+			else{
+				if((cc+"").trim().equals("")) continue;
+				this.nextMaskCodeCharToExecute(cc);
+				_prevCC=cc;
+			}
+		}
+	}*/
+	
+	private boolean _incMaskCodeBracketStageLevelMesure=false;
+	private long _maskCodeBracketStageLevelMesure=0;
+	private ArrayList<Long> _maskCodeBracketStageLevelMesuresFound=new ArrayList<Long>();
+	
+	
+	
+	/*private void nextMaskCodeCharToExecute(char cc) {
+		this._codingPhrase+=cc;
+		switch(cc){
+		case '=':
+			if(this._prevCC==0||"{}();".indexOf(_prevCC)>-1){
+				this.putCodingReadPhrase(this.codingSpecificIndex("respond"));
+			}
+			else{
+				this.putCodingReadPhrase(this.codingSpecificIndex((cc+"")));
+			}
+			break;
+		case '(':
+			this._codingPhrase=this._codingPhrase.substring(0,this._codingPhrase.length()-1);
+			if(!this._codingPhrase.equals("")){
+				String methodName=this._codingPhrase;
+				this.putCodingReadPhrase(this.codingSpecificIndex("method"));
+				this.putCodingReadContent(methodName);
+			}
+			this.putCodingReadPhrase(this.codingSpecificIndex((cc+"")));
+			break;
+		case ')':
+			this.putCodingReadPhrase(this.codingSpecificIndex((cc+"")));
+			break;
+		case '{':
+			this.putCodingReadPhrase(this.codingSpecificIndex((cc+"")));
+			break;
+		case '}':
+			this.putCodingReadPhrase(this.codingSpecificIndex((cc+"")));
+			break;
+		case ';':
+			this.putCodingReadPhrase(this.codingSpecificIndex((cc+"")));
+			break;
+		default:
+			if(this._codingPhrase.length()<=this._codingSpecificLength){
+				if((this._codingIndexStage=this.putCodingReadPhrase(this.codingSpecificIndex(this._codingPhrase)))>-1){
+					if(this._codingIndexStage==this.codingSpecificIndex("widget")){ //widget
+						this.putCodingReadContent(this._currentWidget);
+					}
+				}
+				else{
+					
+				}
+			}
+			else{
+				
+			}
+			break;
+		}
+		
+		switch(this._maskCodeStage){
+		case noStage:
+			switch(cc){
+			case '(':
+				if(!this._maskCodeElemName.equals("")){
+					this._maskCodeStage=maskCodeStage.method;
+					nextMaskCodeCharToExecute(cc);
+					return;
+				}
+				if(this._incMaskCodeBracketStageLevelMesure){
+					_maskCodeBracketStageLevelMesuresFound.add((Long)(this._maskCodeBracketStageLevelMesure=this._maskCodeBracketStageLevel));
+					this._incMaskCodeBracketStageLevelMesure=false;
+				}
+				if(this._maskCodeBracketStageLevel++==_maskCodeBracketStageLevelMesure){
+					this._maskCodeStage=maskCodeStage.bracketCode;
+					nextMaskCodeCharToExecute(cc);
+					return;
+				}
+				else{
+					this.maskCodeStageToUse(maskCodeStage.bracket);
+					this._maskCodeStage=maskCodeStage.noStage;
+				}
+				break;
+			case ')':
+				if((this._maskCodeBracketStageLevel-=1)==_maskCodeBracketStageLevelMesure){
+					this.maskCodeStageToUse(maskCodeStage.bracket);
+					if(!_maskCodeBracketStageLevelMesuresFound.isEmpty()){
+						this._maskCodeBracketStageLevelMesure=_maskCodeBracketStageLevelMesuresFound.remove(0);
+					}
+					else{
+						this._maskCodeBracketStageLevelMesure=0;
+						this._maskCodeStageAt=this._prevMaskCodeStageAt;
+					}
+				}
+				else{
+					this.maskCodeStageToUse(maskCodeStage.bracket);
+				}
+				this._maskCodeStage=maskCodeStage.noStage;
+			break;
+			case ',':
+				
+				break;
+			case '{':
+				this._maskCodeStageCodeBlockOwnersFound.add(this._maskCodeStageCodeBlockOwner);
+				this._maskCodeStage=maskCodeStage.brase;
+				nextMaskCodeCharToExecute(cc);
+				break;
+			case '}':
+				this._maskCodeStageCodeBlockOwner=this._maskCodeStageCodeBlockOwnersFound.remove(0);
+				this._maskCodeStage=maskCodeStage.endBrase;
+				nextMaskCodeCharToExecute(cc);
+				break;
+			case '\"':
+				this._maskCodeStage=maskCodeStage.String;
+				this._maskCodeElemName="";
+				break;
+			//OPERATORS
+			case '=':
+				if(this._prevCC==0||"{}();".indexOf(_prevCC)>-1){
+					this.maskCodeStageToUse(maskCodeStage.respond);
+					this._maskCodeStage=maskCodeStage.noStage;
+				}
+				else{
+					this._maskCodeStage=maskCodeStage.assign;
+				}
+				break;
+			case '!':
+				this._maskCodeStage=maskCodeStage.not;
+				break;
+			case '&':
+				this._maskCodeStage=maskCodeStage.and;
+				break;
+			case '|':
+				this._maskCodeStage=maskCodeStage.or;
+				break;
+			case '>':
+				this._maskCodeStage=maskCodeStage.greater;
+				break;
+			case '<':
+				this._maskCodeStage=maskCodeStage.less;
+				break;
+			default:
+				this._maskCodeElemName+=cc;
+				if(this._maskCodeElemName.equals("widget")){
+					this._maskCodeStage=maskCodeStage.widget;
+					nextMaskCodeCharToExecute(cc);
+				}
+				else if(this._maskCodeElemName.equals("if")){
+					this._maskCodeElemName="";
+					this._maskCodeStage=maskCodeStage.ifSection;
+				}
+				else if(this._maskCodeElemName.equals("else")){
+					this._maskCodeElemName="";
+					this._maskCodeStage=maskCodeStage.elseSection;
+				}
+				break;
+			}
+			break;
+		case widget:
+				this.maskCodeContentToRead(this._currentWidget);
+				this.maskCodeStageToUse(maskCodeStage.widget);
+				this._maskCodeElemName="";
+				this._maskCodeStage=maskCodeStage.noStage;
+			break;
+		case method:
+				this.maskCodeStageToUse(maskCodeStage.method);
+				this.maskCodeContentToRead(this._maskCodeElemName);
+				this._maskCodeElemName="";
+				_incMaskCodeBracketStageLevelMesure=true;
+				this._maskCodeStage=maskCodeStage.noStage;
+				nextMaskCodeCharToExecute(cc);
+			break;
+		case bracketCode:
+			this.maskCodeStageToUse(maskCodeStage.bracketCode);
+			this.maskCodeContentToRead((this._maskBracketCodeStages=new ArrayList<maskCodeStage>()));
+			this.maskCodeContentToRead((this._maskBracketCodeContentRead=new ArrayList<Object>()));
+			if(this._maskCodeStageAt!=maskCodeStage.bracketCode){
+				this._prevMaskCodeStageAt=this._maskCodeStageAt;
+			}
+			this._maskCodeStageAt=maskCodeStage.bracketCode;
+			this.maskCodeStageToUse(maskCodeStage.bracket);
+			this._maskCodeStage=maskCodeStage.noStage;
+			break;
+		case ifSection:
+				if(cc=='('){
+					this._maskCodeStageCodeBlockOwner=maskCodeStage.ifSection;
+					this.maskCodeStageToUse(maskCodeStage.ifSection);
+					this._maskCodeStage=maskCodeStage.noStage;
+					this.nextMaskCodeCharToExecute(cc);
+				}
+			break;
+		case elseIfSection:
+			if(cc=='('){
+				this._maskCodeStageCodeBlockOwner=maskCodeStage.ifSection;
+				this.maskCodeStageToUse(maskCodeStage.ifSection);
+				this._maskCodeStage=maskCodeStage.noStage;
+				this.nextMaskCodeCharToExecute(cc);
+			}
+		break;
+		case elseSection:
+			if(cc=='('){
+				this._maskCodeStageCodeBlockOwner=maskCodeStage.elseSection;
+				this.maskCodeStageToUse(maskCodeStage.elseSection);
+				this._maskCodeStage=maskCodeStage.noStage;
+				this.nextMaskCodeCharToExecute(cc);
+			}
+			else{
+				this._maskCodeElemName+=cc;
+				if(this._maskCodeElemName.length()>=2){
+					String maskCodeElemNameCurrent=this._maskCodeElemName;
+					if(this._maskCodeElemName.equals("if")){
+						this._maskCodeElemName="";
+						this._maskCodeStage=maskCodeStage.elseIfSection;
+						this.maskCodeStageToUse(maskCodeStage.elseIfSection);
+					}
+					else{
+						this._maskCodeElemName="";
+						for(char ncc:maskCodeElemNameCurrent.toCharArray()){
+							this.loadMaskCodeByte((byte)ncc,false);
+						}
+					}
+				}
+			}
+		break;
+		case brase:
+			if(cc=='{'){
+				this.maskCodeStageToUse(maskCodeStage.brase);
+				this._maskCodeStageBrasesLevelStages.put((Long)this._maskCodeBracketStageLevel++, this._maskCodeStageConditionOwner);
+				this._maskCodeStage=maskCodeStage.noStage;
+			}
+			break;
+		case endBrase:
+			if(cc=='}'){
+				this.maskCodeStageToUse(maskCodeStage.endBrase);
+				this._maskCodeStageConditionOwner=this._maskCodeStageBrasesLevelStages.remove((Long)(this._maskCodeBracketStageLevel-=1));
+			}
+			else{
+				if(this._maskCodeStageConditionOwner==maskCodeStage.noStage||this._maskCodeStageConditionOwner==maskCodeStage.elseSection){
+					this.maskCodeStageToUse(maskCodeStage.endIfSection);
+					this._maskCodeStage=maskCodeStage.noStage;
+					nextMaskCodeCharToExecute(cc);
+				}
+				else{
+					this._maskCodeElemName+=cc;
+				}
+			}
+			break;
+		case String:
+			switch(cc){
+			case '\"':
+				this.maskCodeContentToRead(this._maskCodeElemName);
+				this._maskCodeElemName="";
+				this._maskCodeStage=maskCodeStage.noStage;
+				break;
+			default:
+				this._maskCodeElemName+=cc;
+				break;
+			}
+			break;
+		//OPERATORS
+		case assign: 
+			if((cc=='=')){
+				this.maskCodeStageToUse(maskCodeStage.equal); //->EQUAL
+				this._maskCodeStage=maskCodeStage.noStage;
+			}
+			else{
+				this.maskCodeStageToUse(maskCodeStage.assign);
+				this._maskCodeStage=maskCodeStage.noStage;
+				nextMaskCodeCharToExecute(cc);
+			}
+			break;
+		case and:
+			if((cc=='&')){
+				this.maskCodeStageToUse(maskCodeStage.and);
+				this._maskCodeStage=maskCodeStage.noStage;
+			}
+			break;
+		case or:
+			if((cc=='|')){
+				this.maskCodeStageToUse(maskCodeStage.or);
+				this._maskCodeStage=maskCodeStage.noStage;
+			}
+			break;
+		case not:
+			if((cc=='=')){
+				this.maskCodeStageToUse(maskCodeStage.notEqual);
+				this._maskCodeStage=maskCodeStage.noStage;
+			}
+			else{
+				this.maskCodeStageToUse(maskCodeStage.not);
+				this._maskCodeStage=maskCodeStage.noStage;
+				nextMaskCodeCharToExecute(cc);
+			}
+			break;
+		case greater:
+			if((cc=='=')){
+				this.maskCodeStageToUse(maskCodeStage.greaterEqual);
+				this._maskCodeStage=maskCodeStage.noStage;
+			}
+			else{
+				this.maskCodeStageToUse(maskCodeStage.greater);
+				this._maskCodeStage=maskCodeStage.noStage;
+				nextMaskCodeCharToExecute(cc);
+			}
+			break;
+		case less:
+			if((cc=='=')){
+				this.maskCodeStageToUse(maskCodeStage.lessEqual);
+				this._maskCodeStage=maskCodeStage.noStage;
+			}
+			else{
+				this.maskCodeStageToUse(maskCodeStage.less);
+				this._maskCodeStage=maskCodeStage.noStage;
+				nextMaskCodeCharToExecute(cc);
+			}
+			break;
+		}
+	}*/
+
+
+	/*public void executeMaskCodeChar(char cc){
+		switch(this._maskCodeStage){
+		case noStage:
+			if(!(cc+"").trim().equals("")){
+				switch(cc){
+					case ';':
+						this.maskCodeStageToUse(maskCodeStage.commit);
+					break;
+					case '(':
+						if(this._maskCodeElemName.equals("")){
+							this._maskCodeStage=maskCodeStage.bracket;
+							executeMaskCodeChar(cc);
+						}
+						else{
+							this._maskCodeStage=maskCodeStage.method;
+							this.executeMaskCodeChar(cc);
+						}
+						break;
+					case ')':
+						this._maskCodeStage=maskCodeStage.endBracket;
+						executeMaskCodeChar(cc);
+						break;
+					case '{':
+						this._maskCodeStage=maskCodeStage.brase;
+						executeMaskCodeChar(cc);
+						break;
+					case '}':
+						this._maskCodeStage=maskCodeStage.endBrase;
+						executeMaskCodeChar(cc);
+						break;
+					case '=':
+						if("{}();".indexOf(_prevCC)>-1||_prevCC==0){
+							this.maskCodeStageToUse(maskCodeStage.respond);
+						}
+						else{
+							this.maskCodeStageToUse(maskCodeStage.assign);
+						}
+						this._maskCodeStage=maskCodeStage.noStage;
+						this._maskCodeElemName="";
+						break;
+					case '\"':
+						this.maskCodeStageToUse(this._maskCodeStage=maskCodeStage.String);
+						_maskString="";
+						break;
+					default:
+						this._maskCodeElemName+=cc;
+						
+						if(this._maskCodeElemName.equals("if")){
+							this._maskCodeElemName="";
+							this._maskCodeStage=maskCodeStage.ifSection;
+						}
+						else if(this._maskCodeElemName.equals("else")){
+							this._maskCodeStage=maskCodeStage.elseSection;
+						}
+						else if(this._maskCodeElemName.equals("widget")){
+							this._maskCodeStage=maskCodeStage.widget;
+							this.executeMaskCodeChar(' ');
+						}
+					break;
+				}
+			}
+			break;
+		case String:
+			if(cc=='\"'){
+				if(_maskParamsContentCapture){
+					_maskMethodParamsContent.add((_maskString.equals("")?"":new String(_maskString.toCharArray())));
+				}
+				else{
+					this.maskCodeContentToRead((_maskString.equals("")?"":new String(_maskString.toCharArray())));
+				}
+				_maskString="";
+				if(_maskParamsContentCapture){
+					this._maskCodeStage=maskCodeStage.params;
+				}
+				else{
+					this._maskCodeStage=maskCodeStage.noStage;
+				}
+			}
+			else{
+				_maskString+=cc;
+			}
+			break;
+		case activeScript:
+			break;
+		case activeScriptEnd:
+			break;
+		case and:
+			break;
+		case bracket:
+			if(this._maskCodeBracketStageLevel++==0){
+				this._prevMaskCodeStageAt=this._maskCodeStageAt;
+				this._maskCodeStageAt=maskCodeStage.bracketCode;
+			}
+			this.maskCodeStageToUse(_maskCodeStage);
+			_maskCodeStage=maskCodeStage.noStage;
+			break;
+		//case braseCode:
+		//	break;
+		case endBracket:
+			this.maskCodeStageToUse(_maskCodeStage);
+			if(this._maskCodeBracketStageLevel>0)	{
+				if(this._maskCodeBracketStageLevel--==1){
+					this.maskCodeStageToUse(_maskCodeStage);
+					this._maskCodeStageAt=this._prevMaskCodeStageAt;
+					this.maskCodeStageToUse(maskCodeStage.bracketCode);
+					this.maskCodeContentToRead(new ArrayList<maskCodeStage>(this._maskBracketCodeStages));
+					this._maskBracketCodeStages.clear();
+					this._maskBracketCodeStages=null;
+					this.maskCodeContentToRead(new ArrayList<Object>(this._maskBracketCodeContentRead));
+					this._maskBracketCodeContentRead.clear();
+					this._maskBracketCodeContentRead=null;
+				}
+			}
+			_maskCodeStage=maskCodeStage.noStage;
+			break;
+		case brase:
+			if(this._maskCodeStageCodeBlockOwnersFound.isEmpty()) this._maskCodeStageCodeBlockOwnersFound.add(this._maskCodeStageCodeBlockOwner);
+			
+			this.maskCodeStageToUse(maskCodeStage.brase);
+			
+			switch(this._maskCodeStageConditionOwner){
+				case noStage:
+					this._maskCodeStageConditionOwner=this._maskCodeStageAt;
+					break;
+				default:
+					this._maskCodeStageCodeBlockOwner=this._maskCodeStageConditionOwner;
+					break;
+			}
+			
+			this._maskCodeStageCodeBlockOwnersFound.add(this._maskCodeStageCodeBlockOwner);
+			
+			_maskCodeStage=maskCodeStage.noStage;
+			break;
+		case endBrase:
+			this.maskCodeStageToUse(maskCodeStage.endBrase);
+			
+			maskCodeStage maskCodeStageCodeBlockOwner=(this._maskCodeStageCodeBlockOwnersFound.isEmpty()?maskCodeStage.noStage:this._maskCodeStageCodeBlockOwnersFound.get(this._maskCodeStageCodeBlockOwnersFound.size()-1));
+			if(!this._maskCodeStageCodeBlockOwnersFound.isEmpty()){
+				if(maskCodeStageCodeBlockOwner==maskCodeStage.ifSection||maskCodeStageCodeBlockOwner==maskCodeStage.elseIfSection||maskCodeStageCodeBlockOwner==maskCodeStage.elseSection){
+					this._maskCodeStage=maskCodeStage.endIfSection;
+				}
+				else{
+					this._maskCodeStage=maskCodeStage.noStage;
+				}
+			}
+			else{
+				this._maskCodeStage=maskCodeStage.noStage;
+			}
+			break;
+		case codeBlockEnd:
+			break;
+		case commit:
+			break;
+		case elemName:
+			break;
+		case elseIfSection:
+			if((cc+"").trim().equals("")){
+				if(cc=='('){
+					this._maskCodeStageConditionOwner=maskCodeStage.elseIfSection;
+					this.maskCodeStageToUse(maskCodeStage.elseIfSection);
+					this._maskCodeStage=maskCodeStage.bracket;
+					executeMaskCodeChar(cc);
+				}
+			}
+			break;
+		case elseSection:
+			if((cc+"").trim().equals("")){
+				this._maskCodeElemName+=cc;
+				if(this._maskCodeElemName.equals("if")){
+					this._maskCodeStage=maskCodeStage.elseIfSection;
+				}
+				else if(this._maskCodeElemName.length()>=4){
+					this._maskCodeStageConditionOwner=maskCodeStage.elseSection;
+					this.maskCodeStageToUse(maskCodeStage.elseSection);
+					String maskCodeElemName=this._maskCodeElemName;
+					this._maskCodeElemName="";
+					for(char ccn:maskCodeElemName.toCharArray()){
+						executeMaskCodeChar(ccn);
+					}
+				}
+			}
+			break;
+		case endIfSection:
+			if(!(cc+"").trim().equals("")){
+				boolean setEndIfSecion=false;
+				if(cc==';'){
+					setEndIfSecion=true;
+				}
+				else{
+					this._maskCodeElemName+=cc;
+					if(this._maskCodeElemName.equals("else")){
+						this._maskCodeElemName="";
+						this._maskCodeStage=maskCodeStage.elseSection;
+					}
+					else if(this._maskCodeElemName.length()>=4){
+						setEndIfSecion=true;
+					}
+				}
+				if(setEndIfSecion){
+					this.maskCodeStageToUse(maskCodeStage.endIfSection);
+					this._maskCodeStage=maskCodeStage.noStage;
+					if(!this._maskCodeElemName.equals("")){
+						String maskCodeElemName=this._maskCodeElemName;
+						this._maskCodeElemName="";
+						for(char ccn:maskCodeElemName.toCharArray()){
+							executeMaskCodeChar(ccn);
+						}
+					}
+				}
+			}
+			break;
+		case equal:
+			break;
+		case forIterator:
+			break;
+		case forloop:
+			break;
+		case greater:
+			break;
+		case greaterEqual:
+			break;
+		case handleWidgetContent:
+			break;
+		case ifSection:
+			if(!(cc+"").trim().equals("")){
+				if(cc=='('){
+					this._maskCodeStageConditionOwner=maskCodeStage.ifSection;
+					this._maskCodeElemName="";
+					this.maskCodeStageToUse(maskCodeStage.ifSection);
+					this._maskCodeStage=maskCodeStage.bracket;
+					this.executeMaskCodeChar(' ');
+				}
+			}
+			break;
+		case is:
+			break;
+		case less:
+			break;
+		case lessEqual:
+			break;
+		case loopCode:
+			break;
+		case loopCondition:
+			break;
+		case loopConditionEnd:
+			break;
+		case method:
+			if(cc!=' '){
+				if(cc=='('){
+					this.maskCodeStageToUse(maskCodeStage.method);
+					this.maskCodeContentToRead(this._maskCodeElemName);
+					this.maskCodeContentToRead((_maskMethodParamsContent=new ArrayList<Object>()));
+					//this._maskCodeBraseStageLevel++;
+					this.maskCodeStageToUse(maskCodeStage.bracket);
+					this.maskCodeStageToUse(maskCodeStage.params);
+					this._maskCodeStage=maskCodeStage.params;
+					_maskParamsContentCapture=true;
+					_maskCodeElemName="";
+				}
+				else{
+					_maskCodeElemName+=cc;
+				}
+			}
+			break;
+		case not:
+			break;
+		case notEqual:
+			break;
+		case or:
+			break;
+		case params:
+			if(cc==')'){
+				//_maskCodeBraseStageLevel--;
+				if(!_maskNumber.equals("")){
+					if(_maskNumber.indexOf(".")>-1){
+						_maskMethodParamsContent.add(Double.parseDouble(_maskNumber));
+					}
+					else{
+						_maskMethodParamsContent.add(Long.parseLong(_maskNumber));
+					}
+				}
+				_maskNumber="";
+				_maskParamsContentCapture=false;
+				this.maskCodeStageToUse(maskCodeStage.endBracket);
+				this._maskCodeStage=maskCodeStage.noStage;
+			}
+			else if(cc=='"'){
+				this._maskCodeStage=maskCodeStage.String;
+			}
+			else if(cc==','){
+				if(!_maskNumber.equals("")){
+					if(_maskNumber.indexOf(".")>-1){
+						_maskMethodParamsContent.add(Double.parseDouble(_maskNumber));
+					}
+					else{
+						_maskMethodParamsContent.add(Long.parseLong(_maskNumber));
+					}
+				}
+				_maskNumber="";
+			}
+			else{
+				if(!(cc+"").equals("")){
+					_maskNumber+=cc;
+				}
+			}
+			break;
+		case respond:
+			break;
+		case whileloop:
+			break;
+		case widget:
+			this._maskCodeElemName="";
+			this.maskCodeStageToUse(maskCodeStage.widget);
+			this.maskCodeContentToRead(this._currentWidget);
+			this._maskCodeStage=maskCodeStage.noStage; 
+			break;
+		default:
+			break;	
+		}
+	}*/
+	
+	/*public void executeMaskCodeBytes(byte[] codeBytes,int codeBytesCount) throws Exception{
+		while(codeBytesCount<codeBytes.length){
+			char cc=(char)codeBytes[codeBytesCount++];
+			System.out.print(cc);
+			if(this._maskCodeStage==maskCodeStage.noStage){
+				if(cc=='='){
+					this.maskCodeStageToUse(this._maskCodeStage=maskCodeStage.respond);
+				}
+				else if(cc==';'){
+					this.maskCodeStageToUse(maskCodeStage.commit);
+				}
+				else if(cc==')'){
+					if(this._maskCodeStageAt==maskCodeStage.loopCondition){
+						if(this._maskCodeStageLoop==maskCodeStage.whileloop){
+							this.maskCodeStageToUse(maskCodeStage.endBrase);
+							_maskCodeBraseStageLevel--;
+							if(_maskCodeBraseStageLevel==0){
+								this._loopConditionMaskCodeStages.add(maskCodeStage.braseCode);
+								this._loopConditionMaskCodeContentRead.add(new ArrayList<maskCodeStage>(this._maskBraseCodeStages));
+								this._maskBraseCodeStages.clear();
+								this._maskBraseCodeStages=null;
+								this._loopConditionMaskCodeContentRead.add(new ArrayList<Object>(this._maskBraseCodeContentRead));
+								this._maskBraseCodeContentRead.clear();
+								this._maskBraseCodeContentRead=null;
+							}
+						}
+						this._maskCodeStageConditionOwner=maskCodeStage.noStage;
+						this._maskCodeStage=maskCodeStage.noStage;
+						this._loopConditionMaskCodeStages.add(maskCodeStage.loopConditionEnd);
+					}
+					else{
+						this.maskCodeStageToUse(maskCodeStage.endBrase);
+						_maskCodeBraseStageLevel--;
+						if(_maskCodeBraseStageLevel==0){
+							this.maskCodeStageToUse(maskCodeStage.braseCode);
+							this.maskCodeContentToRead(new ArrayList<maskCodeStage>(this._maskBraseCodeStages));
+							this._maskBraseCodeStages.clear();
+							this._maskBraseCodeStages=null;
+							this.maskCodeContentToRead(new ArrayList<Object>(this._maskBraseCodeContentRead));
+							this._maskBraseCodeContentRead.clear();
+							this._maskBraseCodeContentRead=null;
+						}
+					}
+				}
+				else if(cc=='{'){
+					if(this._maskCodeStageAt==maskCodeStage.loopCondition){
+						this._maskCodeStageAt=maskCodeStage.loopCode;
+					}
+				}
+				else if(cc=='}'){
+					if(this._maskCodeStageConditionOwner==maskCodeStage.noStage){
+						if(this._maskCodeStageAt==maskCodeStage.loopCode){
+							this.maskCodeStageToUse(maskCodeStage.codeBlockEnd);
+							this._parentLoopMaskCodeSettings=(HashMap<String, Object>) this._loopMaskCodeSettings.get("parent-loop-settings");
+							
+							if(this._parentLoopMaskCodeSettings!=null){
+								this._maskCodeStageAt=maskCodeStage.loopCode;
+								this._loopMaskCodeStages=(ArrayList<maskCodeStage>)this._parentLoopMaskCodeSettings.get("code-stages");
+								this._loopMaskCodeContentRead=(ArrayList<Object>)this._parentLoopMaskCodeSettings.get("code-content");
+								this._loopMaskCodeSettings=this._parentLoopMaskCodeSettings;
+							}
+							else{
+								this._maskCodeStageAt=maskCodeStage.noStage;
+								
+							}						
+						}
+					}
+					else{
+						if(this._maskCodeStageConditionOwner==maskCodeStage.ifSection||this._maskCodeStageConditionOwner==maskCodeStage.elseIfSection||this._maskCodeStageConditionOwner==maskCodeStage.elseSection){
+							this._maskCodeStage=maskCodeStage.endIfSection;
+						}
+					}
+				}
+				else if(cc!=' '){
+					if(!(cc+"").trim().equals("")){					
+						  if(cc=='.'){
+							 if(_maskCodeElemName.equals("widget")){
+								 this.maskCodeStageToUse(maskCodeStage.widget);
+								 this.maskCodeContentToRead(this._currentWidget);
+							 }
+							 this.maskCodeStageToUse(maskCodeStage.method);
+							 _maskCodeElemName="";
+							 this._maskCodeStage=maskCodeStage.method;
+						 }
+						 else if(cc=='('){
+							 _maskCodeBraseStageLevel++;
+							 this.maskCodeStageToUse(maskCodeStage.brase);
+							 _maskCodeElemName="";
+						 }
+						 else if(cc=='!'){
+							 this.maskCodeStageToUse(this._maskCodeStage=maskCodeStage.not);
+						 }
+						 else if(cc=='>'){
+							 this.maskCodeStageToUse(this._maskCodeStage=maskCodeStage.greater);
+						 }
+						 else if(cc=='<'){
+							 this.maskCodeStageToUse(this._maskCodeStage=maskCodeStage.less);
+						 }
+						 else{
+							 _maskCodeElemName+=cc;
+							 if(_maskCodeElemName.equals("for")||_maskCodeElemName.equals("while")){
+								 _maskCodeElemName="";
+								 this.maskCodeStageToUse(this._maskCodeStage=(_maskCodeElemName.equals("for")?maskCodeStage.forloop:maskCodeStage.whileloop));
+								 this.maskCodeContentToRead(this._loopMaskCodeSettings=new HashMap<String,Object>());
+								 if(this._parentLoopMaskCodeSettings!=null){
+									 this._loopMaskCodeSettings.put("parent-loop-settings", this._parentLoopMaskCodeSettings);
+									 this._parentLoopMaskCodeSettings=this._loopMaskCodeSettings;
+								 }
+								 else{
+									 this._parentLoopMaskCodeSettings=this._loopMaskCodeSettings;
+								 }
+								 this._loopMaskCodeSettings.put("type",_maskCodeStageLoop=this._maskCodeStage);
+								 this._loopMaskCodeSettings.put("condition-stages", (this._loopConditionMaskCodeStages=new ArrayList<maskCodeStage>()));
+								 this._loopMaskCodeSettings.put("condition-content", (this._loopConditionMaskCodeContentRead=new ArrayList<Object>()));
+								 this._loopMaskCodeSettings.put("code-stages", (this._loopMaskCodeStages=new ArrayList<maskCodeStage>()));
+								 this._loopMaskCodeSettings.put("code-content", (this._loopMaskCodeContentRead=new ArrayList<Object>()));
+							 }
+							 else if(_maskCodeElemName.equals("iterator")){
+								 _maskCodeElemName="";
+								 this.maskCodeStageToUse(maskCodeStage.forIterator);
+								 this._maskCodeStage=maskCodeStage.noStage;
+							 }
+							 else if(_maskCodeElemName.equals("if")){
+								 _maskCodeElemName="";
+								 this._maskCodeStage=maskCodeStage.ifSection;
+								 //this.maskCodeStageToUse(this._maskCodeStage=maskCodeStage.ifSection);
+							 }
+							 else if(_maskCodeElemName.equals("else")){
+								 _maskCodeElemName="";
+								 this._maskCodeStage=maskCodeStage.elseSection;
+								 //this.maskCodeStageToUse(_maskCodeStage=maskCodeStage.elseSection);
+							 }
+							 else if(_maskCodeElemName.equals("==")){
+								 _maskCodeElemName="";
+								 this.maskCodeStageToUse(this._maskCodeStage=maskCodeStage.equal);
+							 }
+							 else if(_maskCodeElemName.equals("&&")){
+								 _maskCodeElemName="";
+								 this.maskCodeStageToUse(this._maskCodeStage=maskCodeStage.and);
+							 }
+							 else if(_maskCodeElemName.equals("||")){
+								 _maskCodeElemName="";
+								 this.maskCodeStageToUse(this._maskCodeStage=maskCodeStage.and);
+							 }
+							 else if(_maskCodeElemName.equals(">=")){
+								 this.maskCodeStageToUse(this._maskCodeStage=maskCodeStage.greaterEqual);
+							 }
+							 else if(_maskCodeElemName.equals("<=")){
+								 this.maskCodeStageToUse(this._maskCodeStage=maskCodeStage.lessEqual);
+							 }
+							 else if(_maskCodeElemName.equals("!=")){
+								 this.maskCodeStageToUse(this._maskCodeStage=maskCodeStage.notEqual);
+							 }
+						 }
+					}
+				}
+			}
+			//LOGIC OPERATORS
+			else if(_maskLogicOperatorsList.indexOf(this._maskCodeStage)>-1){
+				if((cc+"").trim().equals("")){
+					continue;
+				}
+				else if(cc=='('){
+					_maskCodeBraseStageLevel++;
+					this.maskCodeStageToUse(maskCodeStage.brase);
+					this._maskCodeStage=maskCodeStage.noStage;
+				}
+			}
+			else if(this._maskCodeStage==maskCodeStage.respond){
+				if((cc+"").trim().equals("")){
+					continue;
+				}
+				if(cc=='\"'){
+					this.maskCodeStageToUse(this._maskCodeStage=maskCodeStage.String);
+					_maskString="";
+				}
+				else if(cc=='('){
+					this._maskCodeBraseStageLevel++;
+					this.maskCodeStageToUse(maskCodeStage.brase);
+					this._maskCodeStage=maskCodeStage.noStage;
+				}
+				else{
+					_maskCodeElemName+=cc;
+					this._maskCodeStage=maskCodeStage.noStage;
+					this.executeMaskCodeBytes(codeBytes, codeBytesCount);
+					break;
+				}
+			}
+			else if(this._maskCodeStage==maskCodeStage.String){
+				if(cc=='\"'){
+					if(_maskParamsContentCapture){
+						_maskMethodParamsContent.add((_maskString.equals("")?"":new String(_maskString.toCharArray())));
+					}
+					else{
+						this.maskCodeContentToRead((_maskString.equals("")?"":new String(_maskString.toCharArray())));
+					}
+					_maskString="";
+					if(_maskParamsContentCapture){
+						this._maskCodeStage=maskCodeStage.params;
+					}
+					else{
+						this._maskCodeStage=maskCodeStage.noStage;
+					}
+				}
+				else{
+					_maskString+=cc;
+				}
+			}
+			else if(this._maskCodeStage==maskCodeStage.method){
+				if(cc!=' '){
+					if(cc=='('){
+						this.maskCodeContentToRead(new String(_maskCodeElemName.toCharArray()));
+						this.maskCodeContentToRead((_maskMethodParamsContent=new ArrayList<Object>()));
+						//this._maskCodeBraseStageLevel++;
+						this.maskCodeStageToUse(maskCodeStage.brase);
+						this.maskCodeStageToUse(maskCodeStage.params);
+						this._maskCodeStage=maskCodeStage.params;
+						_maskParamsContentCapture=true;
+						_maskCodeElemName="";
+					}
+					else if(!(cc+"").equals("")){
+						_maskCodeElemName+=cc;
+					}
+				}
+			}
+			else if(this._maskCodeStage==maskCodeStage.params){
+				if(cc==')'){
+					//_maskCodeBraseStageLevel--;
+					if(!_maskNumber.equals("")){
+						if(_maskNumber.indexOf(".")>-1){
+							_maskMethodParamsContent.add(Double.parseDouble(_maskNumber));
+						}
+						else{
+							_maskMethodParamsContent.add(Long.parseLong(_maskNumber));
+						}
+					}
+					_maskNumber="";
+					_maskParamsContentCapture=false;
+					this.maskCodeStageToUse(maskCodeStage.endBrase);
+					this._maskCodeStage=maskCodeStage.noStage;
+				}
+				else if(cc=='"'){
+					this._maskCodeStage=maskCodeStage.String;
+				}
+				else if(cc==','){
+					if(!_maskNumber.equals("")){
+						if(_maskNumber.indexOf(".")>-1){
+							_maskMethodParamsContent.add(Double.parseDouble(_maskNumber));
+						}
+						else{
+							_maskMethodParamsContent.add(Long.parseLong(_maskNumber));
+						}
+					}
+					_maskNumber="";
+				}
+				else{
+					if(!(cc+"").equals("")){
+						_maskNumber+=cc;
+					}
+				}
+			}
+			else if(this._maskCodeStage==maskCodeStage.forloop||this._maskCodeStage==maskCodeStage.whileloop){
+				if(cc=='('){
+					this._maskCodeStageAt=maskCodeStage.loopCondition;
+					if(_maskCodeStageLoop==maskCodeStage.whileloop){
+						_maskCodeBraseStageLevel++;
+						this.maskCodeStageToUse(maskCodeStage.brase);
+					}
+					this._maskCodeStage=maskCodeStage.noStage;
+					
+				}
+				else{
+					_maskCodeElemName="";
+				}
+			}
+			else if(this._maskCodeStage==maskCodeStage.ifSection){
+				if(cc=='('){
+					this._maskCodeStageConditionOwner=this._maskCodeStage;
+					this.maskCodeStageToUse(this._maskCodeStage);
+					this._maskCodeStage=maskCodeStage.noStage;
+					_maskCodeBraseStageLevel++;
+					this.maskCodeStageToUse(maskCodeStage.brase);
+				}
+				else{
+					_maskCodeElemName="";
+				}
+			}
+			else if(this._maskCodeStage==maskCodeStage.elseSection||this._maskCodeStage==maskCodeStage.elseIfSection){
+				if(cc=='('){
+					this._maskCodeStageConditionOwner=this._maskCodeStage;
+					this.maskCodeStageToUse(this._maskCodeStage);
+					this._maskCodeStage=maskCodeStage.noStage;
+					_maskCodeBraseStageLevel++;
+					this.maskCodeStageToUse(maskCodeStage.brase);
+				}
+				else if(cc=='i'||cc=='f'){
+					this._maskCodeElemName+=cc;
+					if(this._maskCodeElemName.length()>=2){
+						if(this._maskCodeElemName.equals("if")){
+							_maskCodeElemName="";
+							this._maskCodeStage=maskCodeStage.elseIfSection;
+							//this.maskCodeStageToUse(this._maskCodeStage=maskCodeStage.elseIfSection); 
+						}
+					}
+					else{
+						this._maskCodeElemName="";
+					}
+				}
+				else{
+					_maskCodeElemName="";
+				}
+			}
+			else if(this._maskCodeStage==maskCodeStage.endIfSection){
+				if((cc+"").trim().equals("")) continue;
+				if(this._maskCodeElemName.equals("else")||this._maskCodeElemName.equals("if")){
+					String elseOrIf=_maskCodeElemName;
+					_maskCodeElemName="";
+					this._maskCodeStage=maskCodeStage.noStage;
+					this.executeMaskCodeBytes(elseOrIf.getBytes(), 0);
+					codeBytesCount+=elseOrIf.getBytes().length;
+				}
+				else if(this._maskCodeElemName.length()>=4){
+					this.maskCodeStageToUse(_maskCodeStage);
+					this._maskCodeStageConditionOwner=(_maskCodeStage=maskCodeStage.noStage);
+					String noElseOrIf=_maskCodeElemName;
+					_maskCodeElemName="";
+					this._maskCodeStage=maskCodeStage.noStage;
+					this.executeMaskCodeBytes(noElseOrIf.getBytes(), 0);
+					codeBytesCount+=noElseOrIf.getBytes().length;
+				}
+				else{
+					this._maskCodeElemName+=cc;
+				}
+			}
+		}
+	}*/
+	
+	/*private static ArrayList<maskCodeStage> logicMaskOperators() {
+		ArrayList<maskCodeStage> logicMaskOperators=new ArrayList<maskCodeStage>();
+		for(maskCodeStage maskCStage:new maskCodeStage[]{maskCodeStage.and,maskCodeStage.equal,maskCodeStage.greater,maskCodeStage.greaterEqual,maskCodeStage.is,maskCodeStage.not,maskCodeStage.notEqual,maskCodeStage.less,maskCodeStage.lessEqual,maskCodeStage.or}){
+			logicMaskOperators.add(maskCStage);
+		}
+		return logicMaskOperators;
+	}*/
+
+	/*private void maskCodeStageToUse(maskCodeStage maskCodeStage){
+		switch(this._maskCodeStageAt){
+			case noStage:
+				this._maskCodeStagesRead.add(maskCodeStage);
+				break;
+			case loopCondition:
+				this._loopConditionMaskCodeStages.add(maskCodeStage);
+				break;
+			case loopCode:
+				this._loopMaskCodeStages.add(maskCodeStage);
+				break;
+			case bracketCode:
+				(this._maskBracketCodeStages=(this._maskBracketCodeStages==null?new ArrayList<maskCodeStage>():this._maskBracketCodeStages)).add(maskCodeStage);
+				break;
+		}
+	}*/
+	
+	/*private void maskCodeContentToRead(Object content){
+		switch(this._maskCodeStageAt){
+			case noStage:
+				this._maskCodeContentRead.add(content);
+				break;
+			case loopCondition:
+				this._loopConditionMaskCodeContentRead.add(content);
+				break;
+			case loopCode:
+				this._loopMaskCodeContentRead.add(content);
+				break;
+			case bracketCode:
+				(this._maskBracketCodeContentRead=(this._maskBracketCodeContentRead==null?new ArrayList<Object>():this._maskBracketCodeContentRead)).add(content);
+				break;
+		}
+	}*/
+
+	private byte[] _currentMaskCodeBytes=new byte[8912];
+	private int _currentMaskCodeBytesIndex=0;
+	
+	public void loadMaskCodeByte(byte br) {
+		this.loadMaskCodeByte(br, true);
+	}
+	
+	public void loadMaskCodeByte(byte br,boolean debug) {
+		char cc=(char)br;
+		if(debug) System.out.print(cc);
+		if(this._codingIndexStage==this.codingSpecificIndex("\"")){
+			this.nextMaskCodeCharToExecute(cc);
+		}
+		else{
+			if(!(cc+"").trim().equals("")){
+				this.nextMaskCodeCharToExecute(cc);
+				_prevCC=cc;
+			}
+		}
+		//this.executeMaskCodeChar((char)br);
+		/*_currentMaskCodeBytes[_currentMaskCodeBytesIndex++]=br;
+		if(_currentMaskCodeBytes.length==_currentMaskCodeBytesIndex){
+			byte[] maskCodeBytes=new byte[_currentMaskCodeBytesIndex];
+			System.arraycopy(_currentMaskCodeBytes, 0, maskCodeBytes, 0, _currentMaskCodeBytesIndex);
+			_maskCode.add(maskCodeBytes);
+			_currentMaskCodeBytesIndex=0;
+		}*/
+	}
+}

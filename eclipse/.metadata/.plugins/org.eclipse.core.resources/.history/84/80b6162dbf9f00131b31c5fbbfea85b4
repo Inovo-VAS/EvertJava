@@ -1,0 +1,14 @@
+package baasserver.db.web.system.definitions.fields;
+
+import baasserver.db.web.system.definitions.Field;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class DatetimeField extends Field {
+
+	public DatetimeField(IOWidgetHandle parentWidget,
+			IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+
+}

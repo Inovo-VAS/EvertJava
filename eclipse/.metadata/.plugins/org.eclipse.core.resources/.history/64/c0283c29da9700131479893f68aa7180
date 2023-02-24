@@ -1,0 +1,68 @@
+package baasserver.client;
+
+import java.nio.channels.SelectableChannel;
+import java.nio.channels.Selector;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import baasserver.OldClient;
+import baasserver.OldClient.OldClientInputStream;
+import baasserver.OldClient.OldClientOutputStream;
+
+public class ClientSocketHandle {
+	private Client _client=null;
+	
+	private HashMap<String,String> _responseHeaders=new HashMap<String,String>();
+	
+	private boolean _populateResponseHeaders=false;
+	private boolean _responseHeadersPopulated=false;
+	private String _responseHeaderLine="";
+	
+	public ClientSocketHandle(Client client,boolean populateResponseHeaders,ClientInputStream clientInputStream,ClientOutputStream clientOutputStream) throws Exception {
+		this._client=client;
+		this._populateResponseHeaders=populateResponseHeaders;
+		this._clientInputStream=clientInputStream;
+		this._clientOutputStream=clientOutputStream;
+	}
+	
+	private long _requiredContentLength=0;
+	private long _retrievedContentLength=0;
+	
+	public HashMap<String,String> responseHeaders(){
+		return this._responseHeaders;
+	}
+	
+	public void clearHeaders(){
+		this._responseHeaders.clear();
+	}
+
+	private ClientInputStream _clientInputStream=null;
+	private ClientOutputStream _clientOutputStream=null;
+	
+	private boolean _connected=false;
+	
+	public boolean connected(){
+		return this._connected;
+	}
+	
+	private Object _clientSocketHandleLock=new Object();
+	private boolean _disconnected=false;
+	
+	public boolean disconnect(){
+		this._connected=false;
+		synchronized (_clientSocketHandleLock) {
+			_clientSocketHandleLock.notify();
+		}
+		while(!this._disconnected){
+			synchronized (_clientSocketHandleLock) {
+				try {
+					_clientSocketHandleLock.wait(5);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+		return this._disconnected;
+	}
+
+}

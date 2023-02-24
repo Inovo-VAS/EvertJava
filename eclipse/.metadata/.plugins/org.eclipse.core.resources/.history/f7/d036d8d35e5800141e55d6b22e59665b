@@ -1,0 +1,92 @@
+package inovo.presence.mail.archiver;
+
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import inovo.db.Database;
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+
+public class PresenceMailExport extends InovoHTMLPageWidget {
+
+	public PresenceMailExport(InovoWebWidget parentWidget,
+			InputStream inStream) {
+		super(parentWidget, inStream);
+	}
+
+	public void archivemail() throws Exception{
+		HashMap archiveRequestSettings = new HashMap();
+		archiveRequestSettings.put("AGENTID", this.requestParameter("AGENTID"));
+		archiveRequestSettings.put("METAFIELD1NAME", "CUSTOMERID");
+		archiveRequestSettings.put("METAFIELD1VALUE", (this.requestParameter("CUSTOMERID").equals("")?"0000000000000":this.requestParameter("CUSTOMERID")));
+		archiveRequestSettings.put("INBOUNDMAILID", this.requestParameter("INBOUNDMAILID"));
+	    try
+	    {
+			String validationError = "";
+			if (validationError.equals("")) {
+				validationError = this.requestMailArchive(archiveRequestSettings, new String[] { "AGENTID", "INBOUNDMAILID", "METAFIELD1VALUE" }, "PRSC_[AGENTID]_[METAFIELD1VALUE]_[MAILID]", "METAFIELD1".split(","),true);
+			}
+			if (validationError.equals("")) {
+				this.respondString("SUCCESSFUL");
+			}
+			else
+				this.respondString("UNSUCCESSFUL:" + validationError.replace("\n", " "));
+			}
+		catch (InstantiationException|IllegalAccessException|ClassNotFoundException e)
+		{
+			this.respondString(encodeHTML("ERROR:" + e.getMessage().replace("\n", " ")));
+		}
+	}
+	
+	public String requestMailArchive(HashMap<String, String> archiveRequestSettings, String[] archiveMailIDLayout, String archiveFileMaskNameLayout, String[] requiredMetaFields,boolean insertIntoDbDirect)
+			throws InstantiationException, IllegalAccessException, ClassNotFoundException
+    {
+    String validationError = "";
+
+    if (archiveRequestSettings.containsKey("AGENTID")) {
+		if (((String)archiveRequestSettings.get("AGENTID")).equals("")) {
+			validationError = "AGENT ID NOT PROVIDED,";
+		}
+    }
+    else {
+    	validationError = "AGENT ID NOT PROVIDED,";
+    }
+    if (archiveRequestSettings.containsKey("INBOUNDMAILID")) {
+	    if (((String)archiveRequestSettings.get("INBOUNDMAILID")).equals("")) {
+	    	validationError = validationError + "INBOUNDMAILID ID NOT PROVIDED,";
+	    }
+    }
+    else {
+      validationError = validationError + "INBOUNDMAILID ID NOT PROVIDED,";
+    }
+
+    for (String metaFieldRef : requiredMetaFields) {
+      if (archiveRequestSettings.containsKey(metaFieldRef + "NAME")) {
+        if (archiveRequestSettings.containsKey(metaFieldRef + "VALUE")) {
+          if (((String)archiveRequestSettings.get(metaFieldRef + "VALUE")).equals("")) {
+            validationError = validationError + (String)archiveRequestSettings.get(new StringBuilder(String.valueOf(metaFieldRef)).append("NAME").toString()) + " NOT PROVIDED,";
+          }
+        }
+        else {
+          validationError = validationError + (String)archiveRequestSettings.get(new StringBuilder(String.valueOf(metaFieldRef)).append("NAME").toString()) + " NOT PROVIDED,";
+        }
+      }
+    }
+
+    if (validationError.equals("")) {
+    	try {
+    	    	  Database.executeDBRequest(null,"MAILEXPORTER","INSERT INTO <DBUSER>.MAILEXPORTSTAGING (ARCHIVEFILEMASK, AGENTID,INBOUNDMAILID,METAFIELD1NAME,METAFIELD1VALUE,RECORDHANDLEFLAG) SELECT 'PRSC_[AGENTID]_[METAFIELD1VALUE]_[MAILID]',:AGENTID,:INBOUNDMAILID,:METAFIELD1NAME,:METAFIELD1VALUE,1",archiveRequestSettings,null);
+    		}
+    		catch(Exception edb){
+    			validationError=edb.getMessage();
+    			edb.printStackTrace();
+    		}
+   
+      return "";
+    }
+    validationError = validationError.substring(0, validationError.length() - 1);
+    inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("[E][requestMailArchive()]" + validationError);
+    return validationError;
+  }
+}

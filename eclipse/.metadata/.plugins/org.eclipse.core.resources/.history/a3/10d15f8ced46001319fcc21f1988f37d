@@ -1,0 +1,35 @@
+package inovo.automation;
+
+import java.util.HashMap;
+
+public class AutomatedTask implements Runnable{
+	
+	private boolean _pauseTask=false;
+	private boolean _killTask=false;
+	private HashMap<String, String> _taskProperties=null;
+	
+	public AutomatedTask(HashMap<String,String> taskProperties){
+		this._taskProperties=new HashMap<String,String>(taskProperties);
+	}
+	
+	@Override
+	public void run() {
+		do{
+			if(!_pauseTask){
+				this.executeTask();
+			}
+			if(!_killTask){
+				try {
+					Thread.sleep(2);
+				} catch (InterruptedException e) {
+					_killTask=true;
+				}
+			}
+		}while(!_killTask);
+	}
+
+	public void executeTask() {
+		
+	}
+
+}

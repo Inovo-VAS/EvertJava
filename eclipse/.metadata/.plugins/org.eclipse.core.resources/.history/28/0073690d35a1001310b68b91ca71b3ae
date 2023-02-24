@@ -1,0 +1,15 @@
+package baasserver.io.nio.netty;
+
+public class Server implements Runnable {
+	
+	private int _port;
+	public Server(int port){
+		
+	}
+	
+	@Override
+	public void run() {
+		// TODO Auto-generated method stub
+		
+	}
+}

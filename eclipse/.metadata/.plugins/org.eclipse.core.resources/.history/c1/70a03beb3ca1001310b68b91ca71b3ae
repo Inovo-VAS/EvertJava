@@ -1,0 +1,120 @@
+package baasserver.remoting;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.lang.reflect.InvocationTargetException;
+import java.util.HashMap;
+
+import org.apache.http.Header;
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
+import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.HttpResponseException;
+import org.apache.http.client.ResponseHandler;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+
+import baasserver.io.nio.handlers.RequestHandler;
+
+public class Client extends RemoteRequestHandle {
+
+	private String _host="";
+	private int _port=0;
+	
+	public Client(String host, int port) {
+		super(true,false);
+		this._host=host;
+		this._port=port;
+	}
+	
+	public void sendRequest(String uriresource) throws Exception{
+		uriresource=(uriresource==null?"":uriresource).trim();
+		while(uriresource.startsWith("/")) uriresource=uriresource.substring(1);
+		HashMap<String,String> _headers=new HashMap<String,String>();
+		CloseableHttpClient httpclient = HttpClients.createDefault();
+		HttpPost httpPost=new HttpPost("http://"+this._host+":"+String.valueOf(this._port)+"/"+uriresource);
+		
+		for(String header:this.reqREquestHeaderNames()){
+			httpPost.setHeader(header, this.reqRequestHeader(header));
+		}
+		
+		final Client clientRef=this;
+		try {
+			
+			final ByteArrayOutputStream bytesout=new ByteArrayOutputStream();
+			
+			 ResponseHandler<InputStream> responseHandler = new ResponseHandler<InputStream>() {
+
+				 public InputStream handleResponse(HttpResponse response)
+				            throws ClientProtocolException, IOException {
+
+				        int statusCode = response.getStatusLine().getStatusCode();
+				        
+				        InputStream in = null;
+
+				        if (statusCode != HttpStatus.SC_OK) {
+				            throw new HttpResponseException(statusCode, null);
+				        } else {
+				        	long responseContentLength=0;
+				        	for(Header header:response.getAllHeaders()){
+				        		clientRef.setReqResponseHeader(header.getName(), header.getValue());
+				        		if(header.getName().toUpperCase().equals("CONTENT-LENGTH")){
+				        			responseContentLength=Long.parseLong(header.getValue());
+				        		}
+				        	}
+			        	
+				        	if(responseContentLength>0){
+					            HttpEntity entity = response.getEntity();
+					            if (entity != null) {
+					                in = entity.getContent();
+					                try {
+					                	clientRef.readInputStream(in, 8192);
+									} catch (Exception e) {
+										e.printStackTrace();
+									} 
+					            }
+				        	}
+				        }
+				        return in;
+				    }
+
+	            };
+			
+			this.reset();
+			
+			httpclient.execute(httpPost,responseHandler);
+			
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		
+		this.roundupClientRequest();
+	}
+	
+	public void roundupClientRequest() {
+		this.roundupRemoteRequest();
+	}
+
+	public static Client sendRequest(Class<?> clientClass, String host,int port,String uriresource,HashMap<String,String> requestheaders){
+		try {
+			Client client=(Client)(clientClass==null?Client.class:clientClass).getConstructor(String.class,int.class).newInstance(new Object[]{host,port});
+			if(requestheaders!=null){
+				for(String header:requestheaders.keySet()){
+					client.setReqRequestHeader(header, requestheaders.get(header));
+				}
+			}
+			
+			client.sendRequest(uriresource);
+			
+			return client;
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return null;
+	}
+
+}

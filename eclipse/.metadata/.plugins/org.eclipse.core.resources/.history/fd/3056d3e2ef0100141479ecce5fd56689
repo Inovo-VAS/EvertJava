@@ -1,0 +1,12 @@
+import org.tempuri.PcowsService;
+import org.tempuri.PcowsServiceProxy;
+
+
+public class Sequance { 
+
+public static void main(String[] args) { 
+	PcowsServiceProxy pcosvrPcowsServiceProxy=new PcowsServiceProxy();
+	pcosvrPcowsServiceProxy.insertOutboundRecord(parameters);
+} 
+
+} 

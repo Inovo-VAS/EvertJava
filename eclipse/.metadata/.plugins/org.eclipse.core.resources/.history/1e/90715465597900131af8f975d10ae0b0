@@ -1,0 +1,39 @@
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.FilenameFilter;
+import java.io.IOException;
+import java.util.jar.JarFile;
+
+import baasserver.Server;
+import baasserver.protocols.markup.IOMarkupRequestHandle;
+
+
+public class BaasServerMain {
+
+	/**
+	 * @param args
+	 */
+	public static void main(String[] args) {	
+		
+		FileOutputStream fout=null;
+		/*try {
+			baasserver.reflection.Compiler.compileAndRunCode();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}*/		
+		try {
+			baasserver.reflection.Utils.loadJarPackagesFromPath(Thread.currentThread().getContextClassLoader().getResource("").getPath());
+		} catch (Exception e) {
+			try {
+				baasserver.io.Utils.stringToOutputStream(e.getMessage(),fout=new FileOutputStream("log.log"));
+			} catch (Exception e1) {
+				e1.printStackTrace();
+			}
+		}
+		
+		Server.initServer(2222,IOMarkupRequestHandle.class);
+	}
+
+	
+}

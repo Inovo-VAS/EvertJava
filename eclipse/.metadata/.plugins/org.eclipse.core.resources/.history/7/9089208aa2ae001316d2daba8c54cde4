@@ -1,0 +1,57 @@
+package baasserver.db.protocols;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.TreeMap;
+
+import baasserver.db.system.DBManager;
+import baasserver.db.system.DBSystem;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+import baasserver.protocols.markup.IOMarkupWidgetHandle;
+
+public class DBWidgetHandle extends IOMarkupWidgetHandle {
+
+	public DBWidgetHandle(IOWidgetHandle parentWidget,
+			IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+	
+	private DBSystem _dbSystem=null;
+	public DBSystem dbSystem(){
+		return _dbSystem;
+	}
+	
+	public DBManager dbManager(){
+		return this._dbManager;
+	}
+	
+	private DBManager _dbManager=null;
+	
+	public TreeMap<Integer, ArrayList<Object>> executeDBUrlRequest(String sqlStatement) throws Exception{
+		TreeMap<Integer, ArrayList<Object>> executeDBUrlRequest=null;
+		if(_dbSystem!=null&&_dbManager!=null){
+			executeDBUrlRequest= this.executeDBRequest(sqlRequestParameters(),sqlStatement);
+		}
+		return executeDBUrlRequest;
+	}
+	
+	public TreeMap<Integer, ArrayList<Object>> executeDBRequest(
+			HashMap<String, Object> sqlRequestParameters, String sqlStatement) throws Exception{
+		TreeMap<Integer, ArrayList<Object>> resultSetObtained=(sqlStatement.toUpperCase().startsWith("SELECT ")?new TreeMap<Integer,ArrayList<Object>>():null);
+		this.dbManager().executeRequest(resultSetObtained, sqlStatement, sqlRequestParameters);
+		return resultSetObtained;
+	}
+
+	public HashMap<String,Object> sqlRequestParameters(){
+		return null;
+	}
+
+	public void setDBSystem(DBSystem dbSystem) {
+		this._dbSystem=dbSystem;
+	}
+
+	public void setDBManager(DBManager dbManager) {
+		this._dbManager=dbManager;
+	}
+}

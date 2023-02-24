@@ -1,0 +1,7 @@
+package inovo.automation;
+
+import inovo.queues.Request;
+
+public class Request extends Request {
+
+}

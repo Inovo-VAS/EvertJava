@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="ISO-8859-1">
+<title>Designer</title>
+<script type="text/javascript" src="?embedded-resource=javascript/jquery/jquery-min.js"></script>
+<script type="text/javascript">
+function submitForm(formname,action,target){
+	if($("#"+formname)!=undefined){
+		$.ajax({
+		    url:action,
+		    type: 'POST',
+		    data: new FormData($("#"+formname)[0]),
+		    async: false,
+		    cache: false,
+		    contentType: false,
+		    processData: false,
+		    success: function (returndata) {
+		    	if(target!=undefined){
+		    		if($("#"+target)!=undefined){
+		    			$("#"+target).html(returndata);
+		    		}
+		    	}
+		    }
+		  });
+	}
+}
+</script>
+</head>
+<body>
+<div id="response">
+<form id="testform" action="">
+	<input type="text" name="t1"/>
+	<input type="file" name="f2"/>
+	<input type="text" name="t3"/> 
+</form>
+<input type="button" onclick="submitForm('testform','?embedded-resource=javascript/jquery/jquery-min.js','response');"/>
+</div>
+</body>
+</html>

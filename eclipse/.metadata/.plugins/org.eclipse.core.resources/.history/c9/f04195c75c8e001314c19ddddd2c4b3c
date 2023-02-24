@@ -1,0 +1,198 @@
+package baasserver;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.URL;
+import java.net.URLConnection;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.spi.SelectorProvider;
+import java.util.Iterator;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadFactory;
+
+import baasserver.protocols.IORequestHandle;
+import baasserver.protocols.IOutput;
+
+public class Server implements Runnable {
+
+	//private static ExecutorService _runningServers=Executors.newCachedThreadPool();
+	
+	private static LinkedBlockingQueue<Server> _runningServers=new LinkedBlockingQueue<Server>();
+	private static boolean _shutdownAll=false;
+	public static void shutDownAll(){
+		_shutdownAll=true;
+	}
+	
+	//private static ExecutorService _acceptedChannels=Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors()*20);
+	
+	private LinkedBlockingQueue<ServerSocketHandle> _serverSocketHandles=new LinkedBlockingQueue<ServerSocketHandle>();
+	
+	private int _port;
+	private ServerSocketChannel _serverSocketChannel=null;
+	private Selector _selServer;
+	private Class<?> _ioRequestHandleClass=null;
+	private Server(int port,Class<?> ioRequestHandleClass) throws IOException {
+		this._ioRequestHandleClass=ioRequestHandleClass;
+		this._port=port;
+		this._serverSocketChannel=ServerSocketChannel.open();
+		this._serverSocketChannel.configureBlocking(false);
+		this._selServer=SelectorProvider.provider().openSelector();
+		
+		this._serverSocketChannel.socket().bind(new InetSocketAddress(_port),Runtime.getRuntime().availableProcessors()*10);
+		this._serverSocketChannel.register(_selServer, SelectionKey.OP_ACCEPT);
+		new Thread(){
+			private Object _threadLock=new Object();
+			public void run() {
+				while(!_shutdownServer){
+					while(!_serverSocketHandles.isEmpty()) {
+						try {
+							new Thread(_serverSocketHandles.take()).start();
+						} catch (InterruptedException e) {
+							e.printStackTrace();
+						}
+					}
+					synchronized (_threadLock) {
+						try {
+							_threadLock.wait(2);
+						} catch (InterruptedException e) {
+							e.printStackTrace();
+						}
+					}
+				}
+				while(!_serverSocketHandles.isEmpty()){
+					try {
+						new Thread(_serverSocketHandles.take()).start();
+						//_acceptedChannels.execute(_serverSocketHandles.take());
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					}
+				}
+			};
+		}.start();
+	}
+	
+	private boolean _shutdownServer=false;
+	
+	public void shutdownServer(){
+		this._shutdownServer=true;
+		try {
+			URL urlshutdown=new URL("http://127.0.0.1:"+String.valueOf(this._port)+"/shutdown-all");
+			URLConnection urlcn=urlshutdown.openConnection();
+			urlcn.addRequestProperty("CONTENT-TYPE", "text/plain");
+			urlcn.connect();
+		} catch (Exception e) {
+		}
+	}
+	
+	@Override
+	public void run() {
+		this.serverStarted();
+		
+		while(!_shutdownServer){
+			try {
+				while(this._selServer.select()>0){
+					if(!_shutdownServer){
+						Iterator<SelectionKey> selKeysAccepted= this._selServer.selectedKeys().iterator();
+						
+						while(selKeysAccepted.hasNext()){
+							SelectionKey selKeyAccept=selKeysAccepted.next();
+							if(!_shutdownServer){
+								if(selKeyAccept.isValid()){
+									if(selKeyAccept.isAcceptable()){
+										try {
+											this._serverSocketHandles.put(new ServerSocketHandle(this,this._serverSocketChannel.accept()));
+										} catch (InterruptedException e) {
+											e.printStackTrace();
+										}
+									}
+								}
+							}
+							selKeysAccepted.remove();
+						}
+					}
+					else{
+						break;
+					}
+				}
+			} catch (IOException e1) {
+				_shutdownServer=true;
+				e1.printStackTrace();
+			}
+			if(!_shutdownServer){
+				try {
+					synchronized (this) {
+						this.wait(2);
+					}
+				} catch (InterruptedException e) {
+					_shutdownServer=true;
+				}
+			}
+			else{
+				break;
+			}
+		}
+		try {
+			this._selServer.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		try {
+			this._serverSocketChannel.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		new Thread(){
+			public void run() {
+				//_runningServers.shutdownNow();
+				baasserver.io.Logger.shutdownLogging();
+			};
+		}.start();
+	}
+	
+	public void serverStarted() {
+	}
+
+	private static Thread _intServersExecutor=null;
+	public static void initServer(int port,Class<?> ioRequestClass){
+		try {
+			_runningServers.put(new Server(port,ioRequestClass));
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		if(_intServersExecutor==null){
+			_intServersExecutor=new Thread(){
+				private Object threadLock=new Object();
+				@Override
+				public void run() {
+					while(!_shutdownAll){
+						if(!_runningServers.isEmpty()){
+							try {
+								new Thread(_runningServers.take()).start();
+							} catch (InterruptedException e) {
+							}
+						}
+						synchronized (threadLock) {
+							try {
+								threadLock.wait(2);
+							} catch (InterruptedException e) {
+							}
+						}
+					}
+					
+					ArrayList<Server> serversToShutdown=new ArrayList<Server>();
+					
+				}
+			};
+			_intServersExecutor.start();
+		}
+	}
+	
+	public IORequestHandle nextIORequestHandle(IOutput output) throws Exception{
+		return (IORequestHandle)this._ioRequestHandleClass.getConstructor(IOutput.class).newInstance(new Object[]{output});
+	}
+
+}

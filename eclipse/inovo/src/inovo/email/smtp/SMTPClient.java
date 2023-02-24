@@ -1,0 +1,386 @@
+package inovo.email.smtp;
+import inovo.adhoc.Base64;
+
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.UnsupportedEncodingException;
+import java.io.Writer;
+import java.net.Socket;
+import java.net.UnknownHostException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Scanner;
+
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
+
+
+public class SMTPClient extends MailClient {
+	
+	private int _smtpPort=25;
+	private String _smptHost="";
+	private Socket _socket=null;
+	private SSLSocket _sslSocket=null;
+	
+	private OutputStream _smtpOutStream=null;
+	private InputStream _smtpInputStream=null;
+	private HashMap<Integer,ArrayList<String>> _serverReplyLines=new HashMap<Integer,ArrayList<String>>();
+	private String _statusCodeSep=" ";
+	
+	public SMTPClient(String host){
+		this(host,25);
+	}
+	
+	private OutputStream _outputWriter=null;
+	public void setOutputWriter(OutputStream outwriter){
+		this._outputWriter=outwriter;
+	}
+	
+	public SMTPClient(String host,int port){
+		this._smtpPort=port;
+		this._smptHost=host;
+	}
+	
+	public void connect() throws IOException{
+		if(_socket!=null){
+			try {
+				_socket.close();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+			_socket=null;
+		}
+		if(_socket==null){
+			if(_smtpPort==465){
+				SSLSocketFactory sslsocketfactory = (SSLSocketFactory) SSLSocketFactory.getDefault();
+				this._socket = (SSLSocket) sslsocketfactory.createSocket( "smtp.gmail.com", 465);
+			}
+			else{
+				_socket=new Socket(_smptHost, _smtpPort);
+			}
+			_smtpOutStream = _socket.getOutputStream();
+			_smtpInputStream = _socket.getInputStream();
+			this.retrieveServerReply();
+		}
+		
+	}
+	
+	private ByteArrayOutputStream _serverReplyStream=new ByteArrayOutputStream();
+	
+	private void retrieveServerReply() throws IOException {
+		int bytesAvailable=0;
+		byte[] bytesReplied=new byte[8912];
+		int delayBy=1;
+		while(!_serverReplyLines.isEmpty()){
+			Integer statusCodeKey=(Integer)_serverReplyLines.keySet().toArray()[0];
+			_serverReplyLines.remove(statusCodeKey).clear();
+		}
+		_serverReplyLines.clear();
+		_serverReplyStream.reset();
+		if(this._outputWriter!=null) _outputWriter.write(("SERVER REPLY:\r\n").getBytes());
+		
+		while((bytesAvailable=_smtpInputStream.read(bytesReplied,0,bytesReplied.length))>-1){
+			if(bytesAvailable==0){
+				try {
+					Thread.sleep(2*delayBy++);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+				break;
+			}
+			delayBy=1;
+			_serverReplyStream.write(bytesReplied, 0, bytesAvailable);
+			if(this.processServerReply(_serverReplyStream.toByteArray())){
+				break;
+			}
+		}
+		
+		if(this._outputWriter!=null) _outputWriter.write(_serverReplyStream.toByteArray());
+		if(this._outputWriter!=null) _outputWriter.write("\r\n".getBytes());
+	}
+	
+	private String _serverReplyString="";
+	private boolean processServerReply(byte[] byteArray) {
+		ArrayList<String> statusCodeItems=null;
+		for(byte br:byteArray){
+			if(br==13){
+				continue;
+			}
+			else if(br==10){
+				int _spaceSepIndex=_serverReplyString.indexOf(" ");
+				int _dashSepIndex=_serverReplyString.indexOf("-");
+				_statusCodeSep="";
+				if(_dashSepIndex>-1){
+					if(_spaceSepIndex>-1&&_dashSepIndex<_spaceSepIndex){
+						_statusCodeSep="-";
+					}
+					else if(_spaceSepIndex>-1&&_dashSepIndex>_spaceSepIndex){
+						_statusCodeSep=" ";
+					}
+					else if(_spaceSepIndex==-1){
+						_statusCodeSep="-";
+					}
+				}
+				else if(_spaceSepIndex>-1){
+					if(_dashSepIndex>-1&&_spaceSepIndex<_dashSepIndex){
+						_statusCodeSep=" ";
+					}
+					else if(_dashSepIndex>-1&&_spaceSepIndex>_dashSepIndex){
+						_statusCodeSep="-";
+					}
+					else if(_dashSepIndex==-1){
+						_statusCodeSep=" ";
+					}
+				}
+				
+				if(!_statusCodeSep.equals("")){
+					if(_serverReplyString.indexOf(_statusCodeSep)>-1){
+						statusCodeItems=_serverReplyLines.get(Integer.parseInt(_serverReplyString.substring(0,_serverReplyString.indexOf(_statusCodeSep))));
+						if(statusCodeItems==null){
+							_serverReplyLines.put(Integer.parseInt(_serverReplyString.substring(0,_serverReplyString.indexOf(_statusCodeSep))),(statusCodeItems=new ArrayList<String>()));
+						}
+						statusCodeItems.add(_serverReplyString.substring(_serverReplyString.indexOf(_statusCodeSep)+1));
+					}
+				}
+				_serverReplyString="";
+			}
+			else{
+				_serverReplyString+=((char)br+"");
+			}
+		}
+		return true;
+	}
+	
+	public void cmdHelo() throws IOException{
+		this.sendCommand("EHLO "+this._smptHost, true);
+	}
+	
+	public void cmdAuthPlain(String username,String password) throws IOException{
+		this.sendCommand("AUTH PLAIN "+Base64.encodeBytes(("\000"+username+"\000"+password).getBytes()), true);
+	}
+	
+	public void cmdAuthBase64(String username,String password)  throws IOException{
+		this.sendCommand("AUTH LOGIN", true);
+		this.sendCommand(Base64.encodeBytes(username.getBytes()), true);
+		this.sendCommand(Base64.encodeBytes(password.getBytes()), true);
+		
+	}
+	
+	public void cmdAuthCramMD5(String username,String password)  throws Exception{
+		this.sendCommand("AUTH CRAM-MD5", true);
+		String nonce=new String(Base64.decode(this._serverReplyLines.get((Integer)334).get(0).getBytes()));
+		
+		// This represents the BASE64 encoded timestamp sent by the POP server
+		//String dataString = Base64Decoder.decode("PDAwMDAuMDAwMDAwMDAwMEBteDEuc2VydmVyLmNvbT4=");
+		byte[] data = nonce.getBytes();
+
+		// The password to access the account
+		byte[] key  = password.getBytes();
+
+		// The address of the e-mail account
+		String user = username;
+
+	    MessageDigest md5 = MessageDigest.getInstance("MD5");
+	    	md5.reset();
+
+		if (key.length > 64)
+			key = md5.digest(key);
+
+		byte[] k_ipad = new byte[64];
+		byte[] k_opad = new byte[64];
+
+		System.arraycopy(key, 0, k_ipad, 0, key.length);
+		System.arraycopy(key, 0, k_opad, 0, key.length);
+
+		for (int i=0; i<64; i++)
+		{
+			k_ipad[i] ^= 0x36;
+			k_opad[i] ^= 0x5c;
+		}
+
+		byte[] i_temp = new byte[k_ipad.length + data.length];
+
+		System.arraycopy(k_ipad, 0, i_temp, 0, k_ipad.length);
+		System.arraycopy(data, 0, i_temp, k_ipad.length, data.length);
+
+		i_temp = md5.digest(i_temp);
+
+		byte[] o_temp = new byte[k_opad.length + i_temp.length];
+
+		System.arraycopy(k_opad, 0, o_temp, 0, k_opad.length);
+		System.arraycopy(i_temp, 0, o_temp, k_opad.length, i_temp.length);
+
+        byte[] result = md5.digest(o_temp);
+        StringBuffer hexString = new StringBuffer();
+
+        for (int i=0;i < result.length; i++) {
+	        hexString.append(Integer.toHexString((result[i] >>> 4) & 0x0F));
+	        hexString.append(Integer.toHexString(0x0F & result[i]));
+        }
+
+	        
+	    this.sendCommand(Base64.encodeBytes((user + " " + hexString.toString()).getBytes()), true); 
+		
+	}
+		
+	private Scanner _scanner=null;
+	public void cmdAuthTLS(String username,String password) throws IOException{
+		this._sslSocket=(SSLSocket) ((SSLSocketFactory) SSLSocketFactory.getDefault()).createSocket(
+                this._socket, 
+                this._socket.getInetAddress().getHostAddress(), 
+                this._socket.getPort(), 
+                true);
+		_smtpOutStream = _socket.getOutputStream();
+		_smtpInputStream = _socket.getInputStream();
+		
+		_scanner = new Scanner(_smtpInputStream);
+		
+		this.sendCommand("AUTH LOGIN", true);
+		this.sendCommand(Base64.encodeBytes(username.getBytes()), true);
+		this.sendCommand(Base64.encodeBytes(password.getBytes()), true);
+	}
+	
+	public void cmdMailFrom(String fromMailAddress) throws IOException {
+		this.sendCommand("MAIL From: <"+fromMailAddress+">", true);	
+	}
+	
+	public void cmdRcptTo(String toMailAddress) throws IOException {
+		this.sendCommand("RCPT To: <"+toMailAddress+">", true);
+	}
+	
+	public void cmdDataStart() throws IOException {
+		this.sendCommand("DATA", true);
+	}
+	
+	public void cmdDataEnd() throws IOException {
+		this.sendCommand(".\r\n", true);
+	}
+	
+	public void cmdQuit() throws IOException{
+		this.sendCommand("QUIT", true);
+	}
+	
+	public HashMap<Integer,ArrayList<String>> serverStatusReply(){
+		return this._serverReplyLines;
+	}
+
+	public void sendCommand(String command,boolean getServerReply) throws IOException{
+		this.sendBytes(((command.equals("QUIT")?command: command+"\r\n")).getBytes());
+		if(getServerReply){
+			this.retrieveServerReply();
+		}
+		if(command.equals("QUIT")){
+			this.close();
+		}
+	}
+	
+	private void close() {
+		if(this._socket!=null){
+			try {
+				this._socket.close();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+			this._socket=null;
+		}
+	}
+
+	@Override 
+	public void sendBytes(byte[]bytesToSend) throws IOException{
+		if(this._outputWriter!=null) this._outputWriter.write(bytesToSend);
+		
+		this._smtpOutStream.write(bytesToSend,0,bytesToSend.length);
+		//this._smtpOutStream.flush();
+	}
+
+	public void cmdMailContent(MailContent mailContent) throws Exception {
+		this.cmdMailFrom(mailContent.fromAddress());
+		String toMailAddress="";
+		for(String recipient:mailContent.recipients()){
+			toMailAddress+="<"+recipient+">,";
+			this.cmdRcptTo(recipient);
+		}
+		
+		this.cmdDataStart();
+		this.sendCommand("From: <"+mailContent.fromAddress()+">", false);
+		this.sendCommand("To: "+toMailAddress.substring(0,toMailAddress.length()-1), false);
+		this.sendCommand("Subject: "+mailContent.subject(), false);
+		
+		String mailDate=new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss").format(new Date())+" +0200";
+		this.sendCommand("Date: "+mailDate, false);
+		this.sendCommand("MIME-Version: 1.0", false);
+		this.sendCommand("Content-Type: multipart/mixed;boundary=\"" + mailContent.contentBoundary() +"\"", false);
+		this.sendCommand("Content-Transfer-Encoding: 7bit",false);
+		this.sendCommand("", false);
+		
+		if(mailContent.bodyInputStream()!=null){
+			this.sendCommand("--"+mailContent.contentBoundary(),false);
+			String contentType="";
+			HashMap<String,String> bodProps=mailContent.bodyProperties();
+			for(String propName:bodProps.keySet()){
+				if(propName.equals("CONTENT-TYPE")){
+					contentType=mailContent.bodyProperties().get(propName);
+				}
+				this.sendCommand(this.parseHeaderName(propName)+": "+mailContent.bodyProperties().get(propName), false);
+			}
+			if(contentType.equals("")){
+				this.sendCommand("Content-Type: text/plain", false);
+			}
+			this.sendCommand("Content-Transfer-Encoding: base64", false);
+			this.sendCommand("", false);
+			mailContent.base64FlushInputStream(mailContent.bodyInputStream());
+			this.sendCommand("", false);
+		}
+		if(!mailContent.attachments().isEmpty()){
+			int attCount=mailContent.attachments().size();
+			for(String attname:mailContent.attachments().keySet()){
+				//this.sendCommand("", false);
+				this.sendCommand("--"+mailContent.contentBoundary(),false);
+				String contentType="text/plain";
+				String attachmentAligning="attachment";
+				
+				HashMap<String,String> attProperties=mailContent.attachentProperties(attname);
+				
+				if(attProperties.containsKey("CONTENT-TYPE")){
+					contentType=attProperties.get("CONTENT-TYPE");					
+				}
+				
+				if(attProperties.containsKey("ALIGNMENT")){
+					attachmentAligning=attProperties.get("ALIGNMENT").toLowerCase();					
+				}
+				
+				if(!attachmentAligning.equals("attachment")||!attachmentAligning.equals("attachment")){
+					attachmentAligning="attachment";
+				}
+				
+				this.sendCommand("Content-Type: "+contentType+"; name="+attProperties.get("FILENAME"), false);
+				this.sendCommand("Content-Disposition: "+attachmentAligning+"; filename=\""+attProperties.get("FILENAME")+"\"", false);
+				
+				this.sendCommand("Content-Transfer-Encoding: base64", false);
+				this.sendCommand("", false);
+				mailContent.base64FlushInputStream(mailContent.attachments().get(attname));
+				this.sendCommand("", false);
+			}
+		}
+		if(mailContent.bodyInputStream()==null&&mailContent.attachments().isEmpty()){
+			this.sendCommand("", false);
+			this.sendCommand("--"+mailContent.contentBoundary(),false);
+			this.sendCommand("", false);
+		}
+		this.sendCommand("--"+mailContent.contentBoundary()+"--",false);
+		this.cmdDataEnd();
+	}
+	
+	
+}

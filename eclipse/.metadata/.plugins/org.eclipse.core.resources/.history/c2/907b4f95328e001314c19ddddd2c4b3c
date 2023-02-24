@@ -1,0 +1,22 @@
+package baasserver.protocols.markup;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IORequestHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class IOMarkupProcessorHandle extends IOProcessorHandle {
+	
+	public IOMarkupProcessorHandle(IOProcessorHandle mainProcessorHandle, Class<?> widgetHandleclass, IORequestHandle requestHandle) throws Exception{
+		super(mainProcessorHandle, widgetHandleclass,requestHandle);
+	}
+	
+	@Override
+	public void process() throws Exception {
+		super.process();
+	}
+	
+	private byte[] _currentMaskCodeBytes=new byte[8912];
+	private int _currentMaskCodeBytesIndex=0;
+}

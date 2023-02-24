@@ -1,0 +1,1 @@
+SELECT * FROM <% =widget.table(); %> WHERE FROM='<% =widget.property("FROMDATE"); %>'

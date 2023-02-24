@@ -1,0 +1,7 @@
+package baasserver.db.web.system;
+
+import baasserver.db.protocols.DBWidgetHandle;
+
+public class Select extends DBWidgetHandle {
+
+}

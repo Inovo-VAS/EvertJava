@@ -1,0 +1,10 @@
+package inovo.automation.scheduledsqljobs;
+
+public class ScheduledSqlJobsQueue {
+	
+	
+	
+	public ScheduledSqlJobsQueue(){
+		
+	}
+}

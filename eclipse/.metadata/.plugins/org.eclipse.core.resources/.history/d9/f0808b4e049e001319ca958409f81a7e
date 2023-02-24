@@ -1,0 +1,93 @@
+package baasserver.remoting;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.lang.reflect.InvocationTargetException;
+import java.util.HashMap;
+
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
+import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.HttpResponseException;
+import org.apache.http.client.ResponseHandler;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.ContentType;
+import org.apache.http.entity.mime.MultipartEntityBuilder;
+import org.apache.http.entity.mime.content.FileBody;
+import org.apache.http.entity.mime.content.StringBody;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.util.EntityUtils;
+
+public class Client {
+
+	private String _host="";
+	private int _port=0;
+	
+	public Client(String host, int port) {
+		this._host=host;
+		this._port=port;
+	}
+	
+	public void sendRequest(String uriresource,InputStream input,OutputStream output,HashMap<String,String> responseheaders){
+		uriresource=(uriresource==null?"":uriresource).trim();
+		while(uriresource.startsWith("/")) uriresource=uriresource.substring(1);
+		HashMap<String,String> _headers=new HashMap<String,String>();
+		CloseableHttpClient httpclient = HttpClients.createDefault();
+		HttpPost httpPost=new HttpPost("http://"+this._host+":"+String.valueOf(this._port)+"/"+uriresource);
+		try {
+			
+			final ByteArrayOutputStream bytesout=new ByteArrayOutputStream();
+			
+			 ResponseHandler<InputStream> responseHandler = new ResponseHandler<InputStream>() {
+
+				 public InputStream handleResponse(HttpResponse response)
+				            throws ClientProtocolException, IOException {
+
+				        int statusCode = response.getStatusLine().getStatusCode();
+				        InputStream in = null;
+
+				        if (statusCode != HttpStatus.SC_OK) {
+				            throw new HttpResponseException(statusCode, null);
+				        } else {
+				            HttpEntity entity = response.getEntity();
+				            if (entity != null) {
+				                in = entity.getContent();
+				                try {
+									baasserver.io.IOUtils.inputStreamToOutputStream(in, bytesout);
+								} catch (Exception e) {
+									e.printStackTrace();
+								}
+				                // This works
+				                // for (int i;(i = in.read()) >= 0;) System.out.print((char)i); 
+				            }
+				        }
+				        return in;
+				    }
+
+	            };
+			
+			
+			httpclient.execute(httpPost,responseHandler);
+			
+			bytesout.reset();
+			
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+	
+	public static void sendRequest(Class<?> clientClass, String host,int port,String uriresource,InputStream input,OutputStream output,HashMap<String,String> responseheaders){
+		try {
+			Client client=(Client)(clientClass==null?Client.class:clientClass).getConstructor(String.class,int.class).newInstance(new Object[]{host,port});
+			client.sendRequest(uriresource, input, output, responseheaders);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+}

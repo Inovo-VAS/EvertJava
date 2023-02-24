@@ -1,0 +1,146 @@
+package baasserver.io.nio;
+
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
+import java.nio.channels.spi.SelectorProvider;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+
+public class ClientConnectorReadWrite implements Runnable{
+
+	private boolean _shutdownClientConnector=false;
+	private Selector _connectSelector=null;
+	private SocketChannel _channel=null;
+	private ClientReadInputStream _clientReadInputStream=null;
+	private ClientWriteOutputStream _clientWriteOutputStream=null;
+	
+	public ClientConnectorReadWrite(String host,int port) throws Exception{
+		_connectSelector=SelectorProvider.provider().openSelector();
+		_channel=SelectorProvider.provider().openSocketChannel();
+		_channel.configureBlocking(false);
+		_channel.connect(new InetSocketAddress(host, port));
+		this._clientReadInputStream=new ClientReadInputStream(this);
+		this._clientWriteOutputStream=new ClientWriteOutputStream(this);
+		this.registerConnect();
+	}
+	
+	public ClientReadInputStream clientReadInputStream(){
+		return this._clientReadInputStream;
+	}
+	
+	public ClientWriteOutputStream clientWriteOutputStream(){
+		return this._clientWriteOutputStream;
+	}
+	
+	private void registerConnect() throws Exception{
+		_channel.register(_connectSelector, SelectionKey.OP_CONNECT);
+	}
+	
+	private boolean _connected=false;
+	@Override
+	public void run() {
+		while(!_shutdownClientConnector){
+			try {
+				this._connectSelector.select();
+				Iterator<SelectionKey> connectedKeys = this._connectSelector.selectedKeys().iterator();
+				if(!_connected){
+					while(connectedKeys.hasNext()){
+						SelectionKey possibleConnectKey=connectedKeys.next();
+						connectedKeys.remove();
+						if(!possibleConnectKey.isValid()) continue;
+						if(possibleConnectKey.isConnectable()){
+							if(this._channel.isConnectionPending()){
+								_connected=(this._channel.finishConnect());
+							}
+						}
+					}
+				}
+				else{
+					while(connectedKeys.hasNext()){
+						SelectionKey possibleConnectKey=connectedKeys.next();
+						connectedKeys.remove();
+						if(!possibleConnectKey.isValid()) continue;
+						if(possibleConnectKey.isWritable()){
+							this.write(possibleConnectKey);
+						}
+					}
+				}
+		
+			} catch (Exception ae) {
+				ae.printStackTrace();
+			}
+		}
+	}
+
+	private byte[] _currentBytesToWrite=null;
+	private int _currentBytesToWriteIndex=0;
+	private void write(SelectionKey possibleWriteKey) {
+		SocketChannel socketChannel = (SocketChannel) possibleWriteKey.channel();
+
+		if(_currentBytesToWrite!=null){
+			ByteBuffer buf = ByteBuffer.wrap(_currentBytesToWrite);
+			buf.position(_currentBytesToWriteIndex);
+			socketChannel.write(buf);
+			if ((_currentBytesToWriteIndex=buf.remaining()) > 0) {
+				if(_currentBytesToWriteIndex<_currentBytesToWrite.length){
+					this.registerWrite();
+				}
+				else{
+					_currentBytesToWrite=null;
+				}
+				break;
+			}
+		}
+		synchronized (this._bytesToSend) {
+
+			// Write until there's not more data ...
+			while (!_bytesToSend.isEmpty()) {
+				ByteBuffer buf = ByteBuffer.wrap( this._bytesToSend.get(0));
+				socketChannel.write(buf);
+				if (buf.remaining() > 0) {
+					// ... or the socket's buffer fills up
+					break;
+				}
+				queue.remove(0);
+			}
+
+			if (queue.isEmpty()) {
+				// We wrote away all data, so we're no longer interested
+				// in writing on this socket. Switch back to waiting for
+				// data.
+				key.interestOps(SelectionKey.OP_READ);
+			}
+		}
+	}
+
+	private void registerRead() throws Exception{
+		_channel.register(_connectSelector, SelectionKey.OP_READ);
+	}
+	
+	private void registerWrite() throws Exception{
+		_channel.register(_connectSelector, SelectionKey.OP_WRITE);
+	}
+
+	private ArrayList<byte[]> _bytesToSend=new ArrayList<byte[]>();
+	public void sendBytes(ArrayList<byte[]> bytesToSend) throws Exception {
+		ArrayList<byte[]> bytesBeingSent=new ArrayList<byte[]>(bytesToSend);
+		synchronized (_bytesToSend) {
+			_bytesToSend.addAll(bytesBeingSent);
+		}
+		if(!bytesBeingSent.isEmpty()){
+			this.registerWrite();
+			this._connectSelector.wakeup();
+		}
+		bytesBeingSent.clear();
+		bytesBeingSent=null;
+	}
+
+	public boolean connected() {
+		return this._connected;
+	}
+}

@@ -1,0 +1,231 @@
+package baasserver.io.nio;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
+import java.nio.channels.spi.SelectorProvider;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+
+import org.omg.stub.java.rmi._Remote_Stub;
+
+import baasserver.io.nio.handlers.RequestHandler;
+
+public class ServerReaderWriter implements Runnable {
+
+	private SocketChannel _channel=null;
+	private ServerConnectionsAcceptor _serverConnectionsAcceptor=null;
+	private boolean _shutdownReaderWriter=false;
+	private Selector _readWriteSelector=null;
+	
+	protected List<byte[]> _queueReads=new LinkedList<byte[]>();
+	
+	private ServerReaderInputStream _serverReaderInputStream=null;
+	private ServerWriterOutputStream _serverWriterOutputStream=null;
+	private RequestHandler _requestHandler=null;
+	
+	public ServerReaderWriter(SocketChannel channel,ServerConnectionsAcceptor serverConnectionsAcceptor) throws Exception{
+		this._channel=channel;
+		this._channel.configureBlocking(false);
+		this._serverConnectionsAcceptor=serverConnectionsAcceptor;
+		this._readWriteSelector=SelectorProvider.provider().openSelector();
+		this._serverReaderInputStream=(ServerReaderInputStream)this._serverConnectionsAcceptor.serverReaderInputStreamClass().getConstructor(ServerReaderWriter.class).newInstance(new Object[]{this});
+		this._serverWriterOutputStream=(ServerWriterOutputStream)this._serverConnectionsAcceptor.serverWriterOutputStreamClass().getConstructor(ServerReaderWriter.class).newInstance(new Object[]{this});
+		this._requestHandler=(RequestHandler)this._serverConnectionsAcceptor.requestClass().getConstructor(boolean.class,boolean.class).newInstance(new Object[]{false,true});
+		this.registerReader();
+	}
+	
+	private void registerReader() throws Exception{
+		this._channel.register(_readWriteSelector, SelectionKey.OP_READ);
+	}
+	
+	private void registerWrite() throws Exception{
+		this._channel.register(_readWriteSelector, SelectionKey.OP_WRITE);
+	}
+
+	private boolean _processingReadBytes=false;
+	@Override
+	public void run() {
+		while(!_shutdownReaderWriter){
+			if(_processingReadBytes){
+				while(!this._serverReaderInputStream.bytesAvailable()){
+					synchronized (_serverReaderInputStream) {
+						try {
+							_serverReaderInputStream.wait(3);
+						} catch (InterruptedException e) {
+							e.printStackTrace();
+						}
+					}
+				}
+				try {
+					this._serverConnectionsAcceptor.processServerReaderInputStream(this,this._requestHandler,this._serverReaderInputStream,this._serverWriterOutputStream);
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+				_processingReadBytes=false;
+				if(_requestHandler.requestBytesOutputAvailable()){
+					try {
+						_requestHandler.flushRequestBytesIntoOutputStream(this._serverWriterOutputStream);
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
+				}
+				try {
+					if(!this._requestHandler.isDoneReading()){
+						this.registerReader();
+					}
+					else{
+						if(_serverWriterOutputStream.bytesAvailable()){
+							try {
+								this._serverWriterOutputStream.flush();
+							} catch (IOException e) {
+								e.printStackTrace();
+							}
+						}
+					}
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+				
+				this._readWriteSelector.wakeup();
+			}
+			else{
+				if(!this._queueWrites.isEmpty()){
+					try {
+						this.registerWrite();
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+				}
+			}
+			
+			try {
+				this._readWriteSelector.select();
+				Iterator<SelectionKey> readWriteKeys = this._readWriteSelector.selectedKeys().iterator();
+				while(readWriteKeys.hasNext()){
+					SelectionKey possibleReadWriteKey=readWriteKeys.next();
+					readWriteKeys.remove();
+					if(!possibleReadWriteKey.isValid()) continue;
+					if(possibleReadWriteKey.isReadable()){
+						this.read(possibleReadWriteKey);
+					}
+					else if(possibleReadWriteKey.isWritable()){
+						this.write(possibleReadWriteKey);
+					}
+				}
+			} catch (Exception ae) {
+				this._shutdownReaderWriter=true;
+			}
+		}
+		while(!_queueReads.isEmpty()) _queueReads.remove(0);
+		_queueReads.clear();
+		_queueReads=null;
+		while(!_queueWrites.isEmpty()) _queueWrites.remove(0);
+		_queueWrites.clear();
+		_queueWrites=null;
+		this._requestHandler.reset();
+		try {
+			this._readWriteSelector.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		try {
+			this._channel.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
+	private void write(SelectionKey possibleWriteKey) throws IOException{
+		synchronized (this._queueWrites) {
+			
+			// Write until there's not more data ...
+			while (!_queueWrites.isEmpty()) {
+				ByteBuffer buf = ByteBuffer.wrap(_queueWrites.get(0));
+				this._channel.write(buf);
+				if (buf.remaining() > 0) {
+					// ... or the socket's buffer fills up
+					break;
+				}
+				_queueWrites.remove(0);
+			}
+
+			if (_queueWrites.isEmpty()) {
+				// We wrote away all data, so we're no longer interested
+				// in writing on this socket. Switch back to waiting for
+				// data.
+				if(!(this._shutdownReaderWriter=this._requestHandler.requestCompteted())){
+					possibleWriteKey.interestOps(SelectionKey.OP_READ);
+				}
+			}
+		}
+	}
+	
+	private ByteBuffer _readBuffer=null;
+	
+	private void read(SelectionKey possibleReadKey) throws IOException{
+		SocketChannel socketChannel = (SocketChannel) possibleReadKey.channel();
+		
+		// Clear out our read buffer so it's ready for new data
+		if(this._readBuffer==null){
+			this._readBuffer=ByteBuffer.allocate(this._channel.socket().getReceiveBufferSize());
+		}
+
+		// Attempt to read off the channel
+		int numRead=0;
+		int queueReadCount=0;
+		synchronized (_queueReads) {
+			try {
+				
+				if((numRead = socketChannel.read(this._readBuffer))>0){
+					byte[] data=new byte[numRead];
+					this._readBuffer.flip();
+					
+					this._readBuffer.get(data, 0, numRead);
+					_queueReads.add(data);
+					
+					while((numRead=this._readBuffer.remaining())>0){
+						data=new byte[numRead];
+						this._readBuffer.get(data, 0, numRead);
+						_queueReads.add(data);
+					}
+					try {
+						_queueReads.wait((queueReadCount+2));
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					}
+					this._readBuffer.clear();
+				}
+				
+				_processingReadBytes=!_queueReads.isEmpty();
+				_queueReads.notify();
+				
+				
+			} catch (IOException e) {
+				possibleReadKey.cancel();
+				socketChannel.close();
+			}
+		}
+		if (numRead == -1) {
+			// Remote entity shut the socket down cleanly. Do the
+			// same from our end and cancel the channel.
+			possibleReadKey.channel().close();
+			possibleReadKey.cancel();
+			return;
+		}	
+	}
+
+	private List<byte[]> _queueWrites=new LinkedList<byte[]>();
+	public void writeOutBytes(ArrayList<byte[]> bytesToWriteOut) throws Exception {
+		if(!bytesToWriteOut.isEmpty()){
+			synchronized (_queueWrites) {
+				while(!bytesToWriteOut.isEmpty()) this._queueWrites.add(bytesToWriteOut.remove(0));
+			}
+		}
+	}
+}

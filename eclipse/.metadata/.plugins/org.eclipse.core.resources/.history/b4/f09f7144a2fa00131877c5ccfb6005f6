@@ -1,0 +1,80 @@
+package inovo.message.gateway.filters;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+
+public class StatusFilter extends InovoHTMLPageWidget {
+
+	private StatusFilter _statusFilterRef=null;
+	
+	public StatusFilter(InovoWebWidget parentWidget, InputStream inStream) {
+		super(parentWidget, inStream);
+		this._statusFilterRef=this;
+	}
+	
+	private File _filterIOFile=null;
+	private FileOutputStream _filterIOFileResponse=null;
+	private OutputStream _filterOutputBuffer=new OutputStream(){
+		@Override
+		public void write(int b) throws IOException {
+			this.write(new byte[]{(byte)b});
+		}
+		
+		public void write(byte[] b) throws IOException {
+			this.write(b, 0, b.length);
+		}
+		
+		public void write(byte[] b, int off, int len) throws IOException {
+			try {
+				_statusFilterRef.respondBytes(b);
+			} catch (Exception e) {
+			}
+		}
+	};
+	
+	@Override
+	public void executeContentWidget() throws Exception {
+		HashMap<String,ArrayList<String>> filterParamsRead=new HashMap<String, ArrayList<String>>();
+		
+		if(!this.requestParameters().isEmpty()){
+			for(String filterParamsReadkeys:this.requestParameters().keySet()){
+				
+			}
+		}
+		
+		byte [] bytesFileOut=new byte[8192];
+		int bytesFileOutRead=0;
+		while((bytesFileOutRead=_filterIOFileResponse.read(bytesFileOut))>-1){
+			if(bytesFileOutRead>0){
+				byte[] byteFilterFoundOut=new byte[bytesFileOutRead];
+				System.arraycopy(bytesFileOut, 0, byteFilterFoundOut, 0, bytesFileOutRead);
+				this._filterOutputBuffer.write(byteFilterFoundOut);
+				byteFilterFoundOut=null;
+			}
+		}
+	}
+	
+	public void readRowData(Integer rowindex,ArrayList<String> rowData){
+		ArrayList<String> currentRowData=new ArrayList<String>(rowData);
+		if(rowindex==0){
+			if(_filterIOFileResponse!=null){
+				inovo.adhoc.AdhocUtils.inputStreamToOutputStream(inr, out);
+			}
+		}
+	}
+	
+	@Override
+	public void cleanUpWidget() {
+		_filterIOFile.delete();
+		super.cleanUpWidget();
+	}
+}

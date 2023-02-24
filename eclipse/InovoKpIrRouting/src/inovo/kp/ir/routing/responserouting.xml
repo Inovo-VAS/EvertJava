@@ -1,0 +1,16 @@
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+   <s:Body>
+      <SearchForCustomerResponse xmlns="http://tempuri.org/">
+         <SearchForCustomerResult xmlns:a="http://schemas.datacontract.org/2004/07/KingPrice.Presence.WebServices.Contracts" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+            <a:AgentId/>
+            <a:Comment/>
+            <a:CustomerIDNumber>8807195221080</a:CustomerIDNumber>
+            <a:CustomerName>Christopher</a:CustomerName>
+            <a:CustomerSurname>Manicum</a:CustomerSurname>
+            <a:DivertVPN/>
+            <a:PolicyNumber>KP1006699</a:PolicyNumber>
+            <a:Priority>1</a:Priority>
+         </SearchForCustomerResult>
+      </SearchForCustomerResponse>
+   </s:Body>
+</s:Envelope>

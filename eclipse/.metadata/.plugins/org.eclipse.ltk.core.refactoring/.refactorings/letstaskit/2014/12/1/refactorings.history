@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Rename resource &apos;letstaskit/src/letstaskit/system/html/Welcome.html&apos; to &apos;LetsTaskIt.html&apos;" description="Rename resource &apos;Welcome.html&apos;" flags="7" id="org.eclipse.ltk.core.refactoring.rename.resource" input="src/letstaskit/system/html/Welcome.html" name="LetsTaskIt.html" stamp="1419793474664" updateReferences="true"/>
+</session>

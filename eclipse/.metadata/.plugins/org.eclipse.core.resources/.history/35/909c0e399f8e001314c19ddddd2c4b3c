@@ -1,0 +1,36 @@
+package baasserver;
+
+import java.io.IOException;
+import java.io.OutputStream;
+import java.util.ArrayList;
+
+public class ClientOutputStream extends OutputStream {
+
+	private Client _client=null;
+	public ClientOutputStream(Client client){
+		this._client=client;
+	}
+	
+	@Override
+	public void write(int b) throws IOException {
+		
+	}
+	
+	@Override
+	public void write(byte[] bytes) throws IOException {
+		
+	}
+	
+	private ArrayList<byte[]> _bytesWritten=new ArrayList<byte[]>();
+	
+	@Override
+	public void write(byte[] bytes, int index, int length) throws IOException {
+		if(length>0){
+			synchronized (_bytesWritten) {
+				byte[length]
+				this._bytesWritten.add(e)
+			}
+		}
+	}
+
+}

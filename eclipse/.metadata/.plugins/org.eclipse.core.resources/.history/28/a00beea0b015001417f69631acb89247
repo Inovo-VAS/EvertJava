@@ -1,0 +1,22 @@
+package pce.accountants.controls;
+
+import saas.protocol.Request;
+import saas.protocol.Widget;
+import saas.protocol.widget.controls.Panel;
+
+public class TitlePanel extends Panel {
+
+	public TitlePanel(Request request, Widget parentWidget) {
+		super(request, parentWidget);
+	}
+
+	@Override
+	public void executePanel() {
+		String[] title=this.title().toUpperCase().replaceAll("[.]", " ").split("[ ]");
+	}
+	
+	public String title(){
+		String title=this.widgetProperty("title");
+		return (title.equals("")?this.getClass().getName():title);
+	}
+}

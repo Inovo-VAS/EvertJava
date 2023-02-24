@@ -1,0 +1,21 @@
+package inovo.mail.reports;
+
+import java.io.InputStream;
+
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+
+public class Monitors extends InovoHTMLPageWidget {
+
+	public Monitors(InovoWebWidget parentWidget, InputStream inStream) {
+		super(parentWidget, inStream);
+		// TODO Auto-generated constructor stub
+	}
+
+	public void generatedReport() throws Exception{
+		String suggestedDate=this.requestParameter("suggestedDate");
+		String toRecievers=inovo.servlet.InovoServletContextListener.inovoServletListener().configProperty("TORECIEVERSDIRECT");
+		
+		VolvoReportsQueue.sendMail("DAILY REPORTING"+(suggestedDate.equals("")?"":("["+suggestedDate+"]")),"shelley.loxley@volvo.com",toRecievers.equals("")?"ejoubert@inovo.co.za;shelley.loxley@volvo.com":toRecievers, "DAILY REPORT:\r\n AGENT_SERVICELEVEL_BREAKDOWN", "smtp.gmail.com", "587","ejoubert@inovo.co.za","Nan6inga","AGENT_SERVICELEVEL_BREAKDOWN", suggestedDate);
+	}
+}

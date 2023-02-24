@@ -1,0 +1,111 @@
+package inovo.queues;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class Queue {
+	
+	private static ArrayList<Queue> _queues=new ArrayList<Queue>();
+	protected static boolean _killAllQueues=false;
+	
+	private ArrayList<Request> _requests=new ArrayList<Request>();
+	private HashMap<String,Request> _requestAlliasses=new HashMap<String,Request>();
+	
+	public Queue() throws Exception{
+		this.initiate();
+		synchronized (_queues) {
+			_queues.add(this);
+		}
+	}
+
+	public void initiate() throws Exception{
+	}
+	
+	public Request queueRequest(Request requestToQueue,boolean queueModal) throws Exception{
+		return queueRequest("", requestToQueue, queueModal);
+	}
+
+	public Request queueRequest(String requestAllias,Request requestToQueue,boolean queueModal) throws Exception{
+		synchronized (_requests) {
+			if((requestAllias=(requestAllias==null?"":requestAllias.trim())).toLowerCase().equals("")){
+				_requests.add(requestToQueue);
+				requestToQueue.attachQueue(this);
+			}
+			else{
+				if(!this._requestAlliasses.containsKey(requestAllias)){
+					requestToQueue.setRequestAllias(requestAllias);
+					this._requestAlliasses.put(requestAllias, requestToQueue);
+					_requests.add(requestToQueue);
+					requestToQueue.attachQueue(this);
+				}
+				else{
+					requestToQueue=null;
+				}
+			}
+		}
+		if(requestToQueue!=null){
+			new Thread(requestToQueue).start();
+			if(queueModal){
+				while(!requestToQueue.completed()){
+					synchronized (requestToQueue) {
+						requestToQueue.wait(2);
+					}
+				}
+			}
+		}
+		return requestToQueue;
+	}
+	
+	protected void detachRequest(Request request){
+		synchronized (_requests) {
+			_requests.remove(request);
+			if(!request.requestAllias().equals("")){
+				this._requestAlliasses.remove(request.requestAllias());
+			}
+		}
+	}
+	
+	protected boolean _killRequests=false;
+	public void kill() {
+		this._killRequests=true;
+		synchronized (_requests) {
+			for(Request request:this._requests){
+				request.kill();
+			}
+		}
+		while(!_requests.isEmpty()){
+			synchronized (this) {
+				try {
+					this.wait(2);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+		synchronized (_queues) {
+			_queues.remove(this);
+		}
+	}
+	
+	public static void killAllQueues(){
+		for(final Queue queue:_queues){
+			new Thread(new Runnable() {
+				public void run() {
+					queue.kill();
+				}
+			}).start();
+		}
+		while(!_queues.isEmpty()){
+			try {
+				synchronized (_queues) {
+					_queues.wait(10);
+				}
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+		//_unQueueQueueService.shutdown();
+	}
+}

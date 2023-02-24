@@ -1,0 +1,84 @@
+package baas.net.widgets;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import baas.net.RequestHandle;
+import baas.net.broker.RequestWidget;
+
+public class Page extends Form{
+	
+	public Page(RequestWidget parentRequestWidget, RequestHandle requestHandle,
+			String[] properties) {
+		this(parentRequestWidget, requestHandle,baas.utils.Utils.generatePropertiesMap(properties,"="));
+	}
+	
+	public Page(RequestWidget parentRequestWidget, RequestHandle requestHandle,
+			HashMap<String, String> properties) {
+		super(parentRequestWidget, requestHandle, properties);
+	}
+	
+	@Override
+	public void preExecuteForm() throws Exception {
+		this.requestHandle().respondString("<!DOCTYPE html>\r\n");
+		this.startElement("html", null);
+			this.preExecutePageHead();
+			this.preExecutePageBody();
+			super.preExecuteForm();
+	}
+	
+	public void preExecutePageBody() throws Exception{
+		this.startElement("body", null);
+			this.startElement("div",new String[]{"id=masterdialoghandle"});this.endElement("div");
+	}
+
+	public void preExecutePageHead() throws Exception{
+		this.startElement("head", null);
+			this.startStyle(null);this.requestHandle().respondString("@import url(/jquery/jquery.ui.css);");this.endStyle();
+			
+			this.startScript(new String[]{"src=/jquery/jquery.js"});this.endScript();
+			this.startScript(new String[]{"src=/jquery/jquery.ui.js"});this.endScript();
+			this.startScript(new String[]{"src=/baas/net/widgets/jquery/core.js"});this.endScript();
+		this.endElement("head");
+	}
+	
+	@Override
+	public void executeForm() throws Exception {
+		this.executePage();
+	}
+
+	public void executePage() throws Exception{	
+		new TabsPanel(this, this.requestHandle(), new String[]{"id=testbar","actionlayout=vertical"}){
+			@Override
+			public ArrayList<String[]> menuActions() {
+				ArrayList<String[]> actions=new ArrayList<String[]>();
+				actions.add("caption=MENU 1;command=setMethod;starticon=ui-icon-play;endicon=ui-icon-stop".split("[;]"));
+				actions.add("caption=MENU 2;command=setMethod".split("[;]"));
+				return actions;
+			}
+		}.completedRequest(true);
+		new Dialog(this, this.requestHandle(), new String[]{"id=testdialog","title=hello there","modal=true"}){
+			public String[] dialogButtons() {return new String[]{
+					"BUTTON:CONFIRM=command=setMethod","BUTTON:CANCEL="
+				};};
+			public void executeDialogContent() throws Exception {
+				this.requestHandle().respondString("THE DIALOG CONTENT");
+			};
+		}.completedRequest(true);
+	}
+
+	@Override
+	public void postExecuteForm() throws Exception {
+			super.postExecuteForm();
+		this.postExecutePageBody();
+	}
+
+	public void postExecutePageBody() throws Exception{
+			this.endElement("body");
+		this.endElement("html");
+	}
+	
+	public void setMethod() throws Exception{
+		
+	}
+}

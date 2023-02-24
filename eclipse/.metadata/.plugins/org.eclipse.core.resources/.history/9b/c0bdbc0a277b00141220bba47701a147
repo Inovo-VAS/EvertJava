@@ -1,0 +1,297 @@
+package paas.sendreceive;
+
+import java.io.File;
+import java.io.InputStream;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Set;
+
+public class Request {
+	
+	private Request _parentRequest=null;
+	private Request _topRequest=null;
+	
+	private boolean _hasParent=false;
+	public Request(){
+		this(null);
+	}
+	
+	public Request(Request parentRequest){
+		if((_hasParent=(this._parentRequest=parentRequest)==null)){
+			this._topRequest=this;
+		}
+		else{
+			this._topRequest=this._parentRequest.topRequest();
+		}
+		
+	}
+	
+	public Request parentRequest(){
+		return this._parentRequest;
+	}
+	
+	public Request topRequest(){
+		return this._topRequest;
+	}
+	
+	public String command(){
+		return this._command;
+	}
+	private String _command="";	
+	public void setCommand(String command){
+		this._command=command.toUpperCase().trim();
+	}
+	
+	public String url(){
+		return this._url;
+	}
+	
+	private String _url="";	
+	public void setUrl(String url){
+		this._url=url.trim();
+	}
+	
+	public String urlResourceRootPath(){
+		return this._url.indexOf("/")==-1?"/":this._url.substring(0,this._url.lastIndexOf("/")+1);
+	}
+	
+	public String urlResourceName(){
+		return this._url.substring(this._url.lastIndexOf("/")+1);
+	}
+	
+	public String urlExtenstion(){
+		return (this._url.lastIndexOf("/")<this._url.lastIndexOf(".")?this._url.substring(this._url.lastIndexOf(".")+1):"");
+	}
+	
+	public String protocol(){
+		return this._protocol;
+	}
+	private String _protocol="";	
+	public void setProtocol(String protocol){
+		this._protocol=protocol.trim().toUpperCase();
+	}
+	
+	private HashMap<String,String> _requestHeaders=new HashMap<String, String>();
+	public Set<String> requestHeaderNames(){
+		return this._requestHeaders.keySet();
+	}
+	public void setRequestHeader(String header,String value){
+		header=header.trim().toUpperCase();
+		value=value.trim();
+		this._requestHeaders.put(header, value);
+	}
+	public String requestHeader(String header){
+		String requestHeader=this._requestHeaders.get(header.trim().toUpperCase());
+		return requestHeader=requestHeader==null?"":requestHeader;
+	}
+	
+	private HashMap<String,String> _responseHeaders=new HashMap<String, String>();
+	public Set<String> responseHeaderNames(){
+		return this._responseHeaders.keySet();
+	}
+	public void setResponseHeader(String header,String value){
+		header=header.trim().toUpperCase();
+		value=value.trim();
+		this._responseHeaders.put(header, value);
+	}
+	public String responseHeader(String header){
+		String responseHeader=this._responseHeaders.get(header.trim().toUpperCase());
+		return responseHeader=responseHeader==null?"":responseHeader;
+	}
+		
+	private HashMap<String,ArrayList<String>> _parameters=new HashMap<String, ArrayList<String>>(); 
+	public void setParameter(String param,String value,boolean override){
+		if((param=param==null?"":param.trim().toUpperCase()).equals("")) return;
+		value=value==null?"":value.trim();
+		ArrayList<String> paramValues=this._parameters.get(param);
+		if(paramValues==null){
+			this._parameters.put(param, paramValues=new ArrayList<String>());
+		}
+		
+		if(override){
+			paramValues.clear();
+			if(!value.equals("")) paramValues.add(value);
+		}
+		else{
+			paramValues.add(value);
+		}	
+	}
+	
+	private HashMap<String,HashMap<String,String>> _parameterProperties=new HashMap<String, HashMap<String,String>>();
+	public Set<String> parameterPropertyNames(String param){
+		if(this._parameterProperties.containsKey(param=param.toUpperCase())){
+			return this._parameterProperties.get(param).keySet();
+		}
+		return null;	
+	}
+	
+	public String parameterProperty(String param,String prop){
+		HashMap<String,String> properties=this._parameterProperties.get(param=param.toUpperCase());
+		if(properties==null){
+			return "";
+		}
+		return properties.get(prop.toUpperCase());
+	}
+	
+	public void setParameterProperty(String param,String prop,String value){
+		HashMap<String,String> properties=this._parameterProperties.get(param=param.toUpperCase());
+		if(properties==null){
+			this._parameterProperties.put(param, properties=new HashMap<String,String>());
+		}
+		properties.put(prop.toUpperCase(), value);
+	}
+	
+	public Set<String> parameterNames(){
+		return this._parameters.keySet();
+	}
+	
+	public ArrayList<String> parameter(String param){
+		return this._parameters.get(param=param==null?"":param.trim().toUpperCase());
+	}
+	
+	
+	public String parameterString(String param){
+		return this.parameterString(param,"");
+	}
+	
+	public String parameterString(String param,String valSep){
+		String parameterString="";
+		ArrayList<String> paramValues=this.parameter(param);
+		if(paramValues!=null){
+			for(String pramVal:paramValues){
+				parameterString+=pramVal+valSep;
+			}
+			if(!valSep.equals("")) parameterString=parameterString.substring(0,parameterString.length()-valSep.length());
+		}
+		return parameterString;
+	}
+	
+	public HashMap<String, ArrayList<String>> parameters(){
+		return this._parameters;
+	}
+	
+	private HashMap<String,File> _parameterFiles=new HashMap<String, File>();
+	
+	public HashMap<String,File> parameterFiles(){
+		return this._parameterFiles;
+	}
+	
+	public void setParameterFile(String param,File file){
+		this._parameterFiles.put(param.toUpperCase(), file);
+	}
+	
+	public void resetRequest(){
+		while(!this._parameterFiles.isEmpty()){
+			this._parameterFiles.remove(this._parameterFiles.keySet().toArray()[0]).delete();
+		}
+		
+		this._parameterFiles.clear();
+		
+		while(!this._parameters.isEmpty()){
+			this._parameters.remove(this._parameters.keySet().toArray()[0]).clear();
+		}
+		while(!this._parameterProperties.isEmpty()){
+			this._parameterProperties.remove(this._parameterProperties.keySet().toArray()[0]).clear();
+		}
+		this._parameterProperties.clear();
+		this._parameters.clear();
+		this._requestHeaders.clear();
+		this._responseHeaders.clear();
+		this._command="";
+		this._url="";
+		this._protocol="";
+		if(_subRequest!=null){
+			_subRequest.cleanupRequest();
+			_subRequest=null;
+		}
+	}
+	
+	private Request _subRequest=null;
+	public void executeRequest() throws Exception{
+		ArrayList<String> commands=this.parameter("COMMAND");
+		
+		if(commands==null){
+			if(this.urlExtenstion().equals("")){
+				_subRequest=this.instanseOfSubRequest();
+			}
+			else if(!this.respondResourceAsStream(this._url)){
+				_subRequest=this.instanseOfSubRequest();
+			}
+			if(_subRequest!=null){
+				_subRequest.performRequest();
+			}
+		}
+		else{
+			if((_subRequest=this.instanseOfSubRequest())!=null){
+				ArrayList<Method> subRequestMethods=new ArrayList<Method>();
+				String requestWidgetPath=this.url().substring(0,this.url().length()-this.urlResourceName().length())+this.urlResourceName();
+				while(!commands.isEmpty()){
+					Method subRequestMethod=paas.reflection.ReflectUtils.findMethod(_subRequest.getClass().getMethods(), commands.remove(0), false);
+					if(subRequestMethod!=null){
+						subRequestMethods.add(subRequestMethod);
+					}
+				}
+				
+				while(!subRequestMethods.isEmpty()){
+					try{
+						subRequestMethods.remove(0).invoke(_subRequest, null);
+					}
+					catch(Exception e){
+						e.printStackTrace();
+					}
+				}
+			}
+		}
+	}
+	
+	public Request instanseOfSubRequest() throws Exception {
+		return null;
+	}
+
+	public void performRequest() throws Exception{
+	}
+
+	public void wrapupRequest() throws Exception{
+	}
+	
+	public boolean respondResourceAsStream(String resourceUrl) throws Exception{
+		InputStream resourceStream=paas.reflection.ReflectUtils.findResourceAsStream(resourceUrl,this.getClass());
+		if(resourceStream!=null){
+			byte[] resourceBuffer=new byte[8192];
+			int resourceBufferRead=0;
+			while((resourceBufferRead=resourceStream.read(resourceBuffer, 0, resourceBuffer.length))>-1){
+				if(resourceBufferRead>0){
+					byte[] actualResourceBytes=new byte[resourceBufferRead];
+					System.arraycopy(resourceBuffer, 0, actualResourceBytes, 0, resourceBufferRead);
+					this.respondBytes(actualResourceBytes);
+					actualResourceBytes=null;
+				}
+			}
+			return true;
+		}
+		return false;
+	}
+
+	public boolean respondString(String string){
+		return this.respondBytes(string.getBytes());
+	}
+	
+	public boolean respondBytes(byte[] bytes){
+		if(bytes==null){
+			return false;
+		}
+		else if(bytes.length==0){
+			return false;
+		}
+		return true;
+	}
+	
+	public void cleanupRequest(){
+		this.resetRequest();
+	}
+
+	public void processRequestResourceByte(byte b, char c) {
+		// TODO Auto-generated method stub		
+	}
+}

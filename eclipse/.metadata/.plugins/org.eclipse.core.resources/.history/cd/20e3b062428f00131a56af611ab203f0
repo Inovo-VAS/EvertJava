@@ -1,0 +1,63 @@
+package baasserver;
+
+import java.io.BufferedOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.ClosedChannelException;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
+import java.nio.channels.spi.SelectorProvider;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+
+import baasserver.protocols.IORequestHandle;
+import baasserver.protocols.IOutput;
+
+public class ClientSocketHandle extends InputOutputHandle{
+	
+	private Client _client=null;
+	
+	private ClientInputStream _input=null;
+	private ClientOutputStream _output=null;
+	
+	public ClientSocketHandle(Client client,SocketChannel channel,ClientInputStream input,ClientOutputStream output) throws IOException{
+		super(client, channel);
+		this._input=input;
+		this._output=output;
+	}
+	
+	@Override
+	public void writeBytes(byte[] bytesToWrite) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void writeBytesAppendTop(byte[] bytesToWrite) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	
+
+	@Override
+	public void run() {
+		this.bytesArrayToWrite().addAll(this._output.readBytesWritten());
+		super.run();
+	}
+	
+	public void shutdownAll() {
+		this._client.shutDownAll();
+		this._client.shutdownClient();
+	}
+	
+	public void shutdownRequestEnvironment() {
+		this._client.shutdownClient();
+	}
+}

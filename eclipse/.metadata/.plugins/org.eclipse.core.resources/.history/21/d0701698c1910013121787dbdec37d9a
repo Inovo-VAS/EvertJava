@@ -1,0 +1,50 @@
+package baasserver.db.system;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.TreeMap;
+
+import baasserver.web.system.WebSystem;
+
+public class DBSystem extends WebSystem {
+	private HashMap<String, DBManager> _dbmanagers=new HashMap<String,DBManager>();
+	
+	public DBManager registerDBManager(String dbmanagername,String[] dbproperties) throws Exception{
+		DBManager registerDBManager=null;
+		synchronized (_dbmanagers) {
+			if(_dbmanagers.containsKey(dbmanagername=dbmanagername.toUpperCase())){
+				registerDBManager=_dbmanagers.get(dbmanagername);
+			}
+			else{
+				_dbmanagers.put(dbmanagername.toUpperCase(),registerDBManager=new DBManager(this, dbproperties));
+			}
+		}
+		return registerDBManager;
+	}
+	
+	public static Object rowField(TreeMap<Integer, ArrayList<Object>> dataset, int rowindex, String fieldName)
+	  {
+	    if (dataset.isEmpty()) return "";
+	    if (dataset.size() == 1) {
+	      return "";
+	    }
+	    int colindex = dataset.get(0).indexOf(fieldName.toUpperCase());
+	    if (colindex > -1) {
+	      return  dataset.get(rowindex).get(colindex);
+	    }
+	    return "";
+	  }
+
+	  public static String rowField(TreeMap<Integer, ArrayList<String>> dataset, int rowindex, int fieldIndex)
+	  {
+	    if (dataset.isEmpty()) return "";
+	    if (dataset.size() == 1) {
+	      return "";
+	    }
+	    int colindex = fieldIndex;
+	    if ((colindex > -1) && (colindex < dataset.get(0).size())) {
+	      return dataset.get(rowindex).get(colindex);
+	    }
+	    return "";
+	  }
+}

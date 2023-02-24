@@ -1,0 +1,391 @@
+package baasserver;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.channels.SelectableChannel;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
+import java.nio.channels.spi.SelectorProvider;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import com.sun.org.apache.xalan.internal.xsltc.compiler.sym;
+
+import baasserver.io.handler.InputOutputHandler;
+
+public class Client {
+	
+	public class ClientInputStream extends InputStream{
+		
+		private Client _client=null;
+		private ClientSocketHandle _clientSocketHandle=null;
+		private ArrayList<byte[]> _recievedBytes=new ArrayList<byte[]>();
+		
+		private ClientInputStream(Client client,ClientSocketHandle clientSocketHandle){
+			this._client=client;
+			this._clientSocketHandle=clientSocketHandle;
+			this._clientSocketHandle.setClientInputStream(this);
+		}
+		
+		private int _readSingleAtIndex=0;
+		private byte[] _readSingleBytes=null;
+		@Override
+		public int read() throws IOException {
+			_readSingleBytes=(_readSingleBytes==null?_recievedBytes.isEmpty()?null:_recievedBytes.remove(0):_readSingleBytes);
+			if(_readSingleBytes!=null){
+				int intb=_readSingleBytes[_readSingleAtIndex++];
+				if(_readSingleAtIndex==_readSingleBytes.length){
+					_readSingleBytes=null;
+					_readSingleAtIndex=0;
+				}
+				return intb;
+			}
+			return -1;
+		}
+		
+		@Override
+		public int read(byte[] b) throws IOException {
+			return this.read(b, 0, b.length);
+		}
+		
+		@Override
+		public int read(byte[] b, int off, int len) throws IOException {
+			int totalBytesRead=-1;
+			synchronized (_recievedBytes) {
+				while(!_recievedBytes.isEmpty()){
+					totalBytesRead=(totalBytesRead==-1?0:totalBytesRead);
+					byte[] currentRecievedBytes=null;
+					int currentRecievedBytesIndex=0;
+					while(off<len){
+						if((currentRecievedBytes=(currentRecievedBytes==null?(!_recievedBytes.isEmpty()?_recievedBytes.remove(0):null):currentRecievedBytes))==null) break;
+						
+						b[off++]=currentRecievedBytes[currentRecievedBytesIndex++];
+						totalBytesRead++;
+						if(currentRecievedBytesIndex==currentRecievedBytes.length){
+							currentRecievedBytes=null;
+							currentRecievedBytesIndex=0;
+						}
+						
+						if(off==len) break;
+					}
+					if(currentRecievedBytes!=null){
+						if(currentRecievedBytesIndex<currentRecievedBytes.length){
+							byte[] remainingBytes=new byte[currentRecievedBytes.length-currentRecievedBytesIndex];
+							System.arraycopy(currentRecievedBytes, currentRecievedBytesIndex, remainingBytes, 0, remainingBytes.length);
+							_recievedBytes.add(0, remainingBytes);
+						}
+					}
+					break;
+				}
+			}
+			return totalBytesRead;
+		}
+		
+		public void retreiveRemoteBytes() throws Exception {
+			ArrayList<byte[]> recievedBytes=new ArrayList<byte[]>();
+			this._clientSocketHandle.readBytesToInput(recievedBytes);
+			synchronized (_recievedBytes) {
+				this._recievedBytes.addAll(recievedBytes);
+			}
+			recievedBytes.clear();
+			recievedBytes=null;
+		}
+	}
+	
+	public class ClientOutputStream extends OutputStream implements Runnable{
+
+		private Thread _clientOutputThread=null;
+		private Client _client=null;
+		private ClientSocketHandle _clientSocketHandle=null;
+		private ClientOutputStream(Client client,ClientSocketHandle clientSocketHandle){
+			this._client=client;
+			this._clientSocketHandle=clientSocketHandle;
+			this._clientSocketHandle.setClientOutputStream(this);
+			this._currentBytesBuffer=new byte[1024];
+		}
+		
+		private Object outputLock=new Object();
+		private ArrayList<byte[]> _bytesToSend=new ArrayList<byte[]>();
+		
+		@Override
+		public void write(int arg0) throws IOException {
+			
+		}
+		
+		@Override
+		public void write(byte[] b) throws IOException {
+			this.write(b, 0, b.length);
+		}
+		
+		private byte[] _currentBytesBuffer=null;
+		private int _currentBytesBufferIndex=0;
+		
+		@Override
+		public void write(byte[] b, int off, int len) throws IOException {
+			int bytesLength=b.length;
+			int actuallen=len;
+			
+			int actualbindex=0;
+			
+			while(off<bytesLength){
+				_currentBytesBuffer[_currentBytesBufferIndex++]=b[off++];
+				if(_currentBytesBuffer.length==_currentBytesBufferIndex){
+					this._bytesToSend.add(_currentBytesBuffer);
+					_currentBytesBuffer=new byte[1024];
+					_currentBytesBufferIndex=0;
+					if(_bytesToSend.size()==10){
+						this.flush();
+					}
+				}
+				actualbindex++;
+				if(actualbindex==len) break;
+			}
+		}
+		
+		@Override
+		public void flush() throws IOException {
+			if(this._currentBytesBufferIndex>0){
+				this._bytesToSend.add(_currentBytesBuffer);
+				_currentBytesBuffer=new byte[1024];
+				this._currentBytesBufferIndex=0;
+			}
+			ArrayList<byte[]> bytesBeingSent=new ArrayList<byte[]>();
+			synchronized (this._bytesToSend) {
+				bytesBeingSent.addAll(_bytesToSend);
+				this._bytesToSend.clear();
+			}
+			this._clientSocketHandle.writeBytesToOutput(bytesBeingSent);
+		}
+		
+		public void write(String stringToWrite) throws IOException{
+			stringToWrite=(stringToWrite==null?"":stringToWrite);
+			if(!stringToWrite.equals("")) this.write(stringToWrite.getBytes());
+		}
+
+		public void writeln(String stringToWrite) throws IOException{
+			this.write(stringToWrite+"\r\n");
+		}
+		
+		
+		@Override
+		public void run() {
+			
+		}
+	}
+	
+	public class  ClientSocketHandle extends InputOutputHandler{
+
+		private Client _client=null;
+		
+		private HashMap<String,String> _responseHeaders=new HashMap<String,String>();
+		private boolean _populateResponseHeaders=false;
+		private boolean _responseHeadersPopulated=false;
+		private String _responseHeaderLine="";
+		public ClientSocketHandle(Client client,SelectableChannel channel,boolean populateResponseHeaders) throws Exception {
+			super(channel);
+			this._client=client;
+			this._populateResponseHeaders=populateResponseHeaders;
+		}
+		
+		private long _requiredContentLength=0;
+		private long _retrievedContentLength=0;
+		@Override
+		public byte[] bytesReadFromChannel(byte[] bytesFromChannel) {
+			if(_populateResponseHeaders&&!_responseHeadersPopulated){
+				int bytesFromChannelIndex=0; 
+				while(bytesFromChannelIndex<bytesFromChannel.length){
+					char rhc=(char)bytesFromChannel[bytesFromChannelIndex++];
+					if(rhc=='\r') continue;
+					if(rhc=='\n'){
+						if(!(_responseHeadersPopulated=_responseHeaderLine.equals(""))){
+							if(_responseHeaderLine.indexOf(":")>0){
+								this._responseHeaders.put(_responseHeaderLine.toUpperCase().substring(0,_responseHeaderLine.indexOf(":")).trim(), _responseHeaderLine.substring(_responseHeaderLine.indexOf(":")+1).trim());
+							}
+							else{
+								_responseHeaderLine="";
+							}
+						}
+						else{
+							_retrievedContentLength=0;
+							if(this._responseHeaders.containsKey("CONTENT-LENGTH")){
+								_requiredContentLength=Long.parseLong(this._responseHeaders.get("CONTENT-LENGTH"));
+							}
+							
+							if(bytesFromChannelIndex<bytesFromChannel.length){
+								_retrievedContentLength=bytesFromChannel.length-bytesFromChannelIndex;
+								byte[] remainingBytesFromChannel=new byte[(int)_retrievedContentLength];
+								System.arraycopy(bytesFromChannel, bytesFromChannelIndex, remainingBytesFromChannel,0, remainingBytesFromChannel.length);
+								return remainingBytesFromChannel;
+							}
+						}
+						this._responseHeaderLine="";
+						continue;
+					}
+					this._responseHeaderLine+=rhc;
+				}
+				return null;
+			}
+			_retrievedContentLength=(this._populateResponseHeaders?_retrievedContentLength+bytesFromChannel.length:_retrievedContentLength);
+			return super.bytesReadFromChannel(bytesFromChannel);
+		}
+		
+		public HashMap<String,String> responseHeaders(){
+			return this._responseHeaders;
+		}
+		
+		public void clearHeaders(){
+			this._responseHeaders.clear();
+		}
+		
+		public void readBytesToInput(ArrayList<byte[]> recievedBytes) throws Exception {
+			this.readBytesFromChannel(recievedBytes, _channel, 1024);
+		}
+
+		private ClientInputStream _clientInputStream=null;
+		private void setClientInputStream(ClientInputStream clientInputStream) {
+			this._clientInputStream=clientInputStream;
+		}
+		
+		private ClientOutputStream _clientOutputStream=null;
+		private void setClientOutputStream(ClientOutputStream clientOutputStream) {
+			this._clientOutputStream=clientOutputStream;
+		}
+
+		@Override
+		public void initiateSelectorChannel(Selector selector,
+				SelectableChannel channel) throws Exception{
+			this.registerReadWriteAcceptConnect(selector, channel, "CONNECT");
+		}
+		
+		private boolean _connected=false;
+		
+		public boolean connected(){
+			return this._connected;
+		}
+		
+		private Object _clientSocketHandleLock=new Object();
+		private boolean _disconnected=false;
+		
+		public boolean disconnect(){
+			this._connected=true;
+			synchronized (_clientSocketHandleLock) {
+				_clientSocketHandleLock.notify();
+			}
+			while(!this._disconnected){
+				synchronized (_clientSocketHandleLock) {
+					try {
+						_clientSocketHandleLock.wait(5);
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					}
+				}
+			}
+			return this._disconnected;
+		}
+		
+		@Override
+		public void run() {
+			
+			try {
+				while(!_connected){
+					_connected=this.connectChannel();
+				}
+			} catch (Exception e) {
+				_connected=false;
+			}
+			while(_connected){
+				synchronized (_clientSocketHandleLock) {
+					try {
+						if(_retrievedContentLength==_requiredContentLength){
+							_clientSocketHandleLock.wait();
+						}
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					}
+				}
+				try {
+					this._clientInputStream.retreiveRemoteBytes();
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+			}
+			this._disconnected=!this._connected;
+		}
+	
+		@Override
+		public void doneWriting() throws Exception{
+			synchronized (_clientSocketHandleLock) {
+				_clientSocketHandleLock.notify();
+			}
+			super.doneWriting();
+			if(this._populateResponseHeaders){
+				this._responseHeaders.clear();
+				this._responseHeadersPopulated=false;
+				this._responseHeaderLine="";
+			}
+		}
+
+		public boolean connect() throws Exception{
+			return this.connectChannel();
+		}
+	}
+	
+	public ClientSocketHandle clientSocketHandle(){
+		return this._clientSocktHandle;
+	}
+	
+	private ClientSocketHandle _clientSocktHandle=null;
+	private SocketChannel _channel=null;
+	
+	public Client(String host,int port) throws Exception{
+		this(host,port,true);
+	}
+	
+	public Client(String host,int port,boolean populateResponseHeaders) throws Exception{
+		this(new InetSocketAddress(host, port),populateResponseHeaders);
+	}
+	
+	private ClientInputStream _clientInputStream=null;
+	private ClientOutputStream _clientOutputStream=null;
+	private boolean _clientConnnected=false;
+	public void reConnect() throws Exception{
+		if(this._clientSocktHandle.connected()){
+			this._clientSocktHandle.disconnect();
+			try{
+				this._channel.close();
+			}
+			catch(Exception e){
+				e.printStackTrace();
+			}
+		}
+		this._channel.connect(this._inetAddress);
+		new Thread(this._clientSocktHandle).start();
+	}
+
+	public Client(InetSocketAddress inetaddress) throws Exception{
+		this(inetaddress,true);
+	}
+	
+	private InetSocketAddress _inetAddress=null;
+	public Client(InetSocketAddress inetaddress,boolean populateResponseHeaders) throws Exception{
+		this._channel=SelectorProvider.provider().openSocketChannel();
+		this._channel.configureBlocking(false);
+		this._inetAddress=inetaddress;
+		
+		this._clientSocktHandle=new ClientSocketHandle(this, this._channel,populateResponseHeaders);
+		this._clientInputStream=new ClientInputStream(this,this._clientSocktHandle);
+		this._clientOutputStream=new ClientOutputStream(this,this._clientSocktHandle);
+		
+		this.reConnect();	
+	}
+	
+	public ClientInputStream clientInputStream(){
+		return this._clientInputStream;
+	}
+	
+	public ClientOutputStream clientOutputStream(){
+		return this._clientOutputStream;
+	}
+}

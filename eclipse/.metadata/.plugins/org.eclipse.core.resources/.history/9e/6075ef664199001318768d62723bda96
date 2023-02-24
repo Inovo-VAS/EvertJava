@@ -1,0 +1,81 @@
+package baasserver.io.nio;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+
+public class ServerReaderInputStream extends InputStream {
+
+	private ServerReaderWriter _serverReaderWriter=null;
+	private ArrayList<byte[]> _bytesReadList=new ArrayList<byte[]>();
+	public ServerReaderInputStream(ServerReaderWriter serverReaderWriter){
+		this._serverReaderWriter=serverReaderWriter;
+		this.retrieveReadBytes();
+	}
+	
+	private boolean _shutdownServerReaderInputStream=false;
+	protected void retrieveReadBytes(){
+		new Thread(){
+			public void run() {
+				while(!_shutdownServerReaderInputStream){
+					synchronized (_serverReaderWriter._queueReads) {
+						try {
+							_serverReaderWriter._queueReads.wait();
+						} catch (InterruptedException e) {
+							e.printStackTrace();
+						}
+					}
+					
+					synchronized (_serverReaderWriter._queueReads) {
+						synchronized (_bytesReadList) {
+							_bytesReadList.addAll(_serverReaderWriter._queueReads);
+							_serverReaderWriter._queueReads.clear();
+						}
+					}
+				}
+			};
+		}.start();
+	}
+	
+	public boolean bytesAvailable(){
+		return !_bytesReadList.isEmpty();
+	}
+	
+	@Override
+	public int read() throws IOException {
+		return 0;
+	}
+	
+	@Override
+	public int read(byte[] b) throws IOException {
+		return this.read(b, 0, b.length);
+	}
+	
+	private byte[] _currentBytesRead=null;
+	private int _currentBytesReadIndex=0;
+	
+	@Override
+	public int read(byte[] b, int off, int len) throws IOException {
+		int actualBytesRead=-1;		
+		
+		if(_currentBytesRead==null){
+			synchronized (_bytesReadList) {
+				if(!_bytesReadList.isEmpty()){
+					_currentBytesRead=_bytesReadList.remove(0);
+					_currentBytesReadIndex=0;
+				}
+			}
+		}
+		
+		while(off<len){
+			b[off++]=_currentBytesRead[_currentBytesReadIndex++];
+			actualBytesRead++;
+			if(_currentBytesRead.length==_currentBytesReadIndex){
+				break;
+			}
+		}
+		
+		return 0;
+	}
+
+}

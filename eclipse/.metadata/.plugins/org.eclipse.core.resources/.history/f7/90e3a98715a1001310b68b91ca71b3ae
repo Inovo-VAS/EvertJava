@@ -1,0 +1,23 @@
+package baasserver.db.web.system;
+
+import baasserver.db.protocols.DBWidgetHandle;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class Table extends DBWidgetHandle {
+
+	public Table(IOWidgetHandle parentWidget, IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+
+	public String schema(){
+		String schema=this.property("SCHEMA");
+		if(schema.equals("")) schema=this.dbManager().dbSchema();
+		return schema;
+	}
+	
+	public String table(){
+		String table=this.property("TABLE");
+		return (table.equals("")?this.widgetClassName().toUpperCase():table);
+	}
+}

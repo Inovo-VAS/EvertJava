@@ -1,0 +1,29 @@
+package baas.saas.graphics;
+
+import java.awt.Shape;
+
+public class Graphic implements IGraphic{
+	
+	private IGraphic _graphicGenerator=null;
+	
+	public Graphic(Object gcanvas){
+		if (gcanvas instanceof java.awt.Graphics2D){
+			
+		}
+	}
+
+	@Override
+	public void drawLine(int xstart, int ystart, int xend, int yend) {
+		
+	}
+
+	@Override
+	public void drawRecangle(int xstart, int ystart, int rwidth, int rheight) {
+		
+	}
+
+	@Override
+	public void drawEclipse(int xstart, int ystart, int radius) {
+		
+	}
+}

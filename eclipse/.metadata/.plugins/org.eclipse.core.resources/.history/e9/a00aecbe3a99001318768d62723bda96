@@ -1,0 +1,45 @@
+package baasserver.io.nio;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+
+public class ServerReaderInputStream extends InputStream {
+
+	private ServerReaderWriter _serverReaderWriter=null;
+	private ArrayList<byte[]> _bytesReadList=new ArrayList<byte[]>();
+	public ServerReaderInputStream(ServerReaderWriter serverReaderWriter){
+		this._serverReaderWriter=serverReaderWriter;
+		this.retrieveReadBytes();
+	}
+	
+	private boolean _shutdownServerReaderInputStream=false;
+	protected void retrieveReadBytes(){
+		new Thread(){
+			public void run() {
+				while(!_shutdownServerReaderInputStream){
+					synchronized (_serverReaderWriter._queueReads) {
+						try {
+							_serverReaderWriter._queueReads.wait();
+						} catch (InterruptedException e) {
+							e.printStackTrace();
+						}
+					}
+					
+					synchronized (_serverReaderWriter._queueReads) {
+						synchronized (_bytesReadList) {
+							_bytesReadList.addAll(_serverReaderWriter._queueReads);
+							_serverReaderWriter._queueReads.clear();
+						}
+					}
+				}
+			};
+		}.start();
+	}
+	
+	@Override
+	public int read() throws IOException {
+		return 0;
+	}
+
+}

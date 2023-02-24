@@ -1,0 +1,284 @@
+package inovo.flat.file.leads.importer;
+
+import inovo.db.Database;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FilenameFilter;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
+
+public class FlatFileRegisterRequest {
+	private HashMap<String,String> _flatFileRegisterRequestSettings=new HashMap<String, String>();
+	private Object _flatFileRegisterRequestLock=new Object();
+	
+	private static ArrayList<File> _activeFlatFileRegisterRequestFiles=new ArrayList<File>();
+	private static ConcurrentHashMap<String, File> _activeFlatFileRegisterRequestJobFiles=new ConcurrentHashMap<String, File>();
+	
+	private static ConcurrentHashMap<String,FlatFileRequestCallsImporter> _activeFlatFileRegisterRequestJobCalls=new ConcurrentHashMap<String, FlatFileRequestCallsImporter>();
+	
+	public FlatFileRegisterRequest(HashMap<String,String> flatFileRegisterRequestSettings){
+		this._flatFileRegisterRequestSettings=flatFileRegisterRequestSettings;
+	}
+	
+	private String flatFileRegisterRequestSetting(String name){
+		String flatFileRegisterRequestSetting=(_flatFileRegisterRequestSettings.get(name));
+		return (flatFileRegisterRequestSetting==null?"":flatFileRegisterRequestSetting);
+	}
+	
+	private String _flatFileLookupMask="";
+
+	private ArrayList<String> _flatFileLookupMaskSplitItems=new ArrayList<String>();
+	
+	private HashMap<String,String> _newFileImportRequestSettings=new HashMap<String, String>();
+	
+	public void performFlatFileRegisterRequest(){
+		String sourcePath=this.flatFileRegisterRequestSetting("SOURCEPATH");
+		this._flatFileLookupMask=this.flatFileRegisterRequestSetting("FILELOOKUPMASK");
+		
+		while(!sourcePath.endsWith(File.separator)){
+			sourcePath+=File.separator;
+		}
+			
+		File fsourcepath=new File(sourcePath);
+		
+		if(fsourcepath.exists()){
+			File[] aliasFilesFound=null;
+			try {
+				Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.LEADSDATAFILEALLIASREQUEST SET REQUESTHANDLEFLAG=2 WHERE REQUESTHANDLEFLAG=1 AND REQUESTFILEIMPORTACTIVE=1", null, null);
+			} catch (Exception e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			
+			try {
+				Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "SELECT * FROM <DBUSER>.LEADSDATAFILEALLIASREQUEST WHERE REQUESTHANDLEFLAG=2 AND REQUESTFILEIMPORTACTIVE=1", null, this,"readRequestInfoData");
+			} catch (Exception e) {
+				//TODO
+				e.printStackTrace();
+			}
+			
+			aliasFilesFound=fsourcepath.listFiles(new FilenameFilter() {				
+				@Override
+				public boolean accept(File dir, String name) {
+					if(new File(dir.getAbsolutePath()+File.separator+name).isDirectory()){
+						return false;
+					}
+					int sectionindex=0;
+					_flatFileLookupMaskSplitItems.clear();
+					for(String fnamemasks:_flatFileLookupMask.split("[*]")){
+						_flatFileLookupMaskSplitItems.add(fnamemasks);
+					}
+				
+					while(!_flatFileLookupMaskSplitItems.isEmpty()){
+						String fnameSection=_flatFileLookupMaskSplitItems.remove(0).toUpperCase();
+						if(fnameSection.equals("")) continue;
+						
+						if(!_flatFileLookupMaskSplitItems.isEmpty()){
+							sectionindex=name.toUpperCase().substring(sectionindex).indexOf(fnameSection);
+							if(sectionindex==-1) return false;
+							sectionindex=sectionindex+fnameSection.length();
+						}
+						else{
+							if(!name.toUpperCase().substring(sectionindex).endsWith(fnameSection)){
+								return false;
+							}
+						}
+					}
+					return true;
+				}					
+			});
+			
+			if(aliasFilesFound!=null){
+				if(aliasFilesFound.length>0){
+					_newFileImportRequestSettings.clear();
+					_newFileImportRequestSettings.put("ALIAS", this.flatFileRegisterRequestSetting("ALIAS"));
+					
+					for(File alliasFile:aliasFilesFound){
+						if(_activeFlatFileRegisterRequestFiles.contains(alliasFile)) continue;
+						if(alliasFile.exists()){
+							_newFileImportRequestSettings.put("REQUESTFILEPATH", alliasFile.getAbsolutePath().substring(0,alliasFile.getAbsolutePath().length()-alliasFile.getName().length()));
+							_newFileImportRequestSettings.put("REQUESTFILENAME", alliasFile.getName());
+							
+							String sqlInsertFlatFileRequestEntry="INSERT INTO <DBUSER>.[LEADSDATAFILEALLIASREQUEST] ([LEADSFILEALLIASID] ,[ALIAS] ,[ENABLEALIAS] ,[PREBATCHIMPORTSQLCOMMAND] ,[POSTBATCHIMPORTSQLCOMMAND] ,[ALTERNATESOURCEIDSQLCOMMAND] ,[POSTLEADREQUESTSQLCOMMAND] ,[SOURCEIDFIELD] ,[SERVICEIDFIELD] ,[DEFAULTSERVICEID] ,[LOADIDFIELD] ,[DEFAULTLOADID] ,[PRIORITYFIELD] ,[DEFAULTPRIORITY] ,[LEADREQUESTTYPEFIELD] ,[DEFAULTLEADLEADREQUESTTYPE] ,[CALLERNAMEFIELDS] ,[COMMENTSFIELDS] ,[COMADELIM] ,[USEFILENAMEASLOADNAME] ,[FORCECREATINGLOAD] ,[PHONE1FIELD] ,[PHONE2FIELD] ,[PHONE3FIELD] ,[PHONE4FIELD] ,[PHONE5FIELD] ,[PHONE6FIELD] ,[PHONE7FIELD] ,[PHONE8FIELD] ,[PHONE9FIELD] ,[PHONE10FIELD] ,[METAFIELD1] ,[METAFIELD2] ,[METAFIELD3] ,[METAFIELD4] ,[METAFIELD5] ,[METAFIELD6] ,[METAFIELD7] ,[METAFIELD8] ,[METAFIELD9] ,[METAFIELD10] ,[METAFIELD11] ,[METAFIELD12] ,[METAFIELD13] ,[METAFIELD14] ,[METAFIELD15] ,[METAFIELD16] ,[METAFIELD17] ,[METAFIELD18] ,[METAFIELD19] ,[METAFIELD20] ,[SOURCEPATH] ,[CURRENTFILEFIELDS] ,[ENABLENEWLOAD] ,[LOADNAMEMASK] ,[FILELOOKUPMASK] ,[REQUESTCREATIONDATE] ,[REQUESTFILEPATH] ,[REQUESTFILENAME] ,[REQUESTHANDLEFLAG] ,[REQUESTLASTHANDLEDATETIME],[REQUESTFILEIMPORTSTATUS] ,[REQUESTFILEIMPORTLINECOUNT] ,[REQUESTFILEIMPORTACTIVE],[REQUESTFILEIMPORTCONTENTSTATUS],[REQUESTFILEIMPORTFAILURELINECOUNT],[REQUESTCALLSIMPORTSTATUS],[REQUESTCALLSIMPORTFAILURECOUNT],[REQUESTCALLSIMPORTADDCALLCOUNT],[REQUESTCALLSIMPORTADDCALLFAILURECOUNT],[REQUESTCALLSIMPORTREMOVECALLCOUNT],[REQUESTCALLSIMPORTREMOVECALLFAILURECOUNT],[REQUESTCALLSIMPORTCOUNT])"+
+						     " SELECT TOP 1 ID AS LEADSFILEALLIASID,ALIAS,ENABLEALIAS ,PREBATCHIMPORTSQLCOMMAND ,POSTBATCHIMPORTSQLCOMMAND ,ALTERNATESOURCEIDSQLCOMMAND ,POSTLEADREQUESTSQLCOMMAND ,SOURCEIDFIELD, SERVICEIDFIELD ,DEFAULTSERVICEID ,LOADIDFIELD ,DEFAULTLOADID ,PRIORITYFIELD ,DEFAULTPRIORITY ,LEADREQUESTTYPEFIELD ,DEFAULTLEADLEADREQUESTTYPE ,CALLERNAMEFIELDS ,COMMENTSFIELDS ,COMADELIM ,USEFILENAMEASLOADNAME ,FORCECREATINGLOAD ,PHONE1FIELD ,PHONE2FIELD ,PHONE3FIELD ,PHONE4FIELD ,PHONE5FIELD ,PHONE6FIELD ,PHONE7FIELD ,PHONE8FIELD ,PHONE9FIELD ,PHONE10FIELD ,METAFIELD1 ,METAFIELD2 ,METAFIELD3 ,METAFIELD4 ,METAFIELD5 ,METAFIELD6 ,METAFIELD7 ,METAFIELD8 ,METAFIELD9 ,METAFIELD10 ,METAFIELD11 ,METAFIELD12 ,METAFIELD13 ,METAFIELD14 ,METAFIELD15 ,METAFIELD16 ,METAFIELD17 ,METAFIELD18 ,METAFIELD19 ,METAFIELD20 ,SOURCEPATH ,CURRENTFILEFIELDS ,ENABLENEWLOAD ,LOADNAMEMASK ,FILELOOKUPMASK ,GETDATE() AS REQUESTCREATIONDATE ,:REQUESTFILEPATH ,:REQUESTFILENAME ,1 AS REQUESTHANDLEFLAG ,GETDATE() AS REQUESTLASTHANDLEDATETIME,0 AS REQUESTFILEIMPORTSTATUS ,0 AS REQUESTFILEIMPORTLINECOUNT ,1 AS REQUESTFILEIMPORTACTIVE,0 AS REQUESTFILEIMPORTCONTENTSTATUS,0 AS REQUESTFILEIMPORTFAILURELINECOUNT,0 AS REQUESTCALLSIMPORTSTATUS,0 AS REQUESTCALLSIMPORTFAILURECOUNT,0 AS REQUESTCALLSIMPORTADDCALLCOUNT,0 AS REQUESTCALLSIMPORTADDCALLFAILURECOUNT,0 AS REQUESTCALLSIMPORTREMOVECALLCOUNT,0 AS REQUESTCALLSIMPORTREMOVECALLFAILURECOUNT,0 AS REQUESTCALLSIMPORTCOUNT FROM <DBUSER>.LEADSDATAFILEALIAS WHERE ALIAS=:ALIAS AND (SELECT COUNT(*) FROM <DBUSER>.LEADSDATAFILEALLIASREQUEST WHERE ALIAS=:ALIAS AND REQUESTFILEIMPORTACTIVE=1 AND REQUESTFILENAME=:REQUESTFILENAME)=0";
+						     try {
+								Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", sqlInsertFlatFileRequestEntry, _newFileImportRequestSettings, null);
+								/*_newFileImportRequestSettings.put("NEWREQUESTID", "0");
+								Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "SELECT TOP 1 ID AS NEWREQUESTID FROM <DBUSER>.LEADSDATAFILEALLIASREQUEST WHERE ALIAS=:ALIAS AND REQUESTFILEIMPORTACTIVE=1 AND REQUESTFILENAME=:REQUESTFILENAME", _newFileImportRequestSettings, null);
+								if(!_newFileImportRequestSettings.get("NEWREQUESTID").equals("0")){
+									if(!_activeFlatFileRegisterRequestJobFiles.containsKey(_newFileImportRequestSettings.get("NEWREQUESTID"))){
+										synchronized (_activeFlatFileRegisterRequestFiles) {
+											_activeFlatFileRegisterRequestFiles.add(alliasFile);
+										}
+										synchronized (_activeFlatFileRegisterRequestJobFiles) {
+											_activeFlatFileRegisterRequestJobFiles.put(_newFileImportRequestSettings.get("NEWREQUESTID"), alliasFile);
+										}
+									}
+									else{
+										//TODO HANDLE LOGIC ERROR?
+									}
+								}*/
+							} catch (Exception e) {
+								inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("ERROR INSERTING NEW FILE UPLOADREQUEST:"+e.getMessage());
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	
+	public void readRequestInfoData(Integer rowindex,ArrayList<String> rowData,ArrayList<String> rowColumns){
+		if(rowindex==0) return;
+		File fileToAdd=null;
+		FlatFileRequestContentImporter fileContentImporter=null;
+		FlatFileRequestCallsImporter fileCallsImporter=null;
+		synchronized (_activeFlatFileRegisterRequestJobFiles) {
+			if(!_activeFlatFileRegisterRequestJobFiles.containsKey(Database.rowField(rowColumns, rowData, "ID"))){
+				HashMap<String,String> flatFileRequestContentImportSettings=new HashMap<String,String>();
+				int rowColumnIndex=0;
+				while(rowColumnIndex<rowColumns.size()){
+					flatFileRequestContentImportSettings.put(rowColumns.get(rowColumnIndex).toUpperCase(), rowData.get(rowColumnIndex++));
+				}
+				
+				flatFileRequestContentImportSettings.put("REQUESTFILEIMPORTCONTENTSTATUS", flatFileRequestContentImportSettings.get("REQUESTFILEIMPORTCONTENTSTATUS").equals("")?"0":flatFileRequestContentImportSettings.get("REQUESTFILEIMPORTCONTENTSTATUS"));
+				
+				if(flatFileRequestContentImportSettings.get("REQUESTFILEIMPORTCONTENTSTATUS").equals("0")){
+					fileToAdd=new File(Database.rowField(rowColumns, rowData, "REQUESTFILEPATH")+Database.rowField(rowColumns, rowData, "REQUESTFILENAME"));
+				
+				
+					if(fileToAdd.exists()){
+						_activeFlatFileRegisterRequestJobFiles.put(Database.rowField(rowColumns, rowData, "ID"), fileToAdd);
+						try{
+							Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "SELECT COUNT(*) AS REQUESTFILEIMPORTLINECOUNT FROM <DBUSER>.LEADSDATAFILEALLIASREQUESTCONTENT WHERE FLATFILEALIASREQUESTID=:ID", flatFileRequestContentImportSettings, null);
+						}
+						catch(Exception e){
+							//TODO HANDLE UNABLE TO GET INITIAL FILE RECORD COUNT STATE OF JOB
+							e.printStackTrace();
+						}
+						try{
+							Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.LEADSDATAFILEALLIASREQUEST SET REQUESTFILEIMPORTLINECOUNT=:REQUESTFILEIMPORTLINECOUNT WHERE ID=:ID", flatFileRequestContentImportSettings, null, null);
+							fileContentImporter=new FlatFileRequestContentImporter(this,flatFileRequestContentImportSettings, fileToAdd);
+						}
+						catch(Exception e){
+							//TODO HANDLE UNABLE TO SET INITIAL FILE RECORD COUNT STATE OF JOB
+							e.printStackTrace();
+						}
+					}
+					else{
+						try{
+							//RECORDHANDLEFLAG=5 FILE DOES NOT EXIST OR HAS BEEN MOVED
+							Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.LEADSDATAFILEALLIASREQUEST SET REQUESTFILEIMPORTLINECOUNT=:REQUESTFILEIMPORTLINECOUNT,REQUESTHANDLEFLAG=5,REQUESTFILEIMPORTACTIVE=0,REQUESTLASTHANDLEDATETIME=GETDATE() WHERE ID=:ID", flatFileRequestContentImportSettings, null, null);
+						}
+						catch(Exception e){
+							//TODO HANDLE UNABLE TO SET INITIAL FILE RECORD COUNT STATE OF JOB
+							e.printStackTrace();
+						}
+						flatFileRequestContentImportSettings.clear();
+						flatFileRequestContentImportSettings=null;
+					}
+				}
+			}
+		}
+		
+		synchronized (_activeFlatFileRegisterRequestJobCalls) {
+			if(!_activeFlatFileRegisterRequestJobCalls.containsKey(Database.rowField(rowColumns, rowData, "ID"))){
+				HashMap<String,String> flatFileRequestCallImportSettings=new HashMap<String,String>();
+				int rowColumnIndex=0;
+				while(rowColumnIndex<rowColumns.size()){
+					flatFileRequestCallImportSettings.put(rowColumns.get(rowColumnIndex).toUpperCase(), rowData.get(rowColumnIndex++));
+				}
+				
+				_activeFlatFileRegisterRequestJobCalls.put(Database.rowField(rowColumns, rowData, "ID"), fileCallsImporter=new FlatFileRequestCallsImporter(this,flatFileRequestCallImportSettings));
+			}
+		}
+		if(fileToAdd!=null){
+			synchronized (_activeFlatFileRegisterRequestFiles) {
+				if(!_activeFlatFileRegisterRequestFiles.contains(fileToAdd)){
+					_activeFlatFileRegisterRequestFiles.add(fileToAdd);
+				}
+			}
+		}
+		
+		if(fileContentImporter!=null){
+			fileContentImporter.run();
+		}
+		if(fileCallsImporter!=null){
+			fileCallsImporter.run();
+		}
+	}
+	
+	public void initiateFlatFileRegisterRequest(){
+		new Thread(){
+			@Override
+			public void run() {
+				while(!_shutdownFlatFileRegisterRequest){
+					performFlatFileRegisterRequest();
+					synchronized (_flatFileRegisterRequestLock) {
+						try {
+							_flatFileRegisterRequestLock.wait(5000);
+						} catch (InterruptedException e) {
+						}
+					}
+				}
+				_flatFileRegisterRequestShuttedDown=true;
+			}
+		}.start();
+	}
+
+	private boolean _shutdownFlatFileRegisterRequest=false;
+	private boolean _flatFileRegisterRequestShuttedDown=false;
+	private Object _flatFileRegisterRequestShutdownLock=new Object();
+	
+	public void shutdownFlatFileRegisterRequest() {
+		this._shutdownFlatFileRegisterRequest=true;
+		while(!_flatFileRegisterRequestShuttedDown){
+			synchronized (_flatFileRegisterRequestShutdownLock) {
+				try {
+					_flatFileRegisterRequestShutdownLock.wait(100);
+				} catch (InterruptedException e) {
+				}
+			}
+		}
+	}
+
+	public void flatFileRequestContentCompleted(
+			FlatFileRequestContentImporter flatFileRequestContentImporter,
+			String requestid,File fileImported,String sourcePath) {
+		synchronized (_activeFlatFileRegisterRequestJobFiles) {
+			if(_activeFlatFileRegisterRequestJobFiles.containsKey(requestid)){
+				if(_activeFlatFileRegisterRequestJobFiles.get(requestid).equals(fileImported)){
+					_activeFlatFileRegisterRequestJobFiles.remove(requestid);
+				}
+			}
+		}
+		synchronized (_activeFlatFileRegisterRequestFiles) {
+			if(_activeFlatFileRegisterRequestFiles.contains(fileImported)){
+				_activeFlatFileRegisterRequestFiles.remove(fileImported);
+			}
+		}
+		fileImported.renameTo(new File((sourcePath=sourcePath.replaceAll("[\\\\]", "/"))+"handled/PROCESSED"+fileImported.getName()));
+		flatFileRequestContentImporter=null;
+	}
+
+	public void flatFileRequestCallsCompleted(
+			FlatFileRequestCallsImporter flatFileRequestCallsImporter,
+			String requestid) {
+		synchronized (_activeFlatFileRegisterRequestJobCalls) {
+			if(_activeFlatFileRegisterRequestJobCalls.containsKey(requestid)){
+				if(_activeFlatFileRegisterRequestJobCalls.get(requestid).equals(flatFileRequestCallsImporter)){
+					_activeFlatFileRegisterRequestJobCalls.remove(requestid);
+				}
+			}
+		}
+		try {
+			Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.LEADSDATAFILEALLIASREQUEST SET REQUESTLASTHANDLEDATETIME=GETDATE(),REQUESTHANDLEFLAG=3,REQUESTFILEIMPORTACTIVE=0 WHERE REQUESTFILEIMPORTACTIVE=1 AND ID="+requestid,null, null);
+		} catch (Exception e) {
+			// TODO: handle exception
+		}
+	}
+}

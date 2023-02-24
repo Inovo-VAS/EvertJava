@@ -1,0 +1,27 @@
+package baasserver.system;
+
+import java.util.HashMap;
+
+public class BaseSystem {
+
+	private static HashMap<String,BaseSystem> _systems=new HashMap<String,BaseSystem>();
+	
+	public static BaseSystem registerSystem(String systemAllias,Class<?> systemClass) throws Exception{
+		BaseSystem registeredSystem=null;
+		synchronized (_systems) {
+			registeredSystem=_systems.get(systemAllias=systemAllias.toUpperCase());
+			if(registeredSystem==null){
+				_systems.put(systemAllias.toUpperCase(), registeredSystem=(BaseSystem)systemClass.getConstructor(null).newInstance(null));
+			}
+		}
+		return registeredSystem;
+	}
+	
+	public static BaseSystem system(String systemAllias){
+		BaseSystem system=null;
+		synchronized (_systems) {
+			system=_systems.get(systemAllias.toLowerCase());
+		}
+		return system;
+	}
+}

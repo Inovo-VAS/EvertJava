@@ -1,0 +1,25 @@
+package baasserver.protocols.markup;
+
+import java.util.HashMap;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class IOMarkupWidgetHandle extends IOWidgetHandle {
+	
+	public IOMarkupWidgetHandle(IOWidgetHandle parentWidget,
+			IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+	
+	@Override
+	public void handelContent(HashMap<String, String> contentProperties,
+			IOProcessorHandle processor) {
+		super.handelContent(contentProperties, processor);
+		this.handleMarkupContent(contentProperties,processor);
+	}
+	
+	public void handleMarkupContent(HashMap<String, String> contentProperties,
+			IOProcessorHandle processor){
+	}
+}

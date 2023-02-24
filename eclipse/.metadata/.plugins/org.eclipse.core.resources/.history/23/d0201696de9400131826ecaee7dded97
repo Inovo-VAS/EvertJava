@@ -1,0 +1,21 @@
+package baasserver.db.protocols;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IORequestHandle;
+import baasserver.protocols.markup.IOMarkupProcessorHandle;
+
+public class DBProcessorHandle extends IOMarkupProcessorHandle {
+
+	public DBProcessorHandle(IOProcessorHandle mainProcessorHandle,Class<?> widgetHandleclass,
+			IORequestHandle requestHandle) throws Exception{
+		super(mainProcessorHandle, widgetHandleclass, requestHandle);
+	}
+
+	public DBRequestHandle dbRequestHandle(){
+		return (DBRequestHandle)super.requestHandle();
+	}
+	
+	public DBWidgetHandle dbWidgetHandle(){
+		return (DBWidgetHandle)super.widgetHandle();
+	}
+}

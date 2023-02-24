@@ -1,0 +1,40 @@
+package inovo.presence.agent.gateway;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+
+public class PresenceAgentStatusQueue implements Runnable{
+	
+	
+	private static PresenceAgentStatusQueue _presenceAgentStatusQueue=null;
+	
+	
+	private ArrayList<HashMap<String,String>> _queuedPresenceAgentStatusses=new ArrayList<HashMap<String,String>>();
+	
+	private Thread _presenceAgentStatusQueueThread=null;
+	public PresenceAgentStatusQueue(){
+		_presenceAgentStatusQueueThread=new Thread(this);
+	}
+
+
+	private boolean _shutdownQueue=false;
+	
+	public void shutdownQueue(){
+		this._shutdownQueue=true;
+	}
+	
+	@Override
+	public void run() {
+		while(!_shutdownQueue){
+			
+			synchronized (_presenceAgentStatusQueue) {
+				_presenceAgentStatusQueue.wait();
+			}
+		}
+	}
+	
+	public static PresenceAgentStatusQueue activatePresenceAgentStatusQueue(){
+		if(_presenceAgentStatusQueue==null) _presenceAgentStatusQueue=new PresenceAgentStatusQueue();
+		return _presenceAgentStatusQueue;
+	}
+}

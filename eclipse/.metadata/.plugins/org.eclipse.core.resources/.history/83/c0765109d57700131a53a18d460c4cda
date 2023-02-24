@@ -1,0 +1,32 @@
+package pce.accountants;
+
+import java.util.ArrayList;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class Login extends DefaultPage {
+
+	public Login(IOWidgetHandle parentWidget, IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+	
+	public ArrayList<String> testArrayTop(){
+		ArrayList<String> arrToReturn=new ArrayList<String>();
+		arrToReturn.add("A");
+		arrToReturn.add("B");
+		arrToReturn.add("C");
+		
+		return arrToReturn;
+	}
+	
+	public ArrayList<String> testArray(){
+		ArrayList<String> arrToReturn=new ArrayList<String>();
+		arrToReturn.add("1");
+		arrToReturn.add("2");
+		arrToReturn.add("3");
+		
+		return arrToReturn;
+	}
+	
+}

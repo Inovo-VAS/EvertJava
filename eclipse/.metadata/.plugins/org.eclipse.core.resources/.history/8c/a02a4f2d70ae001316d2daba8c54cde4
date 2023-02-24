@@ -1,0 +1,15 @@
+package baasserver.db.server.widgets;
+
+import java.util.HashMap;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class RegisterDbSystem extends IOWidgetHandle {
+
+	public RegisterDbSystem(IOWidgetHandle parentWidget,
+			IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+
+}

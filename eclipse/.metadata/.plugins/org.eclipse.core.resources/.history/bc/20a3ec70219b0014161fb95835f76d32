@@ -1,0 +1,6 @@
+import inovo.web.InovoHTMLPageWidget;
+
+
+public class AutomatedJobs extends InovoHTMLPageWidget {
+
+}

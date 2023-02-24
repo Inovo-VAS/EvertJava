@@ -1,0 +1,43 @@
+import inovo.servlet.InovoCoreEnvironmentManager;
+import javax.servlet.ServletContext;
+
+import lancet.leads.automation.AccountsLeadsImportQueue;
+import lancet.leads.automation.SMSExportQueue;
+
+public class InovoEnvironmentManager extends InovoCoreEnvironmentManager
+{
+  public void initializeServletContext(ServletContext sc)
+  {
+    super.initializeServletContext(sc);
+    this.log_debug("LANCET LEADS AUTOMATION ENVIRONMENT STARTED");
+    try {
+		AccountsLeadsImportQueue.accountsLeadsImportQueue(this.configProperty("ACCOUNTFILEPICKUPPATH"));
+	} catch (Exception e) {
+		e.printStackTrace();
+	}
+    this.log_debug("LANCET SMS EXPORT STARTED");
+    try {
+		SMSExportQueue.smsExportQueue(this.configProperty("SMSFILEEXPORTPICKUPPATH"));
+	} catch (Exception e) {
+		e.printStackTrace();
+	}
+  }
+
+  public String defaultLocalPath(String suggestedlocalpath)
+  {
+    return super.defaultLocalPath("C:/projects/java/");
+    //return super.defaultLocalPath("suggestedlocalpath);
+  }
+  
+  @Override
+	public void loadServletConfig(String defaultconfigfilename,
+			boolean updateProperties) throws Exception {
+		super.loadServletConfig(defaultconfigfilename, updateProperties);
+	}
+
+  public void disposeServletContext(ServletContext sc)
+  {
+	 this.log_debug("LANCET LEADS AUTOMATION ENVIRONMENT STOPPED");
+     super.disposeServletContext(sc);
+  }
+}

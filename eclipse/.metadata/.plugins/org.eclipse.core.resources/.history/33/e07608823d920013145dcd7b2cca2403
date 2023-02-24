@@ -1,0 +1,32 @@
+package baasserver.io.handler;
+
+import java.io.IOException;
+import java.lang.reflect.Method;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.nio.channels.Channel;
+import java.nio.channels.SelectableChannel;
+
+public class InputOutputHandler {
+
+	public void readBytesFromChannel(ArrayList<byte[]> bytesReadFromBuffer,Channel channel,int bufferReadSize) throws IOException{
+		ByteBuffer bufferToReadInto=ByteBuffer.allocate(bufferReadSize);
+		
+		Method readChannel=baasserver.reflection.REFUtils.findMethod("read", channel.getClass(), paramTypes, igNoreParamTypesTest)
+		
+		int bytesRead =  channel.read(bufferToReadInto);
+	    while (bytesRead != -1) {
+
+	    	bufferToReadInto.flip();
+
+	    	while(bufferToReadInto.hasRemaining()){
+	    		byte[] bytesToRead=new byte[bytesRead];
+	    		bufferToReadInto.get(bytesToRead,0,bytesToRead.length);
+				bytesReadFromBuffer.add(bytesToRead);
+	    	}
+
+	    	bufferToReadInto.clear();
+	    	bytesRead = channel.read(bufferToReadInto);
+	    }
+	}
+}

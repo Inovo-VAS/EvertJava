@@ -1,0 +1,17 @@
+package baasserver.db.system;
+
+public class DBManager {
+	private DBSystem _dbsystem=null;
+	
+	private String _dbname;
+	private String _dbuser;
+	private String _dbpw;
+	private String _dbhost;
+	private String _dbinstance;
+	private String _dbtype;
+	private String _dbconstring = "";
+	  
+	public DBManager(DBSystem dbsystem){
+		this._dbsystem=dbsystem;
+	}
+}

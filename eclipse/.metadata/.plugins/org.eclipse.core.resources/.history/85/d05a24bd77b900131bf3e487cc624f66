@@ -1,0 +1,38 @@
+package baasserver.web.system.controls.tabscontrol;
+
+import java.util.HashMap;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class TabsControl extends IOWidgetHandle {
+
+	public TabsControl(IOWidgetHandle parentWidget, IOProcessorHandle processor)
+			throws Exception {
+		super(parentWidget, processor);
+	}
+
+	public boolean collapsible(){
+		String collapsible=this.property("collapsible").trim().toLowerCase();
+		if(collapsible.equals("true")){
+			return true;
+		}
+		if(collapsible.equals("false")){
+			return false;
+		}
+		return false;
+	}
+	
+	private HashMap<String,HashMap<String,String>> _tabs=new HashMap<String,HashMap<String,String>>(); 
+	public HashMap<String,HashMap<String,String>> tabs(){
+		return _tabs;
+	}
+	
+	public String tabsLayout(){
+		String tabsLayout=this.property("tabslayout").trim().toLowerCase();
+		if(tabsLayout.equals("vertical")){
+			return tabsLayout;
+		}
+		return "horisontal";
+	}
+}

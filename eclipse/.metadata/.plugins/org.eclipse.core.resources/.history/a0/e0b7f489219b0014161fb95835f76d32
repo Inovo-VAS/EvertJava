@@ -1,0 +1,14 @@
+import java.io.InputStream;
+
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+
+
+public class AutomatedJobs extends InovoHTMLPageWidget {
+
+	public AutomatedJobs(InovoWebWidget parentWidget, InputStream inStream) {
+		super(parentWidget, inStream);
+		// TODO Auto-generated constructor stub
+	}
+
+}

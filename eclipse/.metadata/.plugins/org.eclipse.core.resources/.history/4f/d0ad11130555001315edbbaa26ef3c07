@@ -1,0 +1,5 @@
+package baasserver.db.system;
+
+public class DBManager {
+
+}

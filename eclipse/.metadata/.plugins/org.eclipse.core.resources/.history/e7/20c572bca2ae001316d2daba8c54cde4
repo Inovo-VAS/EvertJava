@@ -1,0 +1,16 @@
+package baasserver.db.web.system;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class CreateUser extends Table {
+
+	public CreateUser(IOWidgetHandle parentWidget, IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+
+	@Override
+	public String table() {
+		return "USER";
+	}
+}

@@ -1,0 +1,242 @@
+package baasserver.protocols;
+
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+
+public class IOWidgetHandle {
+
+	private IOProcessorHandle _processor=null;
+	private ArrayList<String> _widgetlayoutMaskPaths=new ArrayList<String>();
+	private ArrayList<String> _widgetActiveScriptsMaskPaths=new ArrayList<String>();
+	
+	private HashMap<String,String> _properties=new HashMap<String,String>();
+	
+	private boolean _widgetHasMaskPaths=false;
+	private boolean _widgetHasActiveScriptPaths=false;
+	
+	public IOWidgetHandle(IOWidgetHandle parentWidget, IOProcessorHandle processor){
+		this._parentWigdet=parentWidget;
+		this._processor=processor;
+		this.generateLayoutMaskPaths();
+		this._widgetHasMaskPaths=!this._widgetlayoutMaskPaths.isEmpty();
+		this.generateActiveScriptsPaths();
+		this._widgetHasActiveScriptPaths=!this._widgetActiveScriptsMaskPaths.isEmpty();
+	}
+	
+	public String timestamp(String timestampFormat){
+		return new SimpleDateFormat(timestampFormat).format(new Date());
+	}
+	
+	public IOProcessorHandle processor(){
+		return (this._parentWigdet!=null?this._parentWigdet.processor():this._processor);
+	}
+	
+	public boolean widgetHasMaskPaths(){
+		return this._widgetHasMaskPaths;
+	}
+	
+	public boolean widgetHashActiveScriptPaths(){
+		return this._widgetHasActiveScriptPaths;
+	}
+	
+	public void setProperty(String propertyName,String propertyValue){
+		this._properties.put(propertyName.toUpperCase(), propertyValue.trim());
+	}
+	
+	public HashMap<String,String> properties(){
+		return this._properties;
+	}
+
+	public boolean hasProperty(String propertyName){
+		return this._properties.containsKey(propertyName.toUpperCase());
+	}
+	
+	public String property(String propertyName){
+		String propertyValue=this._properties.get(propertyName.toUpperCase());
+		return (propertyValue==null?"":propertyValue.trim());
+	}
+	
+	public static IOWidgetHandle newIOWidgetHandle(Class<?> widgetHandleclass, IOWidgetHandle parentWidget, IOProcessorHandle processor) throws Exception{
+		return (IOWidgetHandle) widgetHandleclass.getConstructor(IOWidgetHandle.class,IOProcessorHandle.class).newInstance(new Object[]{parentWidget,processor});
+	}
+	
+	public void generateLayoutMaskPaths() {
+		this._widgetlayoutMaskPaths.clear();
+		Class<?> currentWidgetClass=this.getClass();
+		String uriExt=this._processor.requestHandle().reqURLExtension();
+		while(currentWidgetClass!=IOWidgetHandle.class){
+			String layoutStreamMaskPath=this.layoutStreamMaskPath(currentWidgetClass.getName(), uriExt);
+			if(this.getClass().getResourceAsStream(layoutStreamMaskPath)!=null){
+				this._widgetlayoutMaskPaths.add(layoutStreamMaskPath);
+			}
+			currentWidgetClass=currentWidgetClass.getSuperclass();
+		}
+		
+		if(!this._widgetlayoutMaskPaths.isEmpty()){
+			ArrayList<String> reversedWidgetlayoutMaskPaths=new ArrayList<String>();
+			while(!this._widgetlayoutMaskPaths.isEmpty()){
+				reversedWidgetlayoutMaskPaths.add(this._widgetlayoutMaskPaths.remove(this._widgetlayoutMaskPaths.size()-1));
+			}
+			
+			while(!reversedWidgetlayoutMaskPaths.isEmpty()){
+				this._widgetlayoutMaskPaths.add(reversedWidgetlayoutMaskPaths.remove(0));
+			}
+		}
+	}
+	
+	public void generateActiveScriptsPaths() {
+		this._widgetActiveScriptsMaskPaths.clear();
+		Class<?> currentWidgetClass=this.getClass();
+		while(currentWidgetClass!=IOWidgetHandle.class){
+			String activeScriptStreamMaskPath=this.activeScriptStreamMaskPath(currentWidgetClass.getName(),"activescripts", "js");
+			if(IOWidgetHandle.class.getResourceAsStream(activeScriptStreamMaskPath)!=null){
+				this._widgetActiveScriptsMaskPaths.add(activeScriptStreamMaskPath);
+			}
+			currentWidgetClass=currentWidgetClass.getSuperclass();
+		}
+		
+		if(!this._widgetActiveScriptsMaskPaths.isEmpty()){
+			ArrayList<String> reversedWidgetActiveScriptMaskPaths=new ArrayList<String>();
+			while(!this._widgetActiveScriptsMaskPaths.isEmpty()){
+				reversedWidgetActiveScriptMaskPaths.add(this._widgetActiveScriptsMaskPaths.remove(this._widgetActiveScriptsMaskPaths.size()-1));
+			}
+			
+			while(!reversedWidgetActiveScriptMaskPaths.isEmpty()){
+				this._widgetActiveScriptsMaskPaths.add(reversedWidgetActiveScriptMaskPaths.remove(0));
+			}
+		}
+	}
+
+	public String layoutStreamMaskPath(){
+		return this.layoutStreamMaskPath(this._processor.requestHandle().reqURLExtension());
+	}
+	
+	public String layoutStreamMaskPath(String mimeExt){
+		return this.layoutStreamMaskPath(this.fullWidgetClassName(),mimeExt);
+	}
+	
+	private int _layoutStreamMaskPathIndex=0;
+		
+	public String nextlayoutStreamMaskPath(){
+		if(this._widgetlayoutMaskPaths.isEmpty()) return "";
+		if(_layoutStreamMaskPathIndex>=this._widgetlayoutMaskPaths.size()){
+			_layoutStreamMaskPathIndex=0;
+			return "";
+		}
+		return this._widgetlayoutMaskPaths.get(_layoutStreamMaskPathIndex++);
+	}
+	
+	private String layoutStreamMaskPath(String fullWidgetClassName,String mimeExt){
+		if(fullWidgetClassName.indexOf("@")>-1){
+			fullWidgetClassName=fullWidgetClassName.substring(0,fullWidgetClassName.indexOf("@"));
+		}
+		fullWidgetClassName="/"+fullWidgetClassName.substring(0,fullWidgetClassName.lastIndexOf(".")).replaceAll("[.]", "/")+"/masks/"+fullWidgetClassName.substring(fullWidgetClassName.lastIndexOf(".")+1)+(mimeExt.equals("")?"":"."+mimeExt);
+		return fullWidgetClassName;
+	}
+	
+	private int _activeScriptStreamMaskPathIndex=0;
+	
+	public String nextActiveScriptStreamMaskPath(){
+		if(this._widgetActiveScriptsMaskPaths.isEmpty()) return "";
+		if(_activeScriptStreamMaskPathIndex>=this._widgetActiveScriptsMaskPaths.size()){
+			_activeScriptStreamMaskPathIndex=0;
+			return "";
+		}
+		return this._widgetActiveScriptsMaskPaths.get(_activeScriptStreamMaskPathIndex++);
+	}
+	
+	private String activeScriptStreamMaskPath(String fullWidgetClassName,String subsection,String mimeExt){
+		if(fullWidgetClassName.indexOf("@")>-1){
+			fullWidgetClassName=fullWidgetClassName.substring(0,fullWidgetClassName.indexOf("@"));
+		}
+		
+		while(subsection.startsWith("/")) subsection.substring(1);
+		while(subsection.endsWith("/")) subsection.substring(0,subsection.length()-1);
+		
+		fullWidgetClassName="/"+fullWidgetClassName.substring(0,fullWidgetClassName.lastIndexOf(".")).replaceAll("[.]", "/")+(subsection.equals("")?"/":"/"+subsection+"/")+fullWidgetClassName.substring(fullWidgetClassName.lastIndexOf(".")+1)+(mimeExt.equals("")?"":"."+mimeExt);
+		
+		return fullWidgetClassName;
+	}
+	
+	public ArrayList<String> widgetLayoutMaskPaths(){
+		return this._widgetlayoutMaskPaths;
+	}
+	
+	public ArrayList<String> widgetActiveScriptsMaskPaths(){
+		return this._widgetActiveScriptsMaskPaths;
+	}
+	
+	private IOWidgetHandle _parentWigdet=null;
+	
+	public void setParentWidget(IOWidgetHandle parentWidget){
+		this._parentWigdet=parentWidget;
+	}
+	
+	public IOWidgetHandle topWidget(){
+		if(this._parentWigdet==null){
+			return this;
+		}
+		else{
+			return this._parentWigdet.topWidget();
+		}
+	}
+	
+	public IOWidgetHandle parentWidget(){
+		return this._parentWigdet;
+	}
+
+	public String widgetClassName() {
+		return this.getClass().getSimpleName();
+	}
+	
+	public String fullWidgetClassName(){
+		return this.getClass().getName();
+	}
+	
+	public String fullPathWidgetClassName(){
+		return this.fullPathWidgetClassName("");
+	}
+	
+	public String fullPathToWidgetClass(){
+		String fullPathToWidget=this.fullPathWidgetClassName("");
+		return fullPathToWidget.substring(0,fullPathToWidget.lastIndexOf("/")).replaceAll("[//]", "_").substring(1);
+	}
+	
+	public String fullPathToWidgetClassIncClassName(){
+		String fullPathToWidget=this.fullPathWidgetClassName("");
+		return fullPathToWidget.substring(0,fullPathToWidget.length()).replaceAll("[//]", "_").substring(1);
+	}
+	
+	public String fullPathWidgetClassName(String subsection){
+		String fullPathWidgetClassName=this.fullWidgetClassName().replaceAll("[.]", "/");
+		while(subsection.startsWith("/")) subsection=subsection.substring(1);
+		while(subsection.endsWith("/")) subsection=subsection.substring(subsection.length()-1);
+		if(!subsection.equals("")){
+			if(fullPathWidgetClassName.indexOf("/")>-1){
+				fullPathWidgetClassName=fullPathWidgetClassName.substring(0,fullPathWidgetClassName.lastIndexOf("/"))+"/"+subsection+"/"+fullPathWidgetClassName.substring(fullPathWidgetClassName.lastIndexOf("/")+1);
+			}
+			else{
+				fullPathWidgetClassName=subsection+"/"+fullPathWidgetClassName;
+			}
+		}
+		return "/"+fullPathWidgetClassName;
+	}
+	
+	public void handelContent(HashMap<String,String> contentProperties,IOProcessorHandle processor){
+		if(contentProperties!=null){
+			for(String contentPropName:contentProperties.keySet()){
+				this.setProperty(contentPropName, contentProperties.get(contentPropName));
+			}
+		}
+	}
+	
+	public void debug(String debugMessage){
+		baasserver.io.Logger.debug(baasserver.reflection.REFUtils.formatClassName(this.getClass().getName())+":"+debugMessage);
+	}
+	
+	public String urlCommand(){
+		return this.property("COMMAND");
+	}
+}

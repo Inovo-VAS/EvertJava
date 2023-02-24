@@ -1,0 +1,25 @@
+package baasserver.db.web.system;
+
+import java.lang.reflect.Method;
+import java.util.HashMap;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class RegisterDbSystem extends IOWidgetHandle {
+
+	public RegisterDbSystem(IOWidgetHandle parentWidget,
+			IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+	
+	public void registerDBSystem(){
+		String dbsystemclasspath=this.property("DBSYSTEMNAMESPACE");
+		Class<?> dbsystemclass=baasserver.reflection.REFUtils.findClass(dbsystemclasspath, false);
+		if(dbsystemclass!=null){
+			Method registerWebSystem=baasserver.reflection.REFUtils.findMethod("registerWebSystem", dbsystemclass, new Class<?>[]{String.class}, false);
+		}
+		
+	}
+
+}

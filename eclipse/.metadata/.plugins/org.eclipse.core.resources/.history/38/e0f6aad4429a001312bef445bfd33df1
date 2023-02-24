@@ -1,0 +1,47 @@
+package baasserver.io.nio.handlers;
+
+public class RequestContentHandler {
+	private RequestHandler _requestHandler=null;
+	private long _requiredContentLength=0;
+	private long _contentProcessedLength=0;
+	public RequestContentHandler(RequestHandler requestHandler){
+		this._requestHandler=requestHandler;
+	}
+	
+	public RequestHandler requestHandler(){
+		return this._requestHandler;
+	}
+
+	public boolean processContentBytes(byte[] contentBytes) {
+		this.handleContentBytes(contentBytes);
+		return isDone();
+	}
+	
+	public void handleContentBytes(byte[] contentBytes) {	
+	}
+
+	public void done(){
+		this._done=true;
+	}
+	
+	private boolean _done=false;
+	public boolean isDone(){
+		return _done;
+	}
+	
+	public String reqRequestHeader(String headerName){
+		return this._requestHandler.reqRequestHeader(headerName);
+	}
+	
+	public void setReqRequestHeader(String headerName,String headerValue){
+		this._requestHandler.setReqRequestHeader(headerName, headerValue);
+	}
+	
+	public String reqResponseHeader(String headerName){
+		return this._requestHandler.reqResponseHeader(headerName);
+	}
+	
+	public void setReqResponseHeader(String headerName,String headerValue){
+		this._requestHandler.setReqResponseHeader(headerName, headerValue);
+	}
+}

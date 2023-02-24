@@ -1,0 +1,13 @@
+package inovo.presence.administrator;
+
+import inovo.web.InovoWebWidget;
+
+import java.io.InputStream;
+
+
+public class SQLInstallScript extends inovo.presence.web.Administrator {
+
+	public SQLInstallScript(InovoWebWidget parentWidget, InputStream inStream) {
+		super(parentWidget, inStream);
+	}
+}

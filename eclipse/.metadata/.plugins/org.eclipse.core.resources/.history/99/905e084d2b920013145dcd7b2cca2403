@@ -1,0 +1,11 @@
+package baasserver.web.system;
+
+import baasserver.system.BaseSystem;
+
+public class WebSystem extends BaseSystem {
+	
+	
+	public static WebSystem registerWebSystem(String systemAllias) throws Exception{
+		return BaseSystem.registerSystem(systemAllias, WebSystem.class);
+	}
+}

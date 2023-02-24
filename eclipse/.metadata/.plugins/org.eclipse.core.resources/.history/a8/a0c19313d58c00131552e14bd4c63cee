@@ -1,0 +1,8 @@
+package baasserver;
+
+import java.nio.channels.SocketChannel;
+
+public class Client {
+	SocketChannel _socketChannel=null;
+	
+}

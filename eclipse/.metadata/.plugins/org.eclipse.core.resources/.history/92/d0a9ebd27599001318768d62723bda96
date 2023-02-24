@@ -1,0 +1,25 @@
+package baasserver.io.nio.handlers;
+
+public class RequestContentHandler {
+	private RequestHandler _requestHandler=null;
+	public RequestContentHandler(RequestHandler requestHandler){
+		this._requestHandler=requestHandler;
+	}
+	
+	public RequestHandler requestHandler(){
+		return this._requestHandler;
+	}
+
+	public boolean processContentBytes(byte[] contentBytes) {
+		return isDone();
+	}
+	
+	public void done(){
+		this._done=true;
+	}
+	
+	private boolean _done=false;
+	public boolean isDone(){
+		return _done;
+	}
+}

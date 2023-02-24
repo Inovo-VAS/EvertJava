@@ -1,0 +1,23 @@
+1369576134259	Delete element
+1369576154361	Delete element
+1369576499655	Rename package 'sas.queuing.workflow'
+1369576527516	Rename package 'sas.queuing.task2task'
+1369576556172	Delete element
+1369576705028	Delete element
+1369576711800	Delete element
+1369578385634	Move compilation unit
+1369596850189	Rename resource 'jquery.1.9.1.js'
+1369596947982	Rename resource 'jquery.2.0.0.js'
+1369597274817	Rename resource 'jquery.ui.1.10.2.js'
+1369597367174	Rename resource 'jquery.ui.1.10.2.css'
+1369597478821	Rename resource 'jquery.ui.i18n.1.10.2.js'
+1369597878272	Delete elements
+1369727195104	Rename package 'sas.net.web.ui'
+1369727226399	Move compilation unit
+1369727262357	Rename type 'ActionWidget'
+1369727284386	Rename type 'FieldWidget'
+1369727298329	Rename type 'FormWidget'
+1369727318679	Rename type 'LabelWidget'
+1369727349370	Rename type 'MenuWidget'
+1369727367175	Rename type 'PageWidget'
+1369727384321	Rename type 'TableWidget'

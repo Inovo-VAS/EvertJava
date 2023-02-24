@@ -1,0 +1,77 @@
+package pce.accountants;
+
+import java.util.HashMap;
+
+import pce.accountants.controls.TitlePanel;
+import saas.protocol.Request;
+import saas.protocol.Widget;
+import saas.protocol.widget.controls.Form;
+import saas.protocol.widget.controls.Page;
+import saas.protocol.widget.controls.Panel;
+
+public class Module extends Panel {
+
+	public Module(Request request, Widget parentWidget) {
+		super(request, parentWidget);
+	}
+	
+	@Override
+	public void executePanel() throws Exception {
+		try {
+			initiateWidgetAndExecute(TitlePanel.class, new Object[]{this.request(),(Widget)this},new String[]{"title="+this.moduleTitle()});
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		this.startComplexElement("div", "style=background-color:rgb(200,200,200);height:20px".split("[|]"));this.endComplexElement("div");
+		HashMap<String,HashMap<String,String>> subModules=this.subModules();
+		
+		if(subModules.isEmpty()){
+			this.executeModule();
+		}
+		else if(!subModules.isEmpty()){
+			this.startComplexElement("table","cellpadding=0|cellspacing=0");
+				this.startComplexElement("tr");
+					this.startComplexElement("td","style=vertical-align:top");
+						while(subModules.isEmpty()){
+							String subModuleId=(String)subModules.keySet().toArray()[0];
+							HashMap<String,String> subModuleProperties=subModules.remove(subModuleId);
+							Class<?> subModuleClass=null;
+							if(subModuleProperties.containsKey("SUBMODULECLASS")){
+								subModuleClass=saas.reflection.ReflectUtils.findClass(subModuleProperties.get("SUBMODULECLASS"), this.getClass());
+							}
+							else{
+								subModuleClass=this.subModuleClass(subModuleId);
+								if(subModuleClass!=null){
+									
+								}
+							}
+							
+						}
+					this.endComplexElement("td");
+				this.endComplexElement("tr");
+				this.startComplexElement("tr");
+					this.startComplexElement("td");
+					this.endComplexElement("td");
+				this.endComplexElement("tr");
+			this.endComplexElement("table");
+		}
+	}
+	
+	public Class<?> subModuleClass(String subModuleId) {
+		return null;
+	}
+
+	public void executeModule() throws Exception {
+	}
+
+	public String moduleTitle() {
+		String pageTitle=this.widgetProperty("title");
+		return (pageTitle.equals("")?this.getClass().getName().replaceAll("[.]", " "):pageTitle);
+	}
+	
+	public HashMap<String,HashMap<String,String>> subModules(){
+		HashMap<String,HashMap<String,String>> subModules=new HashMap<String, HashMap<String,String>>();
+		
+		return subModules;
+	}
+}

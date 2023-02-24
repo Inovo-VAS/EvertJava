@@ -1,0 +1,21 @@
+package lancet.leads.automation;
+
+import inovo.db.Database;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+
+public class ExportAccountFile {
+
+	public void startExportingFiles() {
+		
+	}
+	
+	public void readRowData(Integer rowIndex,ArrayList<String> rowData,ArrayList<String> columns){
+		HashMap<String,String> fileExportInfo=Database.rowData(columns, rowData);
+		
+		fileExportInfo.clear();
+		fileExportInfo=null;
+	}
+
+}

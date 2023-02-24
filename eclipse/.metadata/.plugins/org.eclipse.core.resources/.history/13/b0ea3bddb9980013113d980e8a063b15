@@ -1,0 +1,22 @@
+package baasserver.io.nio;
+
+import java.io.IOException;
+import java.io.InputStream;
+
+public class ClientReadInputStream extends InputStream {
+
+	private ClientConnectorReadWrite _clientConnectorReadWrite=null;
+	public ClientReadInputStream(ClientConnectorReadWrite clientConnectorReadWrite){
+		this._clientConnectorReadWrite=clientConnectorReadWrite;
+	}
+	
+	public void waitForAvailableInput(){
+		
+	}
+	
+	@Override
+	public int read() throws IOException {
+		return 0;
+	}
+
+}

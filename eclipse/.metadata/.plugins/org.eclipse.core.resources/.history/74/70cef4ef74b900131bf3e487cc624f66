@@ -1,0 +1,13 @@
+package baasserver.web.system.controls.tabscontrol;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class TabsControl extends IOWidgetHandle {
+
+	public TabsControl(IOWidgetHandle parentWidget, IOProcessorHandle processor)
+			throws Exception {
+		super(parentWidget, processor);
+	}
+
+}

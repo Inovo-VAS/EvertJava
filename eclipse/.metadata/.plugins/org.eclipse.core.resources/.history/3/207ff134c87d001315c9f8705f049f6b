@@ -1,0 +1,19 @@
+package inovo.queues;
+
+public class Request implements Runnable {
+	private Object _reqLock=new Object();
+	@Override
+	public void run() {
+		if(){
+			
+		}
+		else{
+			_reqLock.notifyAll();
+		}
+	}
+	
+	public int requestDelay(){
+		return 2;
+	}
+
+}

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<section name="Workbench">
+	<item key="org.eclipse.jdt.debug.ui.jre_preference_page_context.sortColumn" value="1"/>
+	<item key="org.eclipse.jdt.debug.ui.jre_preference_page_context.columnWidth2" value="82"/>
+	<item key="org.eclipse.jdt.debug.ui.jre_preference_page_context.columnWidth1" value="201"/>
+	<item key="JavaClasspathTab.LAST_PATH_SETTING" value="C:\Software\java\libs\c3p0\c3p0-0.9.5-pre6\lib"/>
+	<item key="org.eclipse.jdt.debug.ui.jre_preference_page_context.columnWidth0" value="80"/>
+	<section name="conditionHistory">
+	</section>
+	<section name="org.eclipse.jdt.debug.ui.MAIN_METHOD_SELECTION_DIALOG">
+		<item key="ShowStatusLine" value="true"/>
+		<item key="History" value="&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;&#x0D;&#x0A;&lt;History&gt;&#x0D;&#x0A;&lt;historyRootNode&gt;&#x0D;&#x0A;&lt;infoNode&gt;=sas/src&amp;lt;{soamain.java[soamain&lt;/infoNode&gt;&#x0D;&#x0A;&lt;infoNode&gt;=sas/src&amp;lt;{sasmain.java[sasmain&lt;/infoNode&gt;&#x0D;&#x0A;&lt;infoNode&gt;=saas/src&amp;lt;{saasmain.java[saasmain&lt;/infoNode&gt;&#x0D;&#x0A;&lt;infoNode&gt;=baassaas/src&amp;lt;{baassaasmain.java[baassaasmain&lt;/infoNode&gt;&#x0D;&#x0A;&lt;infoNode&gt;=pce.accounting.customers/C:\/projects\/java\/baassaas\/basssaas.jar&amp;lt;(baassaasmain.class[baassaasmain&lt;/infoNode&gt;&#x0D;&#x0A;&lt;infoNode&gt;=baasserver/src&amp;lt;{BaasServerMain.java[BaasServerMain&lt;/infoNode&gt;&#x0D;&#x0A;&lt;infoNode&gt;=TestServer/src&amp;lt;{Sequance.java[Sequance&lt;/infoNode&gt;&#x0D;&#x0A;&lt;infoNode&gt;=DBOracleToSqlExportImportPresenceDB/src&amp;lt;{DBExportImport.java[DBExportImport&lt;/infoNode&gt;&#x0D;&#x0A;&lt;infoNode&gt;=DBExportImortUtil/src&amp;lt;{DBExportImport.java[DBExportImport&lt;/infoNode&gt;&#x0D;&#x0A;&lt;infoNode&gt;=CollectionsMasterBackend/src&amp;lt;{Main.java[Main&lt;/infoNode&gt;&#x0D;&#x0A;&lt;infoNode&gt;=AvonDBProcessing/src&amp;lt;{Main.java[Main&lt;/infoNode&gt;&#x0D;&#x0A;&lt;infoNode&gt;=stouf/src&amp;lt;stouf{Main.java[Main&lt;/infoNode&gt;&#x0D;&#x0A;&lt;infoNode&gt;=AvonDBSMSGateway/src&amp;lt;{Main.java[Main&lt;/infoNode&gt;&#x0D;&#x0A;&lt;/historyRootNode&gt;&#x0D;&#x0A;&lt;/History&gt;"/>
+		<section name="DialogBoundsSettings">
+			<item key="DIALOG_WIDTH" value="600"/>
+			<item key="DIALOG_FONT_NAME" value="1|Segoe UI|9.0|0|WINDOWS|1|-12|0|0|0|400|0|0|0|1|0|0|0|0|Segoe UI"/>
+			<item key="DIALOG_HEIGHT" value="500"/>
+			<item key="DIALOG_Y_ORIGIN" value="232"/>
+			<item key="DIALOG_X_ORIGIN" value="619"/>
+		</section>
+	</section>
+	<section name="org.eclipse.jdt.internal.debug.ui.ExpressionInformationControlCreator$ExpressionInformationControl">
+		<item key="SashWeightTree" value="496"/>
+		<item key="SashWeightDetails" value="503"/>
+		<item key="WIDTH" value="614"/>
+		<item key="HEIGHT" value="194"/>
+	</section>
+	<section name="org.eclipse.jdt.debug.ui.RUNTIME_CLASSPATH_ADVANCED_DIALOG">
+		<item key="DIALOG_WIDTH" value="228"/>
+		<item key="DIALOG_FONT_NAME" value="1|Segoe UI|9.0|0|WINDOWS|1|-12|0|0|0|400|0|0|0|1|0|0|0|0|Segoe UI"/>
+		<item key="DIALOG_HEIGHT" value="280"/>
+		<item key="DIALOG_Y_ORIGIN" value="134"/>
+		<item key="DIALOG_X_ORIGIN" value="286"/>
+	</section>
+	<section name="expressionHistory">
+	</section>
+</section>

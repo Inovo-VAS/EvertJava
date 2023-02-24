@@ -1,0 +1,399 @@
+package baas.utils;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.lang.reflect.Method;
+import java.net.URLDecoder;
+import java.security.CodeSource;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.jar.JarEntry;
+import java.util.jar.JarInputStream;
+import java.util.zip.ZipEntry;
+
+import javax.xml.crypto.dsig.keyinfo.RetrievalMethod;
+
+public class Utils {
+	
+	public static void resourceToOutputStream(String resourcePath,OutputStream output) throws IOException{
+		resourceToOutputStream(resourcePath, output, null, null);
+	}
+	
+	public static void resourceToOutputStream(String resourcePath,OutputStream output,byte[]bytesToFind,byte[]bytesToReplace) throws IOException{
+		while(resourcePath.endsWith("/")) resourcePath=resourcePath.substring(0,resourcePath.length()-1);
+		while(resourcePath.startsWith("/")) resourcePath=resourcePath.substring(1);
+		
+		String jarFileLocalPath="";
+		try {
+			jarFileLocalPath=getJarContainingFolder(Utils.class);
+		} catch (Exception e) {
+		}
+		InputStream resourceStream =null;
+		
+		if((resourcePath.indexOf(".")>-1&&(resourcePath.indexOf(".")>resourcePath.indexOf("/")))||!jarFileLocalPath.endsWith(".jar")){
+			resourceStream=Utils.class.getResourceAsStream("/"+resourcePath);
+		}
+		
+		if(resourceStream!=null){
+			inputStreamToOutputStream(resourceStream, output,bytesToFind,bytesToReplace);
+		}
+		else if(resourceStream==null){
+			try {
+				
+				if(jarFileLocalPath.endsWith(".jar")){
+					File jarFileRef=new File(jarFileLocalPath);
+					
+					if(jarFileRef.exists()){
+						JarInputStream jarFile = new JarInputStream(new FileInputStream(jarFileLocalPath));
+						
+						inputStreamToOutputStream(jarFile, output, bytesToFind, bytesToReplace);
+						JarEntry jarentry;
+						
+						String jarResourcePath=resourcePath.equals("/")?"":(resourcePath+"/");
+						
+						while((jarentry=jarFile.getNextJarEntry())!=null){
+							String jarResourceItemName=jarentry.getName();							
+							if(jarResourceItemName.indexOf(jarResourcePath)>=0){
+								jarResourceItemName=jarResourceItemName.replaceAll("[$].*", "");
+								if(jarResourceItemName.endsWith(".class")){
+									
+									output.write(stringToByteArray(jarResourceItemName.substring((resourcePath.equals("")?jarResourcePath.length()-1: jarResourcePath.length()))+"\r\n"));
+								}
+								else{
+									output.write(stringToByteArray(jarResourceItemName.substring(jarResourcePath.length()-1)+"\r\n"));
+								}
+							}
+						}
+						
+						jarFile.close();
+					}
+				}
+			} catch (Exception e) {
+				e.printStackTrace();
+			}			
+		}
+	}
+	
+	public static byte[] stringToByteArray(String stringToConvert) {
+		char[]stringToConvertChars=stringToConvert.toCharArray();
+		byte[]convertedbytes=new byte[stringToConvertChars.length];
+		int bcindex=0;
+		for(char sc:stringToConvertChars){
+			convertedbytes[bcindex++]=(byte)sc;
+		}
+		return convertedbytes;
+	}
+
+	public static void inputStreamToOutputStream(InputStream input,OutputStream output,byte[]bytesToFind,byte[]bytesToReplace) throws IOException{
+		int balvailable=0;
+		byte[] bytesout=new byte[1024*1024];
+		bytesToFind=(bytesToFind==null?new byte[0]:bytesToFind);
+		if(bytesToFind.length==0){
+			while((balvailable=input.read(bytesout))>-1){
+				if(balvailable>0){
+					output.write(bytesout,0,balvailable);
+				}
+			}
+		}
+		else{
+			bytesToReplace=(bytesToReplace==null?new  byte[0]:bytesToReplace);
+			
+			byte[] bytesrealout=new byte[1024*1024];
+			int broutindex=0;
+			
+			byte bf;
+			int bfindex=0;
+			int bflength=bytesToFind.length;
+			
+			while((balvailable=input.read(bytesout))>-1){
+				if(balvailable>0){
+					byte[]bytestouse=new byte[balvailable];
+					System.arraycopy(bytesout, 0, bytestouse, 0, balvailable);
+					for(byte bu:bytestouse){
+						if((bf=bytesToFind[bfindex])==bu){
+							bfindex++;
+							if(bfindex==bflength){
+								for(byte br:bytesToReplace){
+									bytesrealout[broutindex++]=br;
+									if(broutindex==(1024*1024)){
+										output.write(bytesrealout);
+										broutindex=0;
+									}
+								}
+								bfindex=0;
+							}
+							continue;
+						}
+						
+						if(bfindex>0){
+							int bfrindex=0;
+							while(bfindex>0){
+								bfindex--;
+								bytesrealout[broutindex++]=bytesToFind[bfrindex++];
+								if(broutindex==(1024*1024)){
+									output.write(bytesrealout);
+									broutindex=0;
+								}
+							}
+						}
+						bytesrealout[broutindex++]=bu;
+						if(broutindex==(1024*1024)){
+							output.write(bytesrealout);
+							broutindex=0;
+						}	
+					}
+				}
+			}
+			if(broutindex>0){
+				output.write(bytesrealout,0,broutindex);
+				broutindex=0;
+			}
+		}
+	}
+
+	public static String inputStreamToString(InputStream input,String stringToFind,String stringToReplace) throws IOException{
+		ByteArrayOutputStream bytesoutStream=new ByteArrayOutputStream();
+		inputStreamToOutputStream(input, bytesoutStream,(stringToFind==null?null: stringToFind.getBytes()),(stringToReplace==null?null: stringToReplace.getBytes()));
+		return bytesoutStream.toString();
+	}
+	
+	public static String inputStreamToString(InputStream input) throws IOException{
+		ByteArrayOutputStream bytesoutStream=new ByteArrayOutputStream();
+		inputStreamToOutputStream(input, bytesoutStream, null, null);
+		return bytesoutStream.toString();
+	}
+	
+	public static Class findClass(String classPathToSearch,String defaultClass,Class assignableClassType) throws IOException{
+		defaultClass=(defaultClass==null?"":defaultClass);
+		classPathToSearch=(classPathToSearch.indexOf("/")>-1?(classPathToSearch.startsWith("/")?classPathToSearch:"/"+classPathToSearch):"/"+classPathToSearch);
+		String classPathLibPath=classPathToSearch.substring(0,classPathToSearch.lastIndexOf("/"));
+		while(!classPathLibPath.endsWith("/")) classPathLibPath+="/";
+		String className=classPathToSearch.substring(classPathLibPath.length());
+		
+		className=(className.equals("")?defaultClass:className);
+		if(className.equals("")) return null;
+		className=(className+".class").toUpperCase();
+		ByteArrayOutputStream byteoutStream=new ByteArrayOutputStream();
+		resourceToOutputStream(classPathLibPath, byteoutStream);
+		
+		for(String possibleClassName:byteoutStream.toString().trim().split("[\r\n]")){
+			if(possibleClassName.indexOf("$")>-1) continue;
+			if( possibleClassName.toUpperCase().equals(className)){
+				try {
+					String classFoundPath=classPathLibPath.substring(1).replaceAll("/", ".")+possibleClassName.substring(0,possibleClassName.length()-".class".length());
+					Class classFound=null;
+					synchronized (classFoundPath) {
+						classFound=Class.forName(classFoundPath);
+					}
+					if(assignableClassType==null) return classFound;
+					if(assignableClassType.isAssignableFrom(classFound)) return classFound;
+				} catch (ClassNotFoundException e) {
+					if(!defaultClass.equals("")){
+						try {
+							if(defaultClass.indexOf("/")>-1){
+								classPathLibPath=classPathToSearch.substring(0,defaultClass.lastIndexOf("/"));
+								while(!classPathLibPath.endsWith("/")) classPathLibPath+="/";								
+								defaultClass=defaultClass.substring(classPathLibPath.length());
+								classPathLibPath=(classPathLibPath.startsWith("/")?classPathLibPath:"/"+classPathLibPath);
+							}
+							Class classFound=Class.forName(classPathLibPath.substring(1).replaceAll("/", ".")+defaultClass.substring(0,possibleClassName.length()-".class".length()));
+							if(assignableClassType==null) return classFound;
+							if(assignableClassType.isAssignableFrom(classFound)) return classFound;
+						} catch (ClassNotFoundException e1) {
+							return null;
+						}
+					}
+				}
+			}
+		}
+		return null;
+	}
+
+	public static HashMap<String, String> generatePropertiesMap(String[] stringArray) {
+		return generatePropertiesMap(stringArray, "=");
+	}
+	
+	public static HashMap<String, String> generatePropertiesMap(String[] stringArray,String assignSep) {
+		if(stringArray!=null){
+			HashMap<String,String> propertiesMap=null;
+			for(String stringLine:stringArray){
+				if(stringLine.indexOf(assignSep)>-1){
+					String propName=stringLine.substring(0,stringLine.indexOf(assignSep)).trim().toUpperCase();
+					String propValue=stringLine.substring(stringLine.indexOf(assignSep)+assignSep.length()).trim();
+					if(!propValue.equals("")){
+						(propertiesMap=(propertiesMap==null?new HashMap<String,String>():propertiesMap)).put(propName, propValue);
+					}
+				}
+			}
+			return propertiesMap;
+		}
+		return null;
+	}
+	
+	public static String readMapProperty(String propName,HashMap<String,String> mapProperties){
+		if(mapProperties==null) return "";
+		String propValue=mapProperties.get(propName.toUpperCase());
+		return (propValue==null?"":propValue);
+	}
+
+	private static Method findNextMethod(Method[]methodsToSearch,int fromIndex,int toIndex,String methodName){
+		if(fromIndex>toIndex) return null;
+		Method methodFound=methodsToSearch[fromIndex];
+		if(methodFound.getName().toUpperCase().equals(methodName=methodName.toUpperCase())){
+			return methodFound;
+		}
+		else{
+			methodFound=methodsToSearch[toIndex];
+			if(methodFound.getName().toUpperCase().equals(methodName=methodName.toUpperCase())){
+				return methodFound;
+			}
+			else{
+				fromIndex++;
+				toIndex--;
+				
+				methodFound=methodsToSearch[fromIndex];
+				if(methodFound.getName().toUpperCase().equals(methodName=methodName.toUpperCase())){
+					return methodFound;
+				}
+				else{
+				
+					if(fromIndex==toIndex){
+						methodFound=null;
+					}
+					else{
+						int midIndex=fromIndex+((toIndex-fromIndex) / 2);
+						if(midIndex==fromIndex) {
+							methodFound=null;
+						}
+						else if(midIndex==toIndex) {
+							methodFound=null;
+						}
+						else{
+							if(fromIndex>toIndex){
+								methodFound=null;
+							}
+							else{
+								if((methodFound=findNextMethod(methodsToSearch, fromIndex, midIndex, methodName))==null){
+									if((methodFound=findNextMethod(methodsToSearch, midIndex, toIndex, methodName))!=null){
+										return methodFound;
+									}
+								}
+								else{
+									return methodFound;
+								}
+							}
+						}
+					}
+				}
+			}
+			
+		}
+		return methodFound;
+	}
+	
+	public static Method findMethod(Class<?> methodClass,
+			String methodName) {
+		Method[]methodsToSearch=methodClass.getMethods();
+		return findNextMethod(methodClass.getMethods(), 0, methodsToSearch.length-1, methodName);
+	}
+
+	public static ArrayList<String> stringArrayToStringArrayList(
+			String[] strings) {
+		ArrayList<String> stringArrayList=new ArrayList<String>();
+		for(String string:strings){
+			stringArrayList.add(string);
+		}
+		return stringArrayList;
+	}
+	
+	public static ArrayList<String[]> generateElementProperties(
+			String[][] strings){
+		return generateElementProperties(strings, "=");
+	}
+
+	public static ArrayList<String[]> generateElementProperties(
+			String[][] strings,String assignSep) {
+		ArrayList<String[]> arrayElemProperties=new ArrayList<String[]>();
+		if(strings==null){
+			return arrayElemProperties;
+		}
+		ArrayList<String> elemPropeties=new ArrayList<String>();
+		for(String[] string:strings){
+			if(string!=null){
+				if(string.length>0){
+					while(!elemPropeties.isEmpty())elemPropeties.remove(0);
+					for(String stringelem:string){
+						if(stringelem.indexOf(assignSep)>-1){
+							elemPropeties.add(stringelem.substring(0,stringelem.indexOf(assignSep)).toUpperCase().trim()+assignSep+stringelem.substring(stringelem.indexOf(assignSep)+assignSep.length()).trim());
+						}
+					}
+					if(!elemPropeties.isEmpty()){
+						String[] newelemProperties=new String[elemPropeties.size()];
+						elemPropeties.toArray(newelemProperties);
+						arrayElemProperties.add(newelemProperties);
+					}
+				}
+			}
+		}
+		while(!elemPropeties.isEmpty())elemPropeties.remove(0);
+		return arrayElemProperties;
+	}
+	
+	public static ArrayList<String[]> generateElementProperties(
+			String strings,String arraySep,String propSep,String assignSep) {
+		ArrayList<String[]>  arrayElemProperties=new ArrayList<String[]>();
+		strings+=arraySep;
+		
+		ArrayList<String> elemPropeties=new ArrayList<String>();
+		
+		while(strings.indexOf(arraySep)>-1){
+			String possibleString=strings.substring(0,strings.indexOf(arraySep));
+			strings=strings.substring(strings.indexOf(arraySep)+arraySep.length());
+			if(possibleString.equals("")) continue;
+			possibleString+=propSep;
+			while(!elemPropeties.isEmpty())elemPropeties.remove(0);
+			while(possibleString.indexOf(propSep)>-1){
+				String stringelem=possibleString.substring(0,possibleString.indexOf(propSep));
+				possibleString=possibleString.substring(possibleString.indexOf(propSep)+propSep.length());
+				if(stringelem.indexOf(assignSep)>-1){
+					elemPropeties.add(stringelem.substring(0,stringelem.indexOf(assignSep)).toUpperCase().trim()+assignSep+stringelem.substring(stringelem.indexOf(assignSep)+assignSep.length()).trim());
+				}
+			}
+			if(!elemPropeties.isEmpty()){
+				String[] newelemProperties=new String[elemPropeties.size()];
+				elemPropeties.toArray(newelemProperties);
+				arrayElemProperties.add(newelemProperties);
+			}
+		}
+		while(!elemPropeties.isEmpty())elemPropeties.remove(0);
+		return arrayElemProperties;
+	}
+	
+	public static String getJarContainingFolder(Class aclass) throws Exception {
+		  CodeSource codeSource = aclass.getProtectionDomain().getCodeSource();
+
+		  File jarFile;
+
+		  if (codeSource.getLocation() != null) {
+		    jarFile = new File(codeSource.getLocation().toURI());
+		  }
+		  else {
+		    String path = aclass.getResource(aclass.getSimpleName() + ".class").getPath();
+		    String jarFilePath = path.substring(path.indexOf(":") + 1, path.indexOf("!"));
+		    jarFilePath = URLDecoder.decode(jarFilePath, "UTF-8");
+		    jarFile = new File(jarFilePath);
+		  }
+		  return jarFile.getAbsolutePath();
+	}
+	
+	public static void outputBytesToStream(OutputStream output,byte[]bytesout) throws Exception{
+		if(output==null||bytesout==null) return;
+		if(bytesout.length>0){
+			output.write(bytesout,0,bytesout.length);
+		}
+	}
+}

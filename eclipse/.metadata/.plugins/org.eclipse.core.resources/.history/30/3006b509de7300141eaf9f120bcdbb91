@@ -1,0 +1,685 @@
+package inovo.flat.file.leads.importer;
+
+import inovo.db.Database;
+import inovo.presence.PresenceDB;
+import inovo.servlet.InovoServletContextListener;
+
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.HashMap;
+import java.util.Iterator;
+
+public class FlatFileRequestCallsImporter implements Runnable {
+
+	private HashMap<String,String> _flatFileRequestCallsImportSettings=null;
+	private Object _flatFileRequestCallsLock=new Object();
+	private FlatFileRegisterRequest _flatFileRegisterRequest=null;
+	private String _requestID="";
+	public FlatFileRequestCallsImporter(FlatFileRegisterRequest flatFileRegisterRequest,HashMap<String,String> flatFileRequestCallsImportSettings){
+		this._flatFileRegisterRequest=flatFileRegisterRequest;
+		this._flatFileRequestCallsImportSettings=flatFileRequestCallsImportSettings;
+		this._requestID=this._flatFileRequestCallsImportSettings.get("ID");
+		this._flatFileRequestCallsImportSettings.put("REQUESTID", this._requestID);
+		this._recordProcessed=Integer.parseInt((this._flatFileRequestCallsImportSettings.put("REQUESTCALLSIMPORTCOUNT", this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTCOUNT").equals("")?"0":this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTCOUNT")))==null?"0":this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTCOUNT").equals("REQUESTCALLSIMPORTCOUNT")?"0":this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTCOUNT"));
+		this._recordProcessedFailed=Integer.parseInt((this._flatFileRequestCallsImportSettings.put("REQUESTCALLSIMPORTFAILURECOUNT", this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTFAILURECOUNT").equals("")?"0":this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTFAILURECOUNT")))==null?"0":this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTFAILURECOUNT").equals("REQUESTCALLSIMPORTFAILURECOUNT")?"0":this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTFAILURECOUNT"));
+		this._recordAddCallProcessed=Integer.parseInt((this._flatFileRequestCallsImportSettings.put("REQUESTCALLSIMPORTADDCALLCOUNT", this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTADDCALLCOUNT").equals("")?"0":this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTADDCALLCOUNT")))==null?"0":this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTADDCALLCOUNT").equals("REQUESTCALLSIMPORTADDCALLCOUNT")?"0":this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTADDCALLCOUNT"));
+		this._recordAddCallProcessedFailed=Integer.parseInt((this._flatFileRequestCallsImportSettings.put("REQUESTCALLSIMPORTADDCALLFAILURECOUNT", this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTADDCALLFAILURECOUNT").equals("")?"0":this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTADDCALLFAILURECOUNT")))==null?"0":this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTADDCALLFAILURECOUNT").equals("REQUESTCALLSIMPORTADDCALLFAILURECOUNT")?"0":this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTADDCALLFAILURECOUNT"));
+		this._recordRemoveCallProcessed=Integer.parseInt((this._flatFileRequestCallsImportSettings.put("REQUESTCALLSIMPORTREMOVECALLCOUNT", this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTREMOVECALLCOUNT").equals("")?"0":this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTREMOVECALLCOUNT")))==null?"0":this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTREMOVECALLCOUNT").equals("REQUESTCALLSIMPORTREMOVECALLCOUNT")?"0":this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTREMOVECALLCOUNT"));
+		this._recordRemoveCallProcessedFailed=Integer.parseInt((this._flatFileRequestCallsImportSettings.put("REQUESTCALLSIMPORTREMOVECALLFAILURECOUNT", this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTREMOVECALLFAILURECOUNT").equals("")?"0":this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTREMOVECALLFAILURECOUNT")))==null?"0":this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTREMOVECALLFAILURECOUNT").equals("REQUESTCALLSIMPORTREMOVECALLFAILURECOUNT")?"0":this._flatFileRequestCallsImportSettings.get("REQUESTCALLSIMPORTREMOVECALLFAILURECOUNT"));
+	}
+	
+	@Override
+	public void run() {
+		while(!this._stopCallImporting){
+			this.importFlatFileCalls();
+			/*synchronized (_flatFileRequestCallsLock) {
+				try {
+					_flatFileRequestCallsLock.wait(100);
+				} catch (InterruptedException e) {
+				}
+			}*/
+			try {
+				Thread.sleep(500);
+			} catch (InterruptedException e) {
+			}
+		}
+	}
+
+	private boolean _stopCallImporting=false;
+	
+	public void importFlatFileCalls(){
+		
+		_flatFileRequestCallsImportSettings.put("REQUESTFILEIMPORTCONTENTSTATUS","0");
+		
+		try{
+			Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "SELECT ISNULL(REQUESTFILEIMPORTCONTENTSTATUS,0) AS REQUESTFILEIMPORTCONTENTSTATUS FROM <DBUSER>.LEADSDATAFILEALLIASREQUEST WHERE ID=:REQUESTID", _flatFileRequestCallsImportSettings,null,null);
+		}
+		catch(Exception e){
+			//TODO
+			e.printStackTrace();
+		}
+		
+		this._stopCallImporting=_flatFileRequestCallsImportSettings.get("REQUESTFILEIMPORTCONTENTSTATUS").equals("0")?false:true;
+		
+		try {
+			Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.LEADSDATAFILEALLIASREQUESTCONTENT SET ENTRYHANDLEFLAG=2 WHERE ENTRYHANDLEFLAG=1 AND ENTRYSTATUS=1 AND FLATFILEALIASREQUESTID=:REQUESTID", _flatFileRequestCallsImportSettings,null,null);
+		} catch (Exception e) {
+			//TODO
+			e.printStackTrace();
+		}
+		
+		long startTime=Calendar.getInstance().getTimeInMillis();
+		System.out.println("START TIME:"+startTime);
+		
+		this._flatFileAlias=this._flatFileRequestCallsImportSettings.get("ALIAS").toUpperCase();
+		this._flatFileLookupMask=this._flatFileRequestCallsImportSettings.get("FILELOOKUPMASK");
+		this._filename=this._flatFileRequestCallsImportSettings.get("REQUESTFILENAME");
+		
+		this._masterServiceid=(this._masterServiceid=this._flatFileRequestCallsImportSettings.get("DEFAULTSERVICEID")).equals("")?"0":this._masterServiceid;
+		this._masterLoadID=(this._masterLoadID=this._flatFileRequestCallsImportSettings.get("DEFAULTLOADID")).equals("")?"0":this._masterLoadID;
+		this._masterPriority=(this._masterPriority=this._flatFileRequestCallsImportSettings.get("DEFAULTPRIORITY")).equals("")?"100":this._masterPriority;
+		
+		_usefilenameasloadname=this.currentFlatFileImportProperty("USEFILENAMEASLOADNAME").equals("TRUE");
+		_enablenewloadwhencreated=this.currentFlatFileImportProperty("ENABLENEWLOAD").equals("TRUE");
+		_forcecreatingload=this.currentFlatFileImportProperty("FORCECREATINGLOAD").equals("TRUE");
+		
+		try {
+			Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "SELECT * FROM <DBUSER>.LEADSDATAFILEALLIASREQUESTCONTENT WHERE ENTRYHANDLEFLAG=2 AND ENTRYSTATUS=1 AND FLATFILEALIASREQUESTID=:REQUESTID", _flatFileRequestCallsImportSettings,this,"readFileCallRowData");
+		} catch (Exception e) {
+			//TODO
+			e.printStackTrace();
+		}
+		
+		if(this._stopCallImporting){
+			_flatFileRequestCallsImportSettings.put("REQUESTFILEIMPORTCALLHANDLECOUNT","0");
+			try {
+				Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "SELECT COUNT(*) AS REQUESTFILEIMPORTCALLHANDLECOUNT FROM <DBUSER>.LEADSDATAFILEALLIASREQUESTCONTENT WHERE ROWTYPE='DATA' AND ENTRYHANDLEFLAG=2 AND ENTRYSTATUS=1 AND FLATFILEALIASREQUESTID=:REQUESTID", _flatFileRequestCallsImportSettings,null,null);
+			} catch (Exception e) {
+				//TODO
+				e.printStackTrace();
+			}
+			this._stopCallImporting=_flatFileRequestCallsImportSettings.get("REQUESTFILEIMPORTCALLHANDLECOUNT").equals("0")?true:false;
+		}
+		
+		try {
+			Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.LEADSDATAFILEALLIASREQUEST SET REQUESTCALLSIMPORTCOUNT="+String.valueOf(_recordProcessed)+","+(this._stopCallImporting?"REQUESTHANDLEFLAG=3,REQUESTFILEIMPORTACTIVE=0, REQUESTLASTHANDLEDATETIME=GETDATE(),":"")+"REQUESTCALLSIMPORTFAILURECOUNT="+String.valueOf(_recordProcessedFailed)+",REQUESTCALLSIMPORTADDCALLCOUNT="+String.valueOf(_recordAddCallProcessed)+",REQUESTCALLSIMPORTADDCALLFAILURECOUNT="+String.valueOf(_recordAddCallProcessedFailed)+",REQUESTCALLSIMPORTREMOVECALLCOUNT="+String.valueOf(_recordRemoveCallProcessed)+",REQUESTCALLSIMPORTREMOVECALLFAILURECOUNT="+String.valueOf(_recordRemoveCallProcessedFailed)+" WHERE ID="+this._flatFileRequestCallsImportSettings.get("ID"),null,null);
+		} catch (Exception e) {
+			return;			
+		}
+		
+		long endTime=Calendar.getInstance().getTimeInMillis();
+		System.out.println("END TIME: "+endTime);
+		System.out.println("TIME DIF SECONDS: "+(endTime-startTime)/1000);
+		if(this._stopCallImporting){
+			this._flatFileRegisterRequest.flatFileRequestCallsCompleted(this, this._requestID);
+		}
+	}
+	
+	private ArrayList<String> _fileAliasDataSetColumns=null;
+	
+	private String _flatFileAlias="";
+	private String _flatFileLookupMask="";
+	private int _recordProcessed=0;
+	private int _recordProcessedFailed=0;
+	private int _recordAddCallProcessed=0;
+	private int _recordAddCallProcessedFailed=0;
+	private int _recordRemoveCallProcessed=0;
+	private int _recordRemoveCallProcessedFailed=0;
+	private String _filename="";
+	private HashMap<String,String> _callparams=new HashMap<String,String>();
+	private HashMap<String,String> _mergedMasterParams=new HashMap<String, String>();
+	
+	private String _masterServiceid="";
+	private String _masterLoadID="";
+	private String _masterPriority="";
+	
+	private boolean _usefilenameasloadname=false;
+	private boolean _enablenewloadwhencreated=false;
+	private boolean _forcecreatingload=false;
+	
+	private String currentFlatFileImportProperty(String propname) {
+		propname=propname.toUpperCase();
+		if(_flatFileRequestCallsImportSettings.containsKey(propname)){
+			return _flatFileRequestCallsImportSettings.get(propname);
+		}
+		return "";
+	}
+	
+	public void debug(String message){
+		inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug(message);
+	}
+	
+	private int _contenFieldAjustment=5;
+	
+	private ArrayList<String> _selectedRowData=new ArrayList<String>();
+	
+	public void readFileCallRowData(Integer rowindex,ArrayList<String> rowData,ArrayList<String> rowColumns){
+		if(rowindex==0){
+			
+			return;
+		}
+		
+		if(Database.rowField(rowColumns, rowData, "ROWTYPE").equals("COLUMNS")){
+			if(_fileAliasDataSetColumns!=null){
+				_fileAliasDataSetColumns.clear();
+				_fileAliasDataSetColumns=null;
+			}
+			_fileAliasDataSetColumns=new ArrayList<String>();
+			String actualFieldName="";
+			for(int fieldnr=1;fieldnr<=300;fieldnr++){
+				if((actualFieldName=rowData.get(rowColumns.indexOf("FIELD"+String.valueOf(fieldnr)))).equals("")) break;
+				_fileAliasDataSetColumns.add(actualFieldName.toUpperCase());
+			}
+			
+			return;
+		}
+		
+		if(_recordProcessed % 1000 == 0){
+			this.debug("Records IN File Dataset ["+_flatFileAlias+":"+_filename+"] processed thus far - "+_recordProcessed);
+			try {
+				Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.LEADSDATAFILEALLIASREQUEST SET REQUESTCALLSIMPORTCOUNT="+String.valueOf(_recordProcessed)+",REQUESTCALLSIMPORTFAILURECOUNT="+String.valueOf(_recordProcessedFailed)+",REQUESTCALLSIMPORTADDCALLCOUNT="+String.valueOf(_recordAddCallProcessed)+",REQUESTCALLSIMPORTADDCALLFAILURECOUNT="+String.valueOf(_recordAddCallProcessedFailed)+",REQUESTCALLSIMPORTREMOVECALLCOUNT="+String.valueOf(_recordRemoveCallProcessed)+",REQUESTCALLSIMPORTREMOVECALLFAILURECOUNT="+String.valueOf(_recordRemoveCallProcessedFailed)+" WHERE ID="+this._flatFileRequestCallsImportSettings.get("ID"),null,null);
+			} catch (Exception e) {
+				return;			
+			}
+		}
+		_recordProcessed++;
+		
+		_callparams.clear();
+		
+		_selectedRowData.clear();
+		int colummnsLength=0;
+		while(colummnsLength<this._fileAliasDataSetColumns.size()){
+			_selectedRowData.add(rowData.get(_contenFieldAjustment+colummnsLength++));
+		}
+		
+		String serviceid = this.formattedFieldParamValue(":"+this.currentFlatFileImportProperty("SERVICEIDFIELD"),_selectedRowData, _fileAliasDataSetColumns,_filename);
+		_mergedMasterParams.clear();
+		_mergedMasterParams.putAll(Database.rowData(_fileAliasDataSetColumns, _selectedRowData));
+		try{
+			if(serviceid.equals("")||serviceid.equals(_masterServiceid)){// serviceid.equals(":"+this.currentFlatFileImportProperty("SERVICEIDFIELD"))){
+				serviceid=(PresenceDB.serviceExist(_masterServiceid)?_masterServiceid:"");
+			}
+			else{
+				if(!PresenceDB.serviceExist(serviceid)){
+					if(!PresenceDB.serviceExist(serviceid=_masterServiceid)){
+						serviceid="";
+					}
+				}
+			}
+		}
+		catch(Exception svre){
+			//TODO
+			this._recordProcessedFailed++;
+			return;
+		}
+		if(serviceid.equals("")){
+			this._recordProcessedFailed++;
+			try {
+				Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.[LEADSDATAFILEALLIASREQUESTCONTENT] SET ENTRYHANDLEFLAG=5,ENTRYSTATUS=1,CALLREQUESTSTATUS=0,ENTRYSERVICEID=0,ENTRYLOADID=0,ENTRYSOURCEID=0 WHERE ID="+Database.rowField(rowColumns, rowData, "ID"), null, null);
+			} catch (Exception e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			return;
+		}
+		
+		_callparams.put("SERVICEID", serviceid);
+		
+		String loadid = this.formattedFieldParamValue(":"+this.currentFlatFileImportProperty("LOADIDFIELD"),_selectedRowData, _fileAliasDataSetColumns,_filename);
+		if(loadid.equals("")||loadid.equals(":"+this.currentFlatFileImportProperty("LOADIDFIELD"))){
+			loadid=_masterLoadID;
+		}
+		
+		if((loadid=loadid.equals("0")?"":loadid).equals("")||_forcecreatingload){
+			if(_forcecreatingload){
+				String loadname="";
+				if(_usefilenameasloadname){
+					loadname=_filename.toUpperCase();
+				}
+				else{
+					loadname=this.formattedFieldParamValue(this.currentFlatFileImportProperty("LOADNAMEMASK"),_selectedRowData, _fileAliasDataSetColumns,_filename).toUpperCase();
+				}
+				
+				if(loadname.length()>50){
+					loadname=loadname.substring(0,50).toUpperCase();
+				}
+				
+				try {
+					if(PresenceDB.serviceLoadExist(serviceid,loadid, loadname.toUpperCase())){
+						loadid=(loadid.equals("")?PresenceDB.serviceLoadIDByLoadDescription(serviceid, loadname.toUpperCase()):loadid);
+					}
+					else{
+						if(PresenceDB.createServiceLoad(serviceid, loadid, loadname.toUpperCase(), _enablenewloadwhencreated, Integer.parseInt(_masterPriority))){
+							loadid=(loadid.equals("")?PresenceDB.serviceLoadIDByLoadDescription(serviceid, loadname.toUpperCase()):loadid);
+							inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("PRESENCE LOAD CREATED - [SERVICEID="+serviceid+", LOADID="+loadid+", LOADNAME="+loadname.toUpperCase());
+						}
+						else{
+							if(_masterLoadID.equals("")||_masterLoadID.equals("0")){
+								_masterLoadID="0";
+							}
+							if(PresenceDB.createServiceLoad(serviceid=_masterServiceid, loadid, loadname, _enablenewloadwhencreated, Integer.parseInt(_masterPriority))){
+								if(_masterLoadID.equals("0")){
+									loadid=(loadid.equals("")?PresenceDB.serviceLoadIDByLoadDescription(serviceid, loadname.toUpperCase()):loadid);
+								}
+								inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("PRESENCE LOAD CREATED - [SERVICEID="+serviceid+", LOADID="+loadid+", LOADNAME="+loadname.toUpperCase());
+							}
+							else{
+								inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("FAILED CREATING PRESENCE LOAD - [SERVICEID="+serviceid+", LOADID="+loadid+", LOADNAME="+loadname.toUpperCase());
+							}
+						}
+					}
+				} catch (Exception e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+					return;
+				}
+			}
+			if(loadid.equals("")||loadid.equals("0")){
+				this._recordProcessedFailed++;
+				try {
+					Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.[LEADSDATAFILEALLIASREQUESTCONTENT] SET ENTRYHANDLEFLAG=6,ENTRYSTATUS=1,CALLREQUESTSTATUS=0,ENTRYSERVICEID="+serviceid+",ENTRYLOADID=0,ENTRYSOURCEID=0 WHERE ID="+Database.rowField(rowColumns, rowData, "ID"), null, null);
+				} catch (Exception e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				return;
+			}
+		}
+		else{
+			if(_forcecreatingload){
+				String loadname="";
+				if(_usefilenameasloadname){
+					loadname=_filename.toUpperCase();
+				}
+				else{
+					loadname=_flatFileAlias.toUpperCase();
+				}
+				
+				if(loadname.length()>50){
+					loadname=loadname.substring(0,50);
+				}
+				
+				try {
+					if(PresenceDB.serviceLoadExist(serviceid,loadid, loadname.toUpperCase())){
+						loadid=PresenceDB.serviceLoadIDByLoadDescription(serviceid, loadname.toUpperCase());
+					}
+					else{
+						if(PresenceDB.createServiceLoad(_masterServiceid, loadid, loadname.toUpperCase(), _enablenewloadwhencreated, Integer.parseInt(_masterPriority))){
+							loadid=PresenceDB.serviceLoadIDByLoadDescription(serviceid, loadname.toUpperCase());
+							inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("PRESENCE LOAD CREATED - [SERVICEID="+serviceid+", LOADID="+loadid+", LOADNAME="+loadname.toUpperCase());
+						}
+						else{
+							if(PresenceDB.createServiceLoad(_masterServiceid, loadid=_masterLoadID, loadname.toUpperCase(), _enablenewloadwhencreated, Integer.parseInt(_masterPriority))){
+								loadid=PresenceDB.serviceLoadIDByLoadDescription(serviceid, loadname.toUpperCase());
+								inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("PRESENCE LOAD CREATED - [SERVICEID="+serviceid+", LOADID="+loadid+", LOADNAME="+loadname.toUpperCase());
+							}
+							else{
+								inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("FAILED CREATING PRESENCE LOAD - [SERVICEID="+serviceid+", LOADID="+loadid+", LOADNAME="+loadname.toUpperCase());
+							}
+						}
+					}
+				} catch (Exception e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+					return;
+				}
+			}
+			if(loadid.equals("")){
+				this._recordProcessedFailed++;
+				try {
+					Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.[LEADSDATAFILEALLIASREQUESTCONTENT] SET ENTRYHANDLEFLAG=6,ENTRYSTATUS=1,CALLREQUESTSTATUS=0,ENTRYSERVICEID="+serviceid+",ENTRYLOADID=0,ENTRYSOURCEID=0 WHERE ID="+Database.rowField(rowColumns, rowData, "ID"), null, null);
+				} catch (Exception e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				return;
+			}
+		}
+		_callparams.put("LOADID", loadid);
+		
+		String priority = this.formattedFieldParamValue(":"+this.currentFlatFileImportProperty("PRIORITYIDFIELD"),_selectedRowData, _fileAliasDataSetColumns,_filename);
+		if(priority.equals("")||priority.equals(":"+this.currentFlatFileImportProperty("PRIORITYIDFIELD"))){
+			priority=_masterPriority;
+		}
+		
+		if(priority.equals("")){
+			priority="100";
+		}
+		_callparams.put("PRIORITY", priority);
+		
+		String phonenumfirst="";
+		for(int phonenr=1;phonenr<=10;phonenr++){
+			String phonenrfield="PHONE"+String.valueOf(phonenr)+"FIELD";
+			String phonenum = this.formattedFieldParamValue(":["+this.currentFlatFileImportProperty(phonenrfield)+"]",_selectedRowData, _fileAliasDataSetColumns,_filename);
+			if(priority.equals("")||phonenum.equals(":"+this.currentFlatFileImportProperty(phonenrfield))){
+				phonenum="";
+			}
+			if(!phonenum.equals("")){
+				String newPhoneNum="";
+				char prevcpn=0;
+				for(char cpn:phonenum.toCharArray()){
+					if("0123456789".indexOf(cpn)>-1&&"0123456789".indexOf(prevcpn)==-1){
+						newPhoneNum+=cpn;
+					}
+				}
+				phonenum=(newPhoneNum.startsWith("27")&&newPhoneNum.length()>=11?newPhoneNum.substring(newPhoneNum.length()-9):newPhoneNum);
+			}
+			if(!phonenum.equals("")){
+				if(phonenumfirst.equals("")) phonenumfirst=phonenum;
+			}
+			_callparams.put("PHONE"+String.valueOf(phonenr), phonenum);
+			_callparams.put("PHONE"+String.valueOf(phonenr)+"EXT", "");
+		}
+		
+		String loadrequesttype=this.formattedFieldParamValue(":["+this.currentFlatFileImportProperty("LEADREQUESTTYPEFIELD")+"]", _selectedRowData, _fileAliasDataSetColumns, _filename).toUpperCase();
+		loadrequesttype=loadrequesttype.equals("ADDCALL")?"1":loadrequesttype.equals("REMOVECALL")?"2":loadrequesttype.equals("MODIFYCALL")?"3":(",1,2,3").indexOf(","+loadrequesttype+",")>-1?loadrequesttype:"1";
+		_callparams.put("LOADREQUESTTYPE",(loadrequesttype.equals("")?"1":loadrequesttype));
+		
+		if(phonenumfirst.equals("")&&loadrequesttype.equals("1")){
+			//TODO
+			this._recordProcessedFailed++;
+			try {
+				Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.[LEADSDATAFILEALLIASREQUESTCONTENT] SET ENTRYHANDLEFLAG=7,ENTRYSTATUS=1,CALLREQUESTSTATUS=0,ENTRYSERVICEID="+serviceid+",ENTRYLOADID="+loadid+",ENTRYSOURCEID=0 WHERE ID="+Database.rowField(rowColumns, rowData, "ID"), null, null);
+			} catch (Exception e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			return;
+		}
+		
+		String callername=this.formattedFieldParamValue(this.currentFlatFileImportProperty("CALLERNAMEFIELDS"),_selectedRowData, _fileAliasDataSetColumns,_filename);
+		_callparams.put("CALLERNAME", (callername.length()<40?callername:callername.substring(0, 40)));
+
+		String comments=this.formattedFieldParamValue(this.currentFlatFileImportProperty("COMMENTSFIELDS"),_selectedRowData, _fileAliasDataSetColumns,_filename);
+		_callparams.put("COMMENTS", (comments.length()<100?comments:comments.substring(0, 100)));
+		
+		String agentlogin=this.formattedFieldParamValue(":AGENTLOGIN",_selectedRowData, _fileAliasDataSetColumns,_filename);
+		if(agentlogin.equals(":AGENTLOGIN")){
+			agentlogin="";
+		}
+		
+		_callparams.put("AGENTLOGINID",agentlogin);
+		
+		String scheduledcall=this.formattedFieldParamValue(":SCHEDULEDATE",_selectedRowData, _fileAliasDataSetColumns,_filename);
+		if(scheduledcall.equals(":SCHEDULEDATE")){
+			scheduledcall="";
+		}
+		
+		_callparams.put("SCHEDULEDCALL",scheduledcall);
+		
+		for(int metafieldnr=1;metafieldnr<=20;metafieldnr++){
+			String metafield="METAFIELD"+String.valueOf(metafieldnr);
+			_callparams.put(metafield,this.formattedFieldParamValue(this.currentFlatFileImportProperty(metafield),_selectedRowData, _fileAliasDataSetColumns,_filename));
+		}
+		
+		_callparams.put("LOADREQUESTTYPE",(loadrequesttype.equals("")?"1":loadrequesttype));
+		_callparams.put("RECORDHANDLEFLAG", "1");
+		_callparams.put("FIELDSTOMODIFY", currentFlatFileImportProperty("FIELDSTOMODIFY"));
+		
+		String sourceid = this.formattedFieldParamValue(":"+this.currentFlatFileImportProperty("SOURCEIDFIELD"),_selectedRowData, _fileAliasDataSetColumns,_filename);
+		
+		_callparams.put("SOURCEID", sourceid);
+		
+		if(!this.currentFlatFileImportProperty("ALTERNATESOURCEIDSQLCOMMAND").equals("")){
+			_mergedMasterParams.putAll(_callparams);
+			String ALTERNATESOURCEIDSQLCOMMAND=this.currentFlatFileImportProperty("ALTERNATESOURCEIDSQLCOMMAND");
+			
+			if(ALTERNATESOURCEIDSQLCOMMAND.indexOf("CALLSOURCEID")>-1){
+				_mergedMasterParams.put("CALLSOURCEID", _callparams.get("SOURCEID"));
+				this.debug("Alternate Source ID Sql Command - SET INITIAL SOURCEID -"+_mergedMasterParams.get("CALLSOURCEID"));
+			}
+			
+			if(ALTERNATESOURCEIDSQLCOMMAND.indexOf("CALLLOADID")>-1){
+				_mergedMasterParams.put("CALLLOADID", _callparams.get("LOADID"));
+			}
+			
+			if(ALTERNATESOURCEIDSQLCOMMAND.indexOf("CALLSERVICEID")>-1){
+				_mergedMasterParams.put("CALLSERVICEID", _callparams.get("SERVICEID"));
+			}
+			
+			try {
+				Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", ALTERNATESOURCEIDSQLCOMMAND, _mergedMasterParams, this);
+			} catch (Exception e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+				return;
+			}
+			if(_mergedMasterParams.containsKey("CALLSOURCEID")){
+				_callparams.put("SOURCEID", _mergedMasterParams.get("CALLSOURCEID"));
+				this.debug("Alternate Source ID Sql Command - SET SOURCEID -"+_mergedMasterParams.get("CALLSOURCEID"));
+			}
+			if(_mergedMasterParams.containsKey("CALLLOADID")) _callparams.put("LOADID", _mergedMasterParams.get("CALLLOADID"));
+			if(_mergedMasterParams.containsKey("CALLSERVICEID")) _callparams.put("SERVICEID", _mergedMasterParams.get("CALLSERVICEID"));
+			this.debug("Alternate Source ID Sql Command - [SERVICEID - "+ _callparams.get("SERVICEID")+", LOADID - "+ _callparams.get("LOADID")+",SOURCEID - "+ _callparams.get("SOURCEID"));
+			this.debug("Alternate Source ID Sql Command[MERGED] - [CALLSERVICEID - "+ (_mergedMasterParams.containsKey("CALLSERVICEID")?_mergedMasterParams.get("CALLSERVICEID"):"")+", CALLLOADID - "+ (_mergedMasterParams.containsKey("CALLLOADID")?_mergedMasterParams.get("CALLLOADEID"):"")+",CALLSOURCEID - "+ (_mergedMasterParams.containsKey("CALLSOURCEID")?_mergedMasterParams.get("CALLSOURCEID"):""));
+		}
+		if(_callparams.get("SOURCEID").equals("")){
+			this._recordProcessedFailed++;
+			try {
+				Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.[LEADSDATAFILEALLIASREQUESTCONTENT] SET ENTRYHANDLEFLAG=7,ENTRYSTATUS=1,CALLREQUESTSTATUS=0,ENTRYSERVICEID="+serviceid+",ENTRYLOADID="+loadid+",ENTRYSOURCEID=0 WHERE ID="+Database.rowField(rowColumns, rowData, "ID"), null, null);
+			} catch (Exception e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			return;
+		}
+		
+		try{
+			
+			//callparams.put("CALLEXISTCOUNT", "0");
+			/*if(!callparams.get("METAFIELD1").equals("")){
+				Database.executeDBRequest("FLATFILELEADSIMPORTER","SELECT COUNT(*) AS CALLEXISTCOUNT FROM <DBUSER>.DYNAMICCALLERLIST WHERE UPPER(METAFIELD1)=UPPER(:METAFIELD1)",callparams);
+			}
+			if(callparams.get("CALLEXISTCOUNT").equals("0")){
+				Database.executeDBRequest("FLATFILELEADSIMPORTER", "INSERT INTO <DBUSER>.[DYNAMICCALLERLIST]([ID],[SERVICEID],[LOADID],[CALLERNAME],[PHONE1],[PHONE1EXT],[PHONE2],[PHONE2EXT],[PHONE3],[PHONE3EXT],[PHONE4],[PHONE4EXT],[PHONE5],[PHONE5EXT],[PHONE6],[PHONE6EXT],[PHONE7],[PHONE7EXT],[PHONE8],[PHONE8EXT],[PHONE9],[PHONE9EXT],[PHONE10],[PHONE10EXT],[SCHEDULEDCALL],[COMMENTS],[LOADREQUESTTYPE],[RECORDHANDLEFLAG],[PRIORITY],[AGENTLOGINID],[LASTACTIONDATETIME],[METAFIELD1],[METAFIELD2],[METAFIELD3],[METAFIELD4],[METAFIELD5],[METAFIELD6],[METAFIELD7],[METAFIELD8],[METAFIELD9],[METAFIELD10],[METAFIELD11],[METAFIELD12],[METAFIELD13],[METAFIELD14],[METAFIELD15],[METAFIELD16],[METAFIELD17],[METAFIELD18],[METAFIELD19],[METAFIELD20],[FIELDSTOMODIFY]) VALUES (:SOURCEID,:SERVICEID,:LOADID,:CALLERNAME,:PHONE1,:PHONE1EXT,:PHONE2,:PHONE2EXT,:PHONE3,:PHONE3EXT,:PHONE4,:PHONE4EXT,:PHONE5,:PHONE5EXT,:PHONE6,:PHONE6EXT,:PHONE7,:PHONE7EXT,:PHONE8,:PHONE8EXT,:PHONE9,:PHONE9EXT,:PHONE10,:PHONE10EXT,"+(callparams.get("SCHEDULEDCALL").equals("")?"NULL":":SCHEDULEDCALL")+",:COMMENTS,:LOADREQUESTTYPE,:RECORDHANDLEFLAG,:PRIORITY,:AGENTLOGINID,GETDATE(),:METAFIELD1,:METAFIELD2,:METAFIELD3,:METAFIELD4,:METAFIELD5,:METAFIELD6,:METAFIELD7,:METAFIELD8,:METAFIELD9,:METAFIELD10,:METAFIELD11,:METAFIELD12,:METAFIELD13,:METAFIELD14,:METAFIELD15,:METAFIELD16,:METAFIELD17,:METAFIELD18,:METAFIELD19,:METAFIELD20,:FIELDSTOMODIFY)", callparams);
+			}
+			else{
+				this.debug("WARNING Duplicate record found but not inserted [METAFIELD1="+callparams.get("METAFIELD1")+"][METAFIELD19="+callparams.get("METAFIELD19")+"][METAFIELD20="+callparams.get("METAFIELD20")+"]");
+			}*/
+			
+			this.importCallData(Database.rowField(rowColumns, rowData, "ID"), _callparams);
+			
+			/*
+			if(_recordProcessed==0){
+				ArrayList<String> callParamsColumns=new ArrayList<String>();
+				for(String callParamsColumn:_callparams.keySet()){
+					callParamsColumns.add(callParamsColumn.toUpperCase());
+				}
+				_fileFinalImportDataSet.put(0, callParamsColumns);
+			}
+			
+			ArrayList<String> callParamsData=new ArrayList<String>();
+			for(int callParamColIndex=0;callParamColIndex<_fileFinalImportDataSet.get(0).size();callParamColIndex++){
+				callParamsData.add(_callparams.get(_callparams.keySet().toArray()[callParamColIndex]));
+			}
+			
+			_recordPocessedRef++;
+			_fileFinalImportDataSet.put(_recordPocessedRef, callParamsData);
+			if(_recordPocessedRef==1000){
+				TreeMap<Integer,ArrayList<String>> nextCallsBatch=new TreeMap<Integer, ArrayList<String>>();
+				nextCallsBatch.put((Integer)0,new ArrayList<String>(_fileFinalImportDataSet.get((Integer)0)));
+				_recordPocessedRef=1;
+				while(_recordPocessedRef<=1000){
+					nextCallsBatch.put((Integer)_recordPocessedRef,new ArrayList<String>(_fileFinalImportDataSet.remove((Integer)_recordPocessedRef++)));
+				}
+				_recordPocessedRef=0;
+				_flatFileLeadsImportQueueManager.appendCallImportDataset(nextCallsBatch);
+			}*/
+		}
+		catch(Exception e){
+			this.debug("ERROR Importing record ["+_flatFileAlias+":"+_filename+"]:"+e.getMessage());
+			e.printStackTrace();
+			this._recordProcessedFailed++;
+		}
+		
+		_callparams.clear();
+	}
+	
+	public void importCallData(String filecontententryid, HashMap<String,String> callParams){
+		if(callParams.get("LOADREQUESTTYPE").equals("1")){
+			
+			callParams.put("CALLEXISTCOUNT", "0");
+			
+			if(callParams.get("SOURCEID").equals("0")){
+				callParams.put("SOURCEID","0");
+				try{
+					Database.executeDBRequest(null,"FLATFILELEADSIMPORTER", "SELECT (ISNULL(MAX(ID),0)+1) AS SOURCEID FROM <DBUSER>.DYNAMICCALLERLIST WHERE SERVICEID=:SERVICEID AND LOADID=:LOADID", callParams,null);
+				}
+				catch(Exception e){
+					e.printStackTrace();
+				}
+			}
+			
+			callParams.put("PRESENCESOURCEID","0");
+			try{
+				Database.executeDBRequest(null,"PRESENCE", "SELECT ISNULL(MAX(SOURCEID),0) AS PRESENCESOURCEID FROM <DBUSER>.PCO_OUTBOUNDQUEUE WHERE SERVICEID=:SERVICEID AND LOADID=:LOADID", callParams,null);
+			}
+			catch(Exception e){
+				e.printStackTrace();
+			}
+			
+			//if(Long.parseLong(_callParams.get("PRESENCESOURCEID"))>=Long.parseLong(_callParams.get("SOURCEID"))){
+			//	_callParams.put("SOURCEID",String.valueOf((Long.parseLong(_callParams.get("PRESENCESOURCEID"))+1)));
+			//}
+			
+			//if(!_callParams.get("METAFIELD1").equals("")){						
+				try{
+					Database.executeDBRequest(null,"FLATFILELEADSIMPORTER","SELECT COUNT(*) AS CALLEXISTCOUNT FROM <DBUSER>.DYNAMICCALLERLIST WHERE UPPER(ID)=UPPER(:SOURCEID) AND UPPER(SERVICEID)=UPPER(:SERVICEID) AND UPPER(LOADID)=UPPER(:LOADID)",callParams,null);
+				}
+				catch(Exception e){
+					e.printStackTrace();
+				}
+			//}
+			if(callParams.get("CALLEXISTCOUNT").equals("0")){
+				try{
+					Database.executeDBRequest(null,"FLATFILELEADSIMPORTER", "INSERT INTO <DBUSER>.[DYNAMICCALLERLIST]([ID],[SERVICEID],[LOADID],[CALLERNAME],[PHONE1],[PHONE1EXT],[PHONE2],[PHONE2EXT],[PHONE3],[PHONE3EXT],[PHONE4],[PHONE4EXT],[PHONE5],[PHONE5EXT],[PHONE6],[PHONE6EXT],[PHONE7],[PHONE7EXT],[PHONE8],[PHONE8EXT],[PHONE9],[PHONE9EXT],[PHONE10],[PHONE10EXT],[SCHEDULEDCALL],[COMMENTS],[LOADREQUESTTYPE],[RECORDHANDLEFLAG],[PRIORITY],[AGENTLOGINID],[LASTACTIONDATETIME],[METAFIELD1],[METAFIELD2],[METAFIELD3],[METAFIELD4],[METAFIELD5],[METAFIELD6],[METAFIELD7],[METAFIELD8],[METAFIELD9],[METAFIELD10],[METAFIELD11],[METAFIELD12],[METAFIELD13],[METAFIELD14],[METAFIELD15],[METAFIELD16],[METAFIELD17],[METAFIELD18],[METAFIELD19],[METAFIELD20],[FIELDSTOMODIFY]) VALUES (:SOURCEID,:SERVICEID,:LOADID,:CALLERNAME,:PHONE1,:PHONE1EXT,:PHONE2,:PHONE2EXT,:PHONE3,:PHONE3EXT,:PHONE4,:PHONE4EXT,:PHONE5,:PHONE5EXT,:PHONE6,:PHONE6EXT,:PHONE7,:PHONE7EXT,:PHONE8,:PHONE8EXT,:PHONE9,:PHONE9EXT,:PHONE10,:PHONE10EXT,"+(callParams.get("SCHEDULEDCALL").equals("")?"NULL":":SCHEDULEDCALL")+",:COMMENTS,:LOADREQUESTTYPE,:RECORDHANDLEFLAG,:PRIORITY,:AGENTLOGINID,GETDATE(),:METAFIELD1,:METAFIELD2,:METAFIELD3,:METAFIELD4,:METAFIELD5,:METAFIELD6,:METAFIELD7,:METAFIELD8,:METAFIELD9,:METAFIELD10,:METAFIELD11,:METAFIELD12,:METAFIELD13,:METAFIELD14,:METAFIELD15,:METAFIELD16,:METAFIELD17,:METAFIELD18,:METAFIELD19,:METAFIELD20,:FIELDSTOMODIFY)", callParams,null);
+					this._recordAddCallProcessed++;
+					Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.[LEADSDATAFILEALLIASREQUESTCONTENT] SET ENTRYHANDLEFLAG=3,ENTRYSTATUS=2,CALLREQUESTSTATUS=1,ENTRYSERVICEID=:SERVICEID,ENTRYLOADID=:LOADID,ENTRYSOURCEID=:SOURCEID,ENTRYLEADREQUESTTYPE="+_callparams.get("LOADREQUESTTYPE")+",ENTRYLEADREQUESTTYPEDESCRIPTION='ADDCALL' WHERE ID="+filecontententryid, _callparams, null);
+				}
+				catch(Exception e){
+					e.printStackTrace();
+					this._recordAddCallProcessedFailed++;
+					this._recordProcessedFailed++;
+				}
+			}
+			else{
+				InovoServletContextListener.inovoServletListener().logDebug("WARNING Duplicate record found but not inserted [SOURCEID="+callParams.get("SOURCEID")+"][SERVICEID="+callParams.get("SERVICEID")+"][LOADID="+callParams.get("LOADID")+"]");
+				this._recordAddCallProcessedFailed++;
+				this._recordProcessedFailed++;
+				try {
+					Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.[LEADSDATAFILEALLIASREQUESTCONTENT] SET ENTRYHANDLEFLAG=4,ENTRYSTATUS=2,CALLREQUESTSTATUS=2,ENTRYSERVICEID=:SERVICEID,ENTRYLOADID=:LOADID,ENTRYSOURCEID=:SOURCEID,ENTRYLEADREQUESTTYPE="+_callparams.get("LOADREQUESTTYPE")+",ENTRYLEADREQUESTTYPEDESCRIPTION='ADDCALL' WHERE ID="+filecontententryid, _callparams, null);
+				} catch (Exception e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+		}
+		else if(callParams.get("LOADREQUESTTYPE").equals("2")){
+			try{
+				Database.executeDBRequest(null,"FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.[DYNAMICCALLERLIST] SET LOADREQUESTTYPE=:LOADREQUESTTYPE,RECORDHANDLEFLAG=1 WHERE SERVICEID=:SERVICEID AND LOADID=:LOADID AND ID=:SOURCEID", callParams,null);
+				this._recordRemoveCallProcessed++;
+				Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.[LEADSDATAFILEALLIASREQUESTCONTENT] SET ENTRYHANDLEFLAG=3,ENTRYSTATUS=3,CALLREQUESTSTATUS=1,ENTRYSERVICEID=:SERVICEID,ENTRYLOADID=:LOADID,ENTRYSOURCEID=:SOURCEID,ENTRYLEADREQUESTTYPE="+_callparams.get("LOADREQUESTTYPE")+",ENTRYLEADREQUESTTYPEDESCRIPTION='REMOVECALL' WHERE ID="+filecontententryid, _callparams, null);
+			}
+			catch(Exception e){
+				e.printStackTrace();
+				this._recordRemoveCallProcessedFailed++;
+				this._recordProcessedFailed++;
+			}
+		}
+		else if(callParams.get("LOADREQUESTTYPE").equals("3")){
+			try{
+				
+				String fieldsToModify=callParams.get("FIELDSTOMODIFY");
+				if(!(fieldsToModify=(fieldsToModify==null?"":fieldsToModify.toUpperCase().trim())).equals("")){
+					Database.executeDBRequest(null,"FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.[DYNAMICCALLERLIST] SET CALLERNAME=:CALLERNAME,PHONE1=:PHONE1,PHONE1EXT=:PHONE1EXT,PHONE2=:PHONE2,PHONE2EXT=:PHONE2EXT,PHONE3=:PHONE3,PHONE3EXT=:PHONE3EXT,PHONE4=:PHONE4,PHONE4EXT=:PHONE4EXT,PHONE5=:PHONE5,PHONE5EXT=:PHONE5EXT,PHONE6=:PHONE6,PHONE6EXT=:PHONE6EXT,PHONE7=:PHONE7,PHONE7EXT=:PHONE7EXT,PHONE8=:PHONE8,PHONE8EXT=:PHONE8EXT,PHONE9=:PHONE9,PHONE9EXT=:PHONE9EXT,PHONE10=:PHONE10,PHONE10EXT=:PHONE10EXT,SCHEDULEDCALL="+(callParams.get("SCHEDULEDCALL").equals("")?"NULL":":SCHEDULEDCALL")+",COMMENTS=:COMMENTS,LOADREQUESTTYPE=:LOADREQUESTTYPE,RECORDHANDLEFLAG=1,PRIORITY=:PRIORITY,AGENTLOGINID=:AGENTLOGINID,LASTACTIONDATETIME=GETDATE(),METAFIELD1=:METAFIELD1,METAFIELD2=:METAFIELD2,METAFIELD3=:METAFIELD3,METAFIELD4:METAFIELD4,METAFIELD5=:METAFIELD5,METAFIELD6=:METAFIELD6,METAFIELD7=:METAFIELD7,METAFIELD8=:METAFIELD8,METAFIELD9=:METAFIELD9,METAFIELD10=:METAFIELD10,METAFIELD11=:METAFIELD11,METAFIELD12=:METAFIELD12,METAFIELD13=:METAFIELD13,METAFIELD14=:METAFIELD14,METAFIELD=15=:METAFIELD15,METAFIELD16=:METAFIELD16,METAFIELD17=:METAFIELD17,METAFIELD18=:METAFIELD18,METAFIELD19=:METAFIELD19,METAFIELD20=:METAFIELD20,FIELDSTOMODIFY=UPPER(:FIELDSTOMODIFY) WHERE SERVICEID=:SERVICEID AND LOADID=:LOADID AND ID=:SOURCEID", callParams,null);
+				}
+			}
+			catch(Exception e){
+				//TODO
+				e.printStackTrace();
+			}
+		}
+	}
+
+	private String formattedFieldParamValue(String fieldParamValueToFormat,ArrayList<String> rowData,ArrayList<String> columnData,String fileName){
+		String formattedFieldValue="";
+		String possibleParamValue="";
+		boolean possibleParamFound=false;
+		int columnDataindex=0;
+		int maxColLength=0;
+		int currentColLength=0;
+		Iterator<String> coli=columnData.iterator();
+		while(coli.hasNext()){
+			if((currentColLength=coli.next().length())>maxColLength) maxColLength=currentColLength;
+		}
+		if(maxColLength<14) maxColLength=14;
+		for(char cf:fieldParamValueToFormat.toCharArray()){
+			if(cf==':'){
+				if(!possibleParamFound){
+					possibleParamFound=true;
+				}
+				else{
+					possibleParamFound=false;
+					formattedFieldValue+=":"+possibleParamValue+":";
+					possibleParamValue="";
+				}
+			}
+			else if(possibleParamFound){
+					if(maxColLength>=possibleParamValue.trim().length()){
+						if(columnData.contains(possibleParamValue.trim().toUpperCase())){
+							formattedFieldValue+=rowData.get(0+columnData.indexOf(possibleParamValue.trim().toUpperCase()))+(cf==']'?"":cf);
+							possibleParamValue="";
+							possibleParamFound=false;
+						}
+						else {
+							if(possibleParamValue.trim().toUpperCase().equals("ALLIASFILENAME")){
+								formattedFieldValue+=fileName.indexOf(".")>-1?fileName.substring(0,fileName.lastIndexOf(".")):fileName+cf;
+								possibleParamValue="";
+								possibleParamFound=false;
+							}
+							else if(possibleParamValue.trim().toUpperCase().equals("IMPORTERALIAS")){
+								formattedFieldValue+=_flatFileAlias+cf;
+								possibleParamValue="";
+								possibleParamFound=false;
+							}
+							else{
+								if(cf!='['&&cf!=']') possibleParamValue+=cf;
+							}
+						}
+					}
+					else{
+						formattedFieldValue+=":"+possibleParamValue+cf;
+						possibleParamValue="";
+						possibleParamFound=false;
+					}
+			}
+			else{
+				if(possibleParamFound){
+					possibleParamValue+=cf;
+				}
+				else{
+					formattedFieldValue+=cf;
+				}
+			}
+		}
+		if(possibleParamFound){
+			if(maxColLength>=possibleParamValue.trim().length()){
+				if(columnData.contains(possibleParamValue.trim().toUpperCase())){
+					formattedFieldValue+=rowData.get(0+columnData.indexOf(possibleParamValue.trim().toUpperCase()));
+				}
+				else {
+					if(possibleParamValue.trim().toUpperCase().equals("ALLIASFILENAME")){
+						formattedFieldValue+=fileName.indexOf(".")>-1?fileName.substring(0,fileName.lastIndexOf(".")):fileName;
+					}
+					else if(possibleParamValue.trim().toUpperCase().equals("IMPORTERALIAS")){
+						formattedFieldValue+=_flatFileAlias;
+					}
+				}
+			}
+			else{
+				formattedFieldValue+=":"+possibleParamValue;
+			}
+		}
+		return formattedFieldValue;
+	}
+}

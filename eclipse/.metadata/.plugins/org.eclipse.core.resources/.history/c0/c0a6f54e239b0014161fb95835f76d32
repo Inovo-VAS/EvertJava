@@ -1,0 +1,6 @@
+import inovo.servlet.InovoCoreEnvironmentManager;
+
+
+public class InovoEnvironmentManager extends InovoCoreEnvironmentManager {
+
+}

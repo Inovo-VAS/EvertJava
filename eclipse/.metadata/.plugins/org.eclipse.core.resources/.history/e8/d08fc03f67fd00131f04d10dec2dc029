@@ -1,0 +1,144 @@
+import javax.servlet.ServletContext;
+
+import inovo.monitoring.monitors.Monitor;
+import inovo.monitoring.monitors.MonitorRequest;
+import inovo.servlet.InovoCoreEnvironmentManager;
+
+public class InovoEnvironmentManager extends InovoCoreEnvironmentManager {
+	
+	@Override
+	public String defaultLocalPath(String suggestedlocalpath) {
+		return super.defaultLocalPath("c:/projects/java/");//suggestedlocalpath);
+	}
+	
+	@Override
+	public void initializeServletContext(ServletContext sc) {
+		super.initializeServletContext(sc);
+		try {
+			Monitor.initiateMonitor(Monitor.class).initiateMonitorRequest(new MonitorRequest(){
+				@Override
+				public void attachMonitorRequests(
+						MonitorRequest[] monitorRequests) {
+					super.attachMonitorRequests(new MonitorRequest[]{new MonitorRequest(this){
+						public boolean executeMonitor(MonitorRequest parentMonitorRequest) {
+							System.out.println("TEST1:"+ parentMonitorRequest.toString()+":"+this.toString());
+							return true;
+						};
+					}});
+				}
+			});
+			
+			Monitor.initiateMonitor(Monitor.class).initiateMonitorRequest(new MonitorRequest(){
+				@Override
+				public void attachMonitorRequests(
+						MonitorRequest[] monitorRequests) {
+					super.attachMonitorRequests(new MonitorRequest[]{new MonitorRequest(this){
+						public boolean executeMonitor(MonitorRequest parentMonitorRequest) {
+							System.out.println("TEST2.1:"+ parentMonitorRequest.toString()+":"+this.toString());
+							return true;
+						};
+					},new MonitorRequest(this){
+						public boolean executeMonitor(MonitorRequest parentMonitorRequest) {
+							System.out.println("TEST2.2:"+ parentMonitorRequest.toString()+":"+this.toString());
+							return true;
+						};
+					},
+					new MonitorRequest(this){
+						public boolean executeMonitor(MonitorRequest parentMonitorRequest) {
+							System.out.println("TEST2.1:"+ parentMonitorRequest.toString()+":"+this.toString());
+							return true;
+						};
+					},new MonitorRequest(this){
+						public boolean executeMonitor(MonitorRequest parentMonitorRequest) {
+							System.out.println("TEST2.2:"+ parentMonitorRequest.toString()+":"+this.toString());
+							return true;
+						};
+					},
+					new MonitorRequest(this){
+						public boolean executeMonitor(MonitorRequest parentMonitorRequest) {
+							System.out.println("TEST2.3:"+ parentMonitorRequest.toString()+":"+this.toString());
+							return true;
+						};
+					},new MonitorRequest(this){
+						public boolean executeMonitor(MonitorRequest parentMonitorRequest) {
+							System.out.println("TEST2.4:"+ parentMonitorRequest.toString()+":"+this.toString());
+							return true;
+						};
+					},
+					new MonitorRequest(this){
+						public boolean executeMonitor(MonitorRequest parentMonitorRequest) {
+							System.out.println("TEST2.5:"+ parentMonitorRequest.toString()+":"+this.toString());
+							return true;
+						};
+					},new MonitorRequest(this){
+						public boolean executeMonitor(MonitorRequest parentMonitorRequest) {
+							System.out.println("TEST2.6:"+ parentMonitorRequest.toString()+":"+this.toString());
+							return true;
+						};
+					}
+					});
+				}
+			});
+			
+			Monitor.initiateMonitor(Monitor.class).initiateMonitorRequest(new MonitorRequest(){
+				@Override
+				public void attachMonitorRequests(
+						MonitorRequest[] monitorRequests) {
+					super.attachMonitorRequests(new MonitorRequest[]{new MonitorRequest(this){
+						public boolean executeMonitor(MonitorRequest parentMonitorRequest) {
+							System.out.println("TEST3.1:"+ parentMonitorRequest.toString()+":"+this.toString());
+							return true;
+						};
+					},new MonitorRequest(this){
+						public boolean executeMonitor(MonitorRequest parentMonitorRequest) {
+							System.out.println("TEST3.2:"+ parentMonitorRequest.toString()+":"+this.toString());
+							return true;
+						};
+					},
+					new MonitorRequest(this){
+						public boolean executeMonitor(MonitorRequest parentMonitorRequest) {
+							System.out.println("TEST3.3:"+ parentMonitorRequest.toString()+":"+this.toString());
+							return true;
+						};
+					},new MonitorRequest(this){
+						public boolean executeMonitor(MonitorRequest parentMonitorRequest) {
+							System.out.println("TEST3.4:"+ parentMonitorRequest.toString()+":"+this.toString());
+							return true;
+						};
+					},
+					new MonitorRequest(this){
+						public boolean executeMonitor(MonitorRequest parentMonitorRequest) {
+							System.out.println("TEST3.5:"+ parentMonitorRequest.toString()+":"+this.toString());
+							return true;
+						};
+					},new MonitorRequest(this){
+						public boolean executeMonitor(MonitorRequest parentMonitorRequest) {
+							System.out.println("TEST3.6:"+ parentMonitorRequest.toString()+":"+this.toString());
+							return true;
+						};
+					}});
+				}
+			});
+			Monitor.initiateMonitor(Monitor.class).initiateMonitorRequest(new MonitorRequest(){
+				@Override
+				public void attachMonitorRequests(
+						MonitorRequest[] monitorRequests) {
+					super.attachMonitorRequests(new MonitorRequest[]{new MonitorRequest(this){
+						public boolean executeMonitor(MonitorRequest parentMonitorRequest) {
+							System.out.println("TEST4:"+ parentMonitorRequest.toString()+":"+this.toString());
+							return true;
+						};
+					}});
+				}
+			});
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+	
+	@Override
+	public void disposeServletContext(ServletContext sc) {
+		Monitor.killAllMonitors();
+		super.disposeServletContext(sc);
+	}
+}

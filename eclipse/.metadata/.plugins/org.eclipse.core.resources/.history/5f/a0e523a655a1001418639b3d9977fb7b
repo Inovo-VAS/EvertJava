@@ -1,0 +1,19 @@
+package inovo.flat.file.leads.importer;
+
+import java.io.InputStream;
+
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+
+public class FlatFileLeadsShortcodeConfiguration extends InovoHTMLPageWidget {
+
+	public FlatFileLeadsShortcodeConfiguration(InovoWebWidget parentWidget,
+			InputStream inStream) {
+		super(parentWidget, inStream);
+	}
+
+	@Override
+	public void pageContent() throws Exception {
+		this.action("ADD SHORTCODE", "addshortcode", "", "", "", "", "", "");
+	}
+}

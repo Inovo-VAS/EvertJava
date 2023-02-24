@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Copy 3 elements to &apos;paas/src/paas.encdec&apos;&#x0D;&#x0A;- Original project: &apos;saas&apos;&#x0D;&#x0A;- Destination element: &apos;paas/src/paas.encdec&apos;&#x0D;&#x0A;- Original elements:&#x0D;&#x0A;     saas.encdec.MarkupEncodeDecode.java&#x0D;&#x0A;     saas.encdec.HtmlEscape.java&#x0D;&#x0A;     saas.encdec.Base64.java" description="Copy compilation units" destination="=paas/src&lt;paas.encdec" element1="/src&lt;saas.encdec{MarkupEncodeDecode.java" element2="/src&lt;saas.encdec{HtmlEscape.java" element3="/src&lt;saas.encdec{Base64.java" files="0" flags="589830" folders="0" id="org.eclipse.jdt.ui.copy" policy="org.eclipse.jdt.ui.copyResources" stamp="1419565238475" units="3" version="1.0"/>
+</session>

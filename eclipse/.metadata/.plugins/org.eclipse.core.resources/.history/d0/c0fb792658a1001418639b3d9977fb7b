@@ -1,0 +1,43 @@
+package inovo.flat.file.leads.importer;
+
+import java.io.InputStream;
+
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+
+public class FlatFileLeadsShortcodeConfiguration extends InovoHTMLPageWidget {
+
+	public FlatFileLeadsShortcodeConfiguration(InovoWebWidget parentWidget,
+			InputStream inStream) {
+		super(parentWidget, inStream);
+	}
+
+	@Override
+	public void pageContent() throws Exception {
+		this.action("ADD SHORTCODE", "addshortcode", "", "", "", "", "", "");
+	}
+	
+	public void addshortcode() throws Exception{
+		this.showDialog("", "contentid=addchortcodefields|contenttitle=ADD SHORT CODE|BUTTON:CONFIRM ADD SHORT CODE=command=confirmaddingshortcode|BUTTON:CANCEL=".split("[|]"));
+		this.replaceComponentContent("addchortcodefields");
+			this.startTable(null);
+				this.startRow(null);
+					this.startColumn("font-size:0.8em");this.respondString("SHORT CODE");this.endColumn();
+					this.startCell(null);this.fieldInput("NEWSHORTCODE", "", "text", true, null);
+				this.endRow();
+				this.startRow(null);
+					this.startColumn("font-size:0.8em");this.respondString("SHORT CODE");this.endColumn();
+					this.startCell(null);this.fieldInput("SERVICEID", "", "text", true, null);
+				this.endRow();
+				this.startRow(null);
+					this.startColumn("font-size:0.8em");this.respondString("SHORT CODE");this.endColumn();
+					this.startCell(null);this.fieldInput("LOADID", "", "text", true, null);
+				this.endRow();
+			this.endTable();
+		this.endReplaceComponentContent();
+	}
+	
+	public void confirmaddingshortcode() throws Exception{
+		
+	}
+}

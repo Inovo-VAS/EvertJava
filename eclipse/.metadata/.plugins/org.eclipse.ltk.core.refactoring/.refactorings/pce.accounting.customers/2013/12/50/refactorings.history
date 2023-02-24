@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Copy package &apos;pce.accounting.web.images&apos; to &apos;baasserver/src&apos;&#x0D;&#x0A;- Original project: &apos;pce.accounting.customers&apos;&#x0D;&#x0A;- Destination element: &apos;baasserver/src&apos;&#x0D;&#x0A;- Original element: &apos;pce.accounting.customers/src/pce.accounting.web.images&apos;" description="Copy package" destination="=baasserver/src" element1="/src&lt;pce.accounting.web.images" flags="589830" fragments="1" id="org.eclipse.jdt.ui.copy" policy="org.eclipse.jdt.ui.copyPackages" stamp="1386614381409" version="1.0"/>
+</session>

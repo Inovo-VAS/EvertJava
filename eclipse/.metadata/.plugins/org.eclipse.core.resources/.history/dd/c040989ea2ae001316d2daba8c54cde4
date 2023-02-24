@@ -1,0 +1,24 @@
+package baasserver.db.web.system.definitions;
+
+import baasserver.db.protocols.DBWidgetHandle;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class Field extends IOWidgetHandle {
+
+	public Field(IOWidgetHandle parentWidget, IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+	
+	public String fieldDefinition(){
+		return "";
+	}
+
+	public DBWidgetHandle dbParentWidget(){
+		return (DBWidgetHandle)this.parentWidget();
+	}
+	
+	public String fieldName(){
+		return this.property("name");
+	}
+}

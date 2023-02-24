@@ -1,0 +1,57 @@
+package baasserver.remoting;
+
+import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import baasserver.client.Client;
+
+public class RemoteClient extends Client {
+
+	HashMap<String,String> _requestHeaders=new HashMap<String,String>();
+	HashMap<String,ArrayList<Object>> _requestParameters=new HashMap<String,ArrayList<Object>>();
+	HashMap<String,HashMap<String,String>> _requestParametersMimeHeaders=new HashMap<String,HashMap<String,String>>();
+	private String _urlPath="/";
+	public RemoteClient(String host, int port,String urlPath)
+			throws Exception {
+		super(host, port);
+		this._urlPath=urlPath;
+	}
+	
+	public void performRemoteRequest() throws Exception{
+		this.performRemoteRequest(this._urlPath);
+	}
+
+	public void performRemoteRequest(String urlPath) throws Exception{
+		this.prepareHeaders(this._requestHeaders);
+		this.prepairRequestParameters(_requestParameters);
+		
+		this.clientOutputStream().writeContentHeadersAndParameters(this._requestHeaders, this._requestParameters, this._requestParametersMimeHeaders);
+		this.clientOutputStream().writeContentUriRequest((_requestParameters.isEmpty()?"GET":"POST"), urlPath, "HTTP", "1.1");
+		
+		
+	}
+	
+	public void prepairRequestParameters(HashMap<String,ArrayList<Object>> requestParameters){
+		
+	}
+	
+	public void prepareHeaders(HashMap<String, String> requestHeaders) {
+		
+	}
+	
+	public void prepairStringParameter(String parameterName,String parameterValue){
+		ArrayList<Object> paramValues=this._requestParameters.get(parameterName=parameterName.toUpperCase());
+		if(paramValues==null){
+			this._requestParameters.put(parameterName,paramValues=new ArrayList<Object>());
+			HashMap<String,String> requestParameterMimeHeaders=this._requestParametersMimeHeaders.get(parameterName);
+			if(requestParameterMimeHeaders==null){
+				this._requestParametersMimeHeaders.put(parameterName, requestParameterMimeHeaders=new HashMap<String,String>());
+				requestParameterMimeHeaders.put("CONTENT-DISPOSITION","form-data; name=\""+parameterName+"\"");
+				requestParameterMimeHeaders.put("CONTENT-TYPE", "text/plain");
+			}
+		}
+		
+		paramValues.add(parameterValue);
+	}	
+}

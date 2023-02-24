@@ -1,0 +1,55 @@
+import inovo.servlet.InovoCoreEnvironmentManager;
+
+import javax.servlet.ServletContext;
+
+import lancet.leads.automation.AccountsLeadsExportQueue;
+import lancet.leads.automation.AccountsLeadsImportQueue;
+
+public class InovoEnvironmentManager extends InovoCoreEnvironmentManager
+{
+	
+	private AccountsLeadsImportQueue _accountsLeadsImportQueue=null;
+	private AccountsLeadsExportQueue _accountsLeadsExportQueue=null;
+	
+  public void initializeServletContext(ServletContext sc)
+  {
+    super.initializeServletContext(sc);
+    this.log_debug("LANCET LEADS ACCOUNTS AUTOMATION STARTED");
+    try {
+    	_accountsLeadsImportQueue=AccountsLeadsImportQueue.accountsLeadsImportQueue(this.configProperty("ACCOUNTFILEPICKUPPATH"));
+	} catch (Exception e) {
+		e.printStackTrace();
+	}
+    
+    try {
+    	_accountsLeadsExportQueue=AccountsLeadsExportQueue.accountsLeadsExportQueue();
+	} catch (Exception e) {
+		e.printStackTrace();
+	}
+  }
+
+  public String defaultLocalPath(String suggestedlocalpath)
+  {
+    return super.defaultLocalPath("C:/projects/java/");
+    //return super.defaultLocalPath(suggestedlocalpath);
+  }
+  
+  @Override
+	public void loadServletConfig(String defaultconfigfilename,
+			boolean updateProperties) throws Exception {
+		super.loadServletConfig(defaultconfigfilename, updateProperties);
+	}
+
+  public void disposeServletContext(ServletContext sc)
+  {
+	 if(_accountsLeadsImportQueue!=null){
+		 _accountsLeadsImportQueue.shutdown();
+		 this.log_debug("LANCET LEADS ACCOUNTS AUTOMATION STOPPED");
+	 }
+	 if(_accountsLeadsExportQueue!=null){
+		 _accountsLeadsExportQueue.killExportQueue();
+	 }
+	 
+     super.disposeServletContext(sc);
+  }
+}

@@ -1,0 +1,45 @@
+package baasserver.io.handler;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+
+import baasserver.io.IIOHandler;
+
+public class IOHandler implements IIOHandler {
+
+	@Override
+	public void writeToOutputStream(byte[] bytesToWrite, OutputStream output) throws Exception {
+		output.write(bytesToWrite);
+	}
+
+	@Override
+	public void readFromInputStream(byte[] bytesReadFromStream,
+			InputStream input) throws Exception {
+	}
+	
+	public void reset(){
+	}
+	
+	public void writeln() throws Exception{
+		this.writeln("");
+	}
+	
+	public void writeln(String stringToWrite) throws Exception{
+		if(stringToWrite!=null){
+			this.write(stringToWrite+="\r\n");
+		}
+	}
+	
+	public void write(String stringToWrite) throws Exception{
+		this.write(stringToWrite.getBytes());
+	}
+	
+	public void write(byte[] bytesToWrite) throws Exception{
+	}
+
+	@Override
+	public void performRequest() throws Exception {
+	}
+
+}

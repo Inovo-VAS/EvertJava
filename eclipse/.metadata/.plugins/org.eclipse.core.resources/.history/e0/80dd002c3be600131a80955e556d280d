@@ -1,0 +1,527 @@
+package inovo.presence.mail.archiver;
+
+import inovo.adhoc.Base64;
+import inovo.db.Database;
+import inovo.email.EMLMailExtractor;
+import inovo.servlet.InovoServletContextListener;
+
+import java.io.IOException;
+import java.sql.SQLException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.TreeMap;
+
+import javax.mail.MessagingException;
+
+import mailsoaclient.WFS_Multimedia;
+import za.co.inovo.presence.mutimedia.utils.InovoOpenPGP;
+import za.co.inovo.presence.mutimedia.utils.InovoOpenPGPException;
+import za.co.woolworths.Indibano.WS_WFS_Multimedia.MailExportRequestMetadata;
+
+public class MailExportQueue
+{
+	
+	private static String _pgpFilePath="";
+	private static boolean _pgpEnabled=false;
+	private InovoOpenPGP _inovopgpopen=null;
+	private static MailExportQueue _mailExportQueue=new MailExportQueue();
+
+	private HashMap<String,ArrayList<HashMap<String,String>>> _mailExportRequests=new HashMap<String,ArrayList<HashMap<String,String>>>();
+	protected static boolean _shutdownQueue=false;
+	private static Object _queueLock=new Object();
+	public MailExportQueue(){
+	}
+	
+	private int _shutdownLevels=0;
+	public void initiateQueue(){
+		_pgpFilePath=inovo.servlet.InovoServletContextListener.inovoServletListener().configProperty("PGPFILE");
+		if(!_pgpFilePath.equals("")){
+			try {
+				_inovopgpopen=new InovoOpenPGP(_pgpFilePath);
+				_pgpEnabled=true;
+				log_debug("PGP INITIATED["+_pgpFilePath+"]");
+			} catch (InovoOpenPGPException e) {
+				log_debug("PGP INITIATE ERROR["+_pgpFilePath+"]:"+e.getMessage());
+			}
+		}
+		new Thread(){
+			public void run() {
+				log_debug("START MAILEXPORT DB CLEANUP");
+				//synchronized (_queueLock) {
+					_shutdownLevels++;
+				//}
+				
+				while(!_shutdownQueue){
+					mailExportDbCleanup();
+					try {
+						this.sleep((_shutdownQueue?10:1)*1024);
+					} catch (InterruptedException e) {
+						//e.printStackTrace();
+					}
+				}
+				log_debug("SHUTDOWN MAILEXPORT DB CLEANUP");
+				//synchronized (_queueLock) {
+					_shutdownLevels--;
+				//}
+			};
+		}.start();
+		
+		new Thread(){
+			public void run() {
+				log_debug("START PROCESSING MAILEXPORT REQUEST");
+				//synchronized (_queueLock) {
+					_shutdownLevels++;
+				//}
+				while(!_shutdownQueue){
+					processMailExportRequests();
+					try {
+						this.sleep(1024);
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					}
+				}
+				log_debug("SHUTDOWN PROCESSING MAILEXPORT REQUEST");
+				//synchronized (_queueLock) {
+					_shutdownLevels--;
+				//}
+			};
+		}.start();
+	}
+	
+	public void processMailExportRequests(){
+		String[] archiveKeys=null;
+		final HashMap<String,ArrayList<HashMap<String,String>>> archiveMailExportRequests=new HashMap<String,ArrayList<HashMap<String,String>>>();
+		synchronized (_mailExportRequests) {
+			for(String arhciveid:_mailExportRequests.keySet()){
+				archiveMailExportRequests.put(arhciveid, _mailExportRequests.get(arhciveid));
+			}
+		}
+		
+		archiveKeys=new String[archiveMailExportRequests.size()];
+		archiveMailExportRequests.keySet().toArray(archiveKeys);
+		
+		for(final String archiveKey:archiveKeys){
+			if(!_shutdownQueue){
+				new Thread(){
+					public void run() {
+						ArrayList<HashMap<String,String>> archiveSettings=archiveMailExportRequests.get(archiveKey);
+						executeMailExportRequest(archiveKey,archiveSettings.get(0),archiveSettings.get(1));
+						while(!archiveSettings.isEmpty()){
+							HashMap<String,String> currentArchSettings=archiveSettings.remove(0);
+							currentArchSettings.clear();
+							currentArchSettings.keySet().clear();
+							currentArchSettings=null;
+						}
+						synchronized (_mailExportRequests) {
+							_mailExportRequests.remove(archiveKey);
+							_mailExportRequests.keySet().remove(archiveKey);
+						}
+						archiveMailExportRequests.remove(archiveKey);
+						archiveMailExportRequests.keySet().remove(archiveKey);
+					};
+				}.start();
+			}
+		}
+		
+		while(!archiveMailExportRequests.isEmpty()){
+			try {
+				Thread.sleep(10);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+	}
+	
+	public void executeMailExportRequest(String mailReqID,HashMap<String,String> archiveSettingsToProcess,HashMap<String,String> archivemasksettings)
+	{
+		
+		
+	    long millisecondsStart = Calendar.getInstance().getTimeInMillis();
+	    String requestStartDatetime = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss.SSS").format(Long.valueOf(Calendar.getInstance().getTimeInMillis()));
+	    //String mailReqID = getRequestLabel();
+
+	    HashMap<String,String> sqlinputparams = new HashMap<String,String>();
+
+	    sqlinputparams.put("INBOUNDMAILID", archiveSettingsToProcess.get("INBOUNDMAILID"));
+	    sqlinputparams.put("AGENTID", archiveSettingsToProcess.get("AGENTID"));
+
+	    String metaFieldsToAdd = "";
+	    int metafieldIndex = 1;
+
+	    while (metafieldIndex > 0) {
+	      if ((archiveSettingsToProcess.containsKey("METAFIELD" + String.valueOf(metafieldIndex) + "NAME")) && (archiveSettingsToProcess.containsKey("METAFIELD" + String.valueOf(metafieldIndex) + "VALUE")))
+	      {
+	        metaFieldsToAdd = metaFieldsToAdd + ":METAFIELD" + String.valueOf(metafieldIndex) + "NAME" + " AS " + "METAFIELD" + String.valueOf(metafieldIndex) + "NAME,";
+	        sqlinputparams.put("METAFIELD" + String.valueOf(metafieldIndex) + "NAME", archiveSettingsToProcess.get("METAFIELD" + String.valueOf(metafieldIndex) + "NAME"));
+
+	        metaFieldsToAdd = metaFieldsToAdd + ":METAFIELD" + String.valueOf(metafieldIndex) + "VALUE" + " AS " + "METAFIELD" + String.valueOf(metafieldIndex) + "VALUE,";
+	        sqlinputparams.put("METAFIELD" + String.valueOf(metafieldIndex) + "VALUE", archiveSettingsToProcess.get("METAFIELD" + String.valueOf(metafieldIndex) + "VALUE"));
+
+	        metafieldIndex++;
+	      }
+	      else {
+	        metafieldIndex = 0;
+	      }
+	    }
+
+	    String sqlSelectRelevantMails = "SELECT :AGENTID AS AGENTID," + metaFieldsToAdd + " INBOUNDMAILID,OUTBOUNDMAILID,MAILDIRECTION,MAILSTATUS,CASE OUTBOUNDMAILID WHEN 0 THEN (SELECT MAILDATA FROM PREP.PMSG_INBOUNDMAIL WHERE ID=INBOUNDMAILID) ELSE (SELECT MAILDATA FROM PREP.PMSG_OUTBOUNDMAIL WHERE ID=OUTBOUNDMAILID) END AS MAILMESSAGE FROM " + 
+	      "(" + 
+	      "SELECT INBOUNDMAILID,0 AS OUTBOUNDMAILID,'UNDELIVERED' AS MAILSTATUS,'INCOMING' AS MAILDIRECTION FROM PREP.PMSG_INBOUNDMAILUNFINISHED WHERE INBOUNDMAILID=:INBOUNDMAILID " + 
+	      "UNION " + 
+	      "SELECT INBOUNDMAILID,0 AS OUTBOUNDMAILID,'DELIVERED' AS MAILSTATUS,'INCOMING' AS MAILDIRECTION FROM PREP.PMSG_INBOUNDMAILCOMPLETED WHERE INBOUNDMAILID=:INBOUNDMAILID " + 
+	      "UNION " + 
+	      "SELECT INBOUNDMAILID,0 AS OUTBOUNDMAILID,'DELETED' AS MAILSTATUS,'INCOMING' AS MAILDIRECTION FROM PREP.PMSG_INBOUNDMAILDELETED WHERE INBOUNDMAILID=:INBOUNDMAILID " + 
+	      "UNION " + 
+	      "SELECT INBOUNDMAILID,OUTBOUNDMAILID,'UNSENT' AS MAILSTATUS,'OUTGOING' AS MAILDIRECTION FROM PREP.PMSG_OUTBOUNDMAILUNSENT WHERE INBOUNDMAILID=:INBOUNDMAILID " + 
+	      "UNION " + 
+	      "SELECT INBOUNDMAILID,OUTBOUNDMAILID,'SENT' AS MAILSTATUS,'OUTGOING' AS MAILDIRECTION FROM PREP.PMSG_OUTBOUNDMAILSENT WHERE INBOUNDMAILID=:INBOUNDMAILID " + 
+	      "UNION " + 
+	      "SELECT INBOUNDMAILID,OUTBOUNDMAILID,'DELETED' AS MAILSTATUS,'OUTGOING' AS MAILDIRECTION FROM PREP.PMSG_OUTBOUNDMAILDELETED WHERE INBOUNDMAILID=:INBOUNDMAILID) " + 
+	      "MAILMOVEMENT ORDER BY INBOUNDMAILID,OUTBOUNDMAILID";
+	    try
+	    {
+	    	//InovoOpenPGP inovoOpenPGP=new InovoOpenPGP(_pgpFilePath);
+	    	
+	      TreeMap<Integer,ArrayList<String>> inboundoutboundmailsset = Database.executeDBRequest("PRESENCE",sqlSelectRelevantMails, sqlinputparams);
+	      HashMap<String,String> inboundoutboundmailrow = new HashMap<String,String>();
+	      int rowindex = -1;
+	      int rowscount = inboundoutboundmailsset.keySet().size();
+	      while (rowindex < rowscount) {
+	        rowindex++;
+
+	        if (rowindex != 0)
+	        {
+	          if (rowindex >= rowscount) {
+	            break;
+	          }
+	          inboundoutboundmailrow.clear();
+	          inboundoutboundmailrow.putAll(Database.rowData(inboundoutboundmailsset, rowindex));
+
+	          if (inboundoutboundmailrow.get("OUTBOUNDMAILID").equals("0")) {
+	            inboundoutboundmailrow.put("MAILID", "I" + (String)inboundoutboundmailrow.get("INBOUNDMAILID"));
+	          }
+	          else {
+	            inboundoutboundmailrow.put("MAILID", "O" + (String)inboundoutboundmailrow.get("OUTBOUNDMAILID"));
+	          }
+	          String archiveFileNamePrefix = extractStringFromMask(archivemasksettings.get("ARCHIVEFILEMASKLAYOUT"), inboundoutboundmailrow);
+
+	          String sqlMetaFieldsFoundToUpdate = "";
+	          metafieldIndex = 1;
+	          
+	          while (metafieldIndex > 0) {
+	            if (inboundoutboundmailrow.containsKey("METAFIELD" + String.valueOf(metafieldIndex) + "NAME")) {
+	              sqlMetaFieldsFoundToUpdate = sqlMetaFieldsFoundToUpdate + "METAFIELD" + String.valueOf(metafieldIndex) + "NAME=" + ":METAFIELD" + String.valueOf(metafieldIndex) + "NAME,";
+	              sqlMetaFieldsFoundToUpdate = sqlMetaFieldsFoundToUpdate + "METAFIELD" + String.valueOf(metafieldIndex) + "VALUE=" + ":METAFIELD" + String.valueOf(metafieldIndex) + "VALUE,";
+	              metafieldIndex++;
+	            }
+	            else {
+	              metafieldIndex = 0;
+	            }
+	          }
+
+	          if (!sqlMetaFieldsFoundToUpdate.equals("")) {
+	            sqlMetaFieldsFoundToUpdate = "," + sqlMetaFieldsFoundToUpdate.substring(0, sqlMetaFieldsFoundToUpdate.length() - 1);
+	          }
+
+	          String sqlInsertMailArchiveRequest = "INSERT INTO <DBUSER>.MAILEXPORTSTAGING (INBOUNDMAILID,OUTBOUNDMAILID,RECORDHANDLEFLAG) SELECT INBOUNDMAILID,OUTBOUNDMAILID,2 FROM (SELECT :INBOUNDMAILID AS INBOUNDMAILID,:OUTBOUNDMAILID AS OUTBOUNDMAILID, (SELECT COUNT(*) FROM PTOOLS.MAILEXPORTSTAGING WHERE INBOUNDMAILID=:INBOUNDMAILID AND OUTBOUNDMAILID=:OUTBOUNDMAILID) AS MAILIDCOUNT) MAILMATCHCOUNT WHERE MAILMATCHCOUNT.MAILIDCOUNT=0";
+	          //DBController dbmailExporter = DBController.getDBControlAllias("MAILEXPORTER");
+	          try {
+	            String fieldsInfo = "";
+
+	            Database.executeDBRequest("MAILEXPORTER", sqlInsertMailArchiveRequest, inboundoutboundmailrow);
+
+	            inboundoutboundmailrow.put("MAILREQUESTQKEYID", "0");
+
+	            inboundoutboundmailrow.put("MAILMESSAGEBASE64", "");
+
+	            Database.executeDBRequest("MAILEXPORTER","SELECT ID AS MAILREQUESTQKEYID, ISNULL(MAILDATA,'') AS MAILMESSAGEBASE64 FROM <DBUSER>.MAILEXPORTSTAGING WHERE INBOUNDMAILID=:INBOUNDMAILID AND OUTBOUNDMAILID=:OUTBOUNDMAILID AND RECORDHANDLEFLAG=2", inboundoutboundmailrow);
+
+	            if (!((String)inboundoutboundmailrow.get("MAILREQUESTQKEYID")).equals("0")) {
+	              log_debug("MAILREQUESTQKEYID=" + (String)inboundoutboundmailrow.get("MAILREQUESTQKEYID"));
+
+	              inboundoutboundmailrow.put("ARCHIVEFILEMASK", archivemasksettings.get("ARCHIVEFILEMASKLAYOUT"));
+	              inboundoutboundmailrow.put("ARCHIVEFILEMASKNAMEPREFIX", archiveFileNamePrefix);
+
+	              Database.executeDBRequest("MAILEXPORTER","UPDATE <DBUSER>.MAILEXPORTSTAGING SET AGENTID=:AGENTID,MAILID=:MAILID,ARCHIVEFILEMASK=:ARCHIVEFILEMASK,ARCHIVEFILEMASKNAMEPREFIX=:ARCHIVEFILEMASKNAMEPREFIX" + sqlMetaFieldsFoundToUpdate + ",MAILBOUNDRY=:MAILDIRECTION,LASTACTIONDATETIME=NOW() WHERE ID=:MAILREQUESTQKEYID", inboundoutboundmailrow);
+
+	              String emailBase64Message = "";
+
+	              if (((String)inboundoutboundmailrow.get("MAILMESSAGEBASE64")).equals("")) {
+	                emailBase64Message = Base64.encodeBytes(inboundoutboundmailrow.get("MAILMESSAGE").getBytes(),Base64.NO_OPTIONS);
+
+	                inboundoutboundmailrow.put("MAILMESSAGEBASE64", emailBase64Message);
+	              }
+	              else {
+	                emailBase64Message = (String)inboundoutboundmailrow.get("MAILMESSAGEBASE64");
+	                inboundoutboundmailrow.put("MAILMESSAGE", new String(Base64.decode(emailBase64Message.getBytes())));
+	              }
+
+	              Database.executeDBRequest("MAILEXPORTER","UPDATE <DBUSER>.MAILEXPORTSTAGING SET MAILDATA=:MAILMESSAGEBASE64,LASTACTIONDATETIME=NOW() WHERE ID=:MAILREQUESTQKEYID AND ISNULL(MAILDATA,'')=''", inboundoutboundmailrow);
+	              if (!((String)inboundoutboundmailrow.get("MAILMESSAGE")).equals("")) {
+	                log_debug("MAILSTAGING REQUEST initiate [EMLMailExtractor]");
+	                EMLMailExtractor emlMail = new EMLMailExtractor((String)inboundoutboundmailrow.get("MAILMESSAGE"));
+
+	                HashMap<String,String> mailBase64Attachments = new HashMap<String,String>();
+
+	                mailBase64Attachments.putAll(emlMail.retrieveAttachentsAsBase64(archiveFileNamePrefix + "_"));
+	                
+	                if(!mailBase64Attachments.isEmpty()&&(_pgpEnabled)){
+	                	HashMap<String,String> mailBase64AttachmentsPGP=new HashMap<String,String>();
+	                    for(String attachementFileName:mailBase64Attachments.keySet()){
+		                	String currentAttachBase64Content=mailBase64Attachments.get(attachementFileName);
+		                	currentAttachBase64Content=Base64.encodeBytes(_inovopgpopen.encrypt(Base64.decode(currentAttachBase64Content)),Base64.NO_OPTIONS);
+		                	mailBase64AttachmentsPGP.put(attachementFileName+".pgp", currentAttachBase64Content);
+		                	this.log_debug("ATT-FILENAME:"+attachementFileName+".pgp");
+		                }
+		                mailBase64Attachments.clear();
+		                mailBase64Attachments.putAll(mailBase64AttachmentsPGP);
+		                mailBase64AttachmentsPGP.clear();
+		                mailBase64AttachmentsPGP=null;
+	                }
+
+	                MailExportRequestMetadata mailExportRequestMetadata = new MailExportRequestMetadata();
+
+	                log_debug("MAILSTAGING REQUEST initiate [WFS_Multimedia]");
+	                WFS_Multimedia wfs_Multimedia = new WFS_Multimedia();
+	                
+	                String currentemailBase64Message=emailBase64Message;
+	                if(_pgpEnabled&&!currentemailBase64Message.equals("")){
+	                	currentemailBase64Message=Base64.encodeBytes(_inovopgpopen.encrypt(Base64.decode(currentemailBase64Message.getBytes())),Base64.NO_OPTIONS);
+	                }
+	                
+	                this.log_debug("EML-FILENAME:"+archiveFileNamePrefix + "_Email.eml"+(_pgpEnabled?".pgp":""));
+	                wfs_Multimedia.addEmailMessage(archiveFileNamePrefix + "_Email.eml"+(_pgpEnabled?".pgp":""),currentemailBase64Message);
+
+	                int attIndex = 1;
+
+	                log_debug("MAILSTAGING REQUEST add attachments [WFS_Multimedia]");
+	                for (String attFileName : mailBase64Attachments.keySet()) {
+	                  String formattedAttFilename = archiveFileNamePrefix + "_Attachment" + String.valueOf(attIndex);
+	                  if (attFileName.lastIndexOf(".") > -1) {
+	                    formattedAttFilename = formattedAttFilename + attFileName.substring(attFileName.lastIndexOf("."));
+	                  }
+
+	                  wfs_Multimedia.addAttachment((String)mailBase64Attachments.get(attFileName), formattedAttFilename, attIndex);
+	                  attIndex++;
+	                }
+
+	                log_debug("MAILSTAGING REQUEST attachments added [WFS_Multimedia]");
+
+	                String emailContactId = (String)inboundoutboundmailrow.get("MAILID");
+	                String customerIDNumber = archiveSettingsToProcess.get("METAFIELD1VALUE");
+	                if(customerIDNumber==null){
+	                	customerIDNumber="0000000000000";
+	                }
+	                String emailAddress = emlMail.getFromAddress();
+	                String emailSubjectLine = emlMail.getSubject();
+	                String documentType = "";
+
+	                if (((String)inboundoutboundmailrow.get("MAILDIRECTION")).equals("INCOMING")) {
+	                  documentType = "Customer Email";
+	                }
+	                else if (((String)inboundoutboundmailrow.get("MAILDIRECTION")).equals("OUTGOING")) {
+	                  documentType = "Reply to Customer Email";
+	                }
+	                log_debug("MAILSTAGING REQUEST attachments MAILDIRECTION " + documentType);
+	                Date emailDate = emlMail.getEmailDate();
+
+	                if(!emailSubjectLine.equals("")&&_pgpEnabled){
+	                	emailSubjectLine=Base64.encodeBytes(_inovopgpopen.encrypt(emailSubjectLine),Base64.NO_OPTIONS);
+	                }
+	                
+	                String emailChannel=emlMail.getToAddress();
+	                
+	                wfs_Multimedia.addMetaData(emailChannel, emailContactId, customerIDNumber, emailAddress, emailDate, emailSubjectLine, documentType);
+	                log_debug("MAILSTAGING REQUEST archive mail requested");
+	                String responseStatusmessage = wfs_Multimedia.requestArchive(InovoServletContextListener.inovoServletListener().configProperty("WSMAILSERVICEURL"));
+	                log_debug("MAILSTAGING REQUEST archive mail response - " + responseStatusmessage);
+	                mailBase64Attachments.clear();
+
+	                inboundoutboundmailrow.put("LASTREQUESTDURATION", String.valueOf(Calendar.getInstance().getTimeInMillis() - millisecondsStart));
+	                inboundoutboundmailrow.put("LASTREQUESTSTARTDATESTAMP", requestStartDatetime);
+
+	                if (responseStatusmessage.startsWith("ERROR:")) {
+	                  log_debug("UPDATE MAILREQUEST IN DB -" + responseStatusmessage);
+
+	                  inboundoutboundmailrow.put("LASTREQUESTOUTCOMEMESSAGE", responseStatusmessage);
+	                  Database.executeDBRequest("MAILEXPORTER","UPDATE <DBUSER>.MAILEXPORTSTAGING SET LASTREQUESTDURATION=:LASTREQUESTDURATION,LASTREQUESTSTARTDATESTAMP=:LASTREQUESTSTARTDATESTAMP,LASTACTIONDATETIME=NOW(),RECORDHANDLEFLAG=5,LASTREQUESTOUTCOMEMESSAGE=:LASTREQUESTOUTCOMEMESSAGE WHERE RECORDHANDLEFLAG=2 AND INBOUNDMAILID=:INBOUNDMAILID", inboundoutboundmailrow);
+	                }
+	                else {
+	                  log_debug("UPDATE MAILREQUEST IN DB -" + responseStatusmessage);
+	                  inboundoutboundmailrow.put("LASTREQUESTOUTCOMEMESSAGE", "COMPLETED:" + responseStatusmessage);
+	                  Database.executeDBRequest("MAILEXPORTER","UPDATE <DBUSER>.MAILEXPORTSTAGING SET LASTREQUESTDURATION=:LASTREQUESTDURATION,LASTREQUESTSTARTDATESTAMP=:LASTREQUESTSTARTDATESTAMP,LASTACTIONDATETIME=NOW(),RECORDHANDLEFLAG=3,LASTREQUESTOUTCOMEMESSAGE=:LASTREQUESTOUTCOMEMESSAGE WHERE RECORDHANDLEFLAG=2 AND INBOUNDMAILID=:INBOUNDMAILID", inboundoutboundmailrow);
+	                }
+	              }
+	              else {
+	                log_debug("UPDATE MAILREQUEST IN DB - EMPTYMAILMESSAGE=" + (String)inboundoutboundmailrow.get("EMPTYMAILMESSAGE"));
+	                inboundoutboundmailrow.put("LASTREQUESTOUTCOMEMESSAGE", "COMPLETED:" + (String)inboundoutboundmailrow.get("MAILDIRECTION") + ":EMPTYMAILMESSAGE");
+	                Database.executeDBRequest("MAILEXPORTER","UPDATE <DBUSER>.MAILEXPORTSTAGING SET LASTREQUESTDURATION=:LASTREQUESTDURATION,LASTREQUESTSTARTDATESTAMP=:LASTREQUESTSTARTDATESTAMP,LASTACTIONDATETIME=NOW(),RECORDHANDLEFLAG=6,LASTREQUESTOUTCOMEMESSAGE=:LASTREQUESTOUTCOMEMESSAGE WHERE RECORDHANDLEFLAG=2 AND INBOUNDMAILID=:INBOUNDMAILID", inboundoutboundmailrow);
+	              }
+	            }
+	          } catch (MessagingException|IOException|SQLException e) {
+	            e.printStackTrace();
+	            log_debug("ERROR [INBOUND MAIL ID - " + (String)inboundoutboundmailrow.get("INBOUNDMAILID") + "]" + e.getMessage());
+	            inboundoutboundmailrow.put("LASTREQUESTDURATION", String.valueOf(Calendar.getInstance().getTimeInMillis() - millisecondsStart));
+	            inboundoutboundmailrow.put("LASTREQUESTSTARTDATESTAMP", requestStartDatetime);
+	            inboundoutboundmailrow.put("LASTREQUESTOUTCOMEMESSAGE", e.getMessage());
+	            Database.executeDBRequest("MAILEXPORTER","UPDATE <DBUSER>.MAILEXPORTSTAGING SET LASTREQUESTDURATION=:LASTREQUESTDURATION,LASTREQUESTSTARTDATESTAMP=:LASTREQUESTSTARTDATESTAMP,RECORDHANDLEFLAG=4,LASTREQUESTOUTCOMEMESSAGE=:LASTREQUESTOUTCOMEMESSAGE WHERE RECORDHANDLEFLAG=2 AND INBOUNDMAILID=:INBOUNDMAILID", inboundoutboundmailrow);
+	          }
+	        }
+	      }
+	    } catch (Exception e) { e.printStackTrace(); }
+
+	}
+	
+	public String extractStringFromMask(String maskToFormat, HashMap<String, String> possibleValuePair) {
+	     StringBuilder formattedMaskValue = new StringBuilder(maskToFormat);
+	     String valuePairName="";
+	     
+	     for (Iterator<String> localIterator = possibleValuePair.keySet().iterator(); localIterator.hasNext();){ 
+	    	 valuePairName = (String)localIterator.next();
+		     if(formattedMaskValue.indexOf("[" + valuePairName + "]") == -1)
+		     {
+		        continue;
+		     }
+	        formattedMaskValue.replace(formattedMaskValue.indexOf("[" + valuePairName + "]"), formattedMaskValue.indexOf("[" + valuePairName + "]") + ("[" + valuePairName + "]").length(), (String)possibleValuePair.get(valuePairName));
+	     }
+	 
+	     return formattedMaskValue.toString();
+	}
+	
+	public void mailExportDbCleanup(){
+		try {
+    	  Database.executeDBRequest("MAILEXPORTER", "UPDATE <DBUSER>.[MAILEXPORTSTAGING] SET [RECORDHANDLEFLAG]=2 WHERE [RECORDHANDLEFLAG]=1", null);
+
+	        String metaFieldSqlCols = "";
+
+	        for (int metaColindex = 1; metaColindex <= 20; metaColindex++) {
+	          metaFieldSqlCols = metaFieldSqlCols + "METAFIELD" + String.valueOf(metaColindex) + "NAME, METAFIELD" + String.valueOf(metaColindex) + "VALUE,";
+	        }
+
+	        TreeMap<Integer,ArrayList<String>> incompleteArchiveRequestsSet = Database.executeDBRequest("MAILEXPORTER", "SELECT ARCHIVEFILEMASK,AGENTID," + metaFieldSqlCols + "INBOUNDMAILID FROM <DBUSER>.MAILEXPORTSTAGING WHERE RECORDHANDLEFLAG=2",null);
+	        if(incompleteArchiveRequestsSet==null) return;
+	        HashMap<String,String> incompleteArchiveSettings = new HashMap<String,String>();
+	        for(int rowindex:incompleteArchiveRequestsSet.keySet()){
+	        	if(rowindex==0) continue;
+	            incompleteArchiveSettings.clear();
+	            incompleteArchiveSettings.putAll(Database.rowData(incompleteArchiveRequestsSet, rowindex));
+
+	            HashMap<String,String> archiveRequestSettings = new HashMap<String,String>();
+
+	            archiveRequestSettings.put("AGENTID", (String)incompleteArchiveSettings.get("AGENTID"));
+
+	            String archiveLabels = "AGENTID,INBOUNDMAILID";
+
+	            int metaFieldIndex = 1;
+	            while (metaFieldIndex > 0) {
+	              if (((String)incompleteArchiveSettings.get("METAFIELD" + String.valueOf(metaFieldIndex) + "NAME")).equals("")) {
+	                metaFieldIndex = 0;
+	              }
+	              else {
+	                archiveLabels = archiveLabels + ",METAFIELD" + String.valueOf(metaFieldIndex) + "VALUE";
+	                archiveRequestSettings.put("METAFIELD" + String.valueOf(metaFieldIndex) + "NAME", (String)incompleteArchiveSettings.get("METAFIELD" + String.valueOf(metaFieldIndex) + "NAME"));
+	                archiveRequestSettings.put("METAFIELD" + String.valueOf(metaFieldIndex) + "VALUE", (String)incompleteArchiveSettings.get("METAFIELD" + String.valueOf(metaFieldIndex) + "VALUE"));
+	                metaFieldIndex++;
+	              }
+	            }
+	            archiveRequestSettings.put("INBOUNDMAILID", (String)incompleteArchiveSettings.get("INBOUNDMAILID"));
+
+	            this.requestMailArchive(archiveRequestSettings, archiveLabels.split(","), (String)incompleteArchiveSettings.get("ARCHIVEFILEMASK"), "".split(","));
+	          } 
+			
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+	
+	public static MailExportQueue mailEportQueue(){
+		return _mailExportQueue;
+	}
+	
+	public void shutdownQueue(){
+		this._shutdownQueue=true;
+		while(!_mailExportRequests.isEmpty()){
+			try {
+				Thread.sleep(1*1024);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+		if(_pgpEnabled){
+			_inovopgpopen=null;
+		}
+	}
+	
+	public String requestMailArchive(HashMap<String, String> archiveRequestSettings, String[] archiveMailIDLayout, String archiveFileMaskNameLayout, String[] requiredMetaFields)
+			throws InstantiationException, IllegalAccessException, ClassNotFoundException
+    {
+    String validationError = "";
+
+    if (archiveRequestSettings.containsKey("AGENTID")) {
+		if (((String)archiveRequestSettings.get("AGENTID")).equals("")) {
+			validationError = "AGENT ID NOT PROVIDED,";
+		}
+    }
+    else {
+    	validationError = "AGENT ID NOT PROVIDED,";
+    }
+    if (archiveRequestSettings.containsKey("INBOUNDMAILID")) {
+	    if (((String)archiveRequestSettings.get("INBOUNDMAILID")).equals("")) {
+	    	validationError = validationError + "INBOUNDMAILID ID NOT PROVIDED,";
+	    }
+    }
+    else {
+      validationError = validationError + "INBOUNDMAILID ID NOT PROVIDED,";
+    }
+
+    for (String metaFieldRef : requiredMetaFields) {
+      if (archiveRequestSettings.containsKey(metaFieldRef + "NAME")) {
+        if (archiveRequestSettings.containsKey(metaFieldRef + "VALUE")) {
+          if (((String)archiveRequestSettings.get(metaFieldRef + "VALUE")).equals("")) {
+            validationError = validationError + (String)archiveRequestSettings.get(new StringBuilder(String.valueOf(metaFieldRef)).append("NAME").toString()) + " NOT PROVIDED,";
+          }
+        }
+        else {
+          validationError = validationError + (String)archiveRequestSettings.get(new StringBuilder(String.valueOf(metaFieldRef)).append("NAME").toString()) + " NOT PROVIDED,";
+        }
+      }
+    }
+
+    if (validationError.equals("")) {
+      ArrayList<HashMap<String,String>> customactionsettings = new ArrayList<HashMap<String,String>>();
+      HashMap<String,String> archivemasksettings = new HashMap<String,String>();
+      archivemasksettings.put("ARCHIVEFILEMASKLAYOUT", archiveFileMaskNameLayout);
+      customactionsettings.add(archiveRequestSettings);
+      customactionsettings.add(archivemasksettings);
+      
+      String archiveMailID = "";
+      for (String archiveMailIDLayoutItem : archiveMailIDLayout) {
+        if (archiveRequestSettings.containsKey(archiveMailIDLayoutItem)) {
+          archiveMailID = archiveMailID + (String)archiveRequestSettings.get(archiveMailIDLayoutItem) + "_";
+        }
+      }
+      if (!archiveMailID.equals("")) {
+        archiveMailID = archiveMailID.substring(0, archiveMailID.length() - 1);
+      }
+      synchronized (_mailExportRequests) {
+		if(!_mailExportRequests.containsKey(archiveMailID)){
+			_mailExportRequests.put(archiveMailID, customactionsettings);
+		}
+      }
+      
+      return "";
+    }
+
+    validationError = validationError.substring(0, validationError.length() - 1);
+    log_debug("[E][requestMailArchive()]" + validationError);
+    return validationError;
+  }
+
+  private void log_debug(String message) {
+	 InovoServletContextListener.inovoServletListener().logger().debug(message);
+  }
+}

@@ -1,0 +1,196 @@
+package inovo.message.gateway.filters;
+
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+
+import inovo.db.Database;
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+
+public class StatusFilter extends InovoHTMLPageWidget {
+
+	private StatusFilter _statusFilterRef=null;
+	
+	public StatusFilter(InovoWebWidget parentWidget, InputStream inStream) {
+		super(parentWidget, inStream);
+		this._statusFilterRef=this;
+	}
+	
+	private File _filterIOFile=null;
+	private FileOutputStream _filterIOFileCollectResponse=null;
+	private FileInputStream _filterIOFileResponse=null;
+	private OutputStream _filterOutputBuffer=new OutputStream(){
+		@Override
+		public void write(int b) throws IOException {
+			this.write(new byte[]{(byte)b});
+		}
+		
+		public void write(byte[] b) throws IOException {
+			this.write(b, 0, b.length);
+		}
+		
+		public void write(byte[] b, int off, int len) throws IOException {
+			try {
+				_statusFilterRef.respondBytes(b);
+			} catch (Exception e) {
+			}
+		}
+	};
+	
+	StringBuilder delimparamlist=new StringBuilder();
+	@Override
+	public void executeContentWidget() throws Exception {
+		
+		this.setResponseHeader("CONTENT-TYPE", "text/csv");
+		this.setResponseHeader("Content-Disposition", "attachment;filename=MESSAGEGATEWAYENTRY"+new SimpleDateFormat("yyyyMMdd.HHmmss.SSS").format(new Date())+".csv");
+		
+		StringBuilder sqlInsertRequest=new StringBuilder();
+		
+		HashMap<String,String> insertResponseParams=new HashMap<String,String>();
+		
+		StringBuilder XMLMESSAGEQUEUEPARAMSVALUE=new StringBuilder();
+		
+		XMLMESSAGEQUEUEPARAMSVALUE.append("<METAFIELDPARAMSTABLE>");
+		
+		if(!this.requestParameters().isEmpty()){
+			int filterKeyCount=0;
+			for(String filterParamsReadkey:this.requestParameters().keySet()){
+				filterKeyCount++;
+				ArrayList<String> filterParamRead=new ArrayList<String>(this.requestParameterArray(filterParamsReadkey));
+				if(!this.requestParameter(filterParamsReadkey+"_DELIM").equals("")){
+					while(!filterParamRead.isEmpty()){
+						XMLMESSAGEQUEUEPARAMSVALUE.append("<PARAMDATA><PARAMNAME>"+filterParamsReadkey+"</PARAMNAME><PARAMVALUE>"+filterParamRead.remove(0)+"</PARAMVALUE></PARAMDATA>");
+					}
+				}
+				else{
+					if(!this.requestParameter(filterParamsReadkey).equals("")){
+						delimparamlist.setLength(0);
+						String paramDelim=this.requestParameter(filterParamsReadkey+"_DELIM");
+						delimparamlist.append(this.requestParameter(filterParamsReadkey)+paramDelim);
+						while(delimparamlist.indexOf(paramDelim)>-1){
+							XMLMESSAGEQUEUEPARAMSVALUE.append("<PARAMDATA><PARAMNAME>"+filterParamsReadkey+"</PARAMNAME><PARAMVALUE>"+delimparamlist.substring(0,delimparamlist.indexOf(paramDelim))+"</PARAMVALUE></PARAMDATA>");
+							delimparamlist.delete(0, delimparamlist.indexOf(paramDelim)+paramDelim.length());
+						}
+					}
+					else{
+						XMLMESSAGEQUEUEPARAMSVALUE.append("<PARAMDATA><PARAMNAME>"+filterParamsReadkey+"</PARAMNAME><PARAMVALUE></PARAMVALUE></PARAMDATA>");
+					}
+				}
+			}
+		}
+		
+		XMLMESSAGEQUEUEPARAMSVALUE.append("</METAFIELDPARAMSTABLE>");
+		
+		
+		insertResponseParams.put("XMLMESSAGEQUEUEPARAMS",XMLMESSAGEQUEUEPARAMSVALUE.toString());
+		
+		XMLMESSAGEQUEUEPARAMSVALUE.setLength(0);
+		
+		_filterIOFile=File.createTempFile("filter", ".filter");
+		
+		this._filterIOFileCollectResponse=new FileOutputStream(_filterIOFile);
+		
+		String fromdate=this.requestParameter("FROMDATE");
+		String toDate=this.requestParameter("TODATE");
+		
+		sqlInsertRequest.setLength(0);
+		
+		sqlInsertRequest.append("DECLARE @FROMDATE DATETIME="+(fromdate.equals("")?"NULL":"'"+fromdate+"'")+" DECLARE @TODATE DATETIME = "+(toDate.equals("")?"NULL":"'"+toDate+"'")+" DECLARE @TEMXML XML SET @TEMXML=:XMLMESSAGEQUEUEPARAMS SELECT * FROM <DBUSER>.[XML_MESSAGEQUEUEPRESENCEDAD](@TEMXML,@FROMDATE,@TODATE)");
+		
+		inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("FILTER REQUEST:"+"DECLARE @FROMDATE DATETIME="+(fromdate.equals("")?"NULL":"'"+fromdate+"'")+" DECLARE @TODATE DATETIME = "+(toDate.equals("")?"NULL":"'"+toDate+"'")+" DECLARE @TEMXML XML SET @TEMXML=:XMLMESSAGEQUEUEPARAMS SELECT * FROM <DBUSER>.[XML_MESSAGEQUEUEPRESENCEDAD](@TEMXML,@FROMDATE,@TODATE)");
+		
+		Database.executeDBRequest(null,"MESSAGEGATEWAYFILTER", sqlInsertRequest.toString(), insertResponseParams, this);
+		
+		this._filterIOFileCollectResponse.flush();
+		this._filterIOFileCollectResponse.close();
+		
+		this._filterIOFileResponse=new FileInputStream(_filterIOFile);
+		
+		byte [] bytesFileOut=new byte[8192];
+		int bytesFileOutRead=0;
+		while((bytesFileOutRead=_filterIOFileResponse.read(bytesFileOut))>-1){
+			if(bytesFileOutRead>0){
+				byte[] byteFilterFoundOut=new byte[bytesFileOutRead];
+				System.arraycopy(bytesFileOut, 0, byteFilterFoundOut, 0, bytesFileOutRead);
+				this._filterOutputBuffer.write(byteFilterFoundOut);
+				byteFilterFoundOut=null;
+			}
+		}
+		
+		this._filterIOFileResponse.close();
+		this._filterIOFile.delete();
+	}
+	
+	private StringBuilder _rowDataString=new StringBuilder();
+	private byte[] _rowDataBytes=_rowDataString.toString().getBytes();
+	private int _rowDataBytesIndex=0;
+	
+	public void readRowData(Integer rowindex,ArrayList<String> rowData,ArrayList<String> columnsData) throws Exception{
+		
+		ArrayList<String> currentRowData=new ArrayList<String>((rowindex==0?columnsData: rowData));
+		_rowDataString.setLength(0);
+		
+		while(!currentRowData.isEmpty()){
+			_rowDataString.append(("\""+currentRowData.remove(0).replaceAll("[\"]", "\"\"")+"\""));
+			if(!currentRowData.isEmpty()){
+				_rowDataString.append(',');
+			}
+		}
+		
+		_rowDataBytes=(_rowDataString.toString()+"\r\n").getBytes();
+		if(_rowDataBytes!=null){
+			if(_rowDataBytes.length>0){
+				
+				
+				_rowDataBytesIndex=0;
+				
+				if(_filterIOFileCollectResponse!=null){
+					inovo.adhoc.AdhocUtils.inputStreamToOutputStream(new InputStream(){
+						@Override
+						public int read() throws IOException {
+							byte[] b=new byte[1];
+							if(this.read(b)>-1){
+								return b[0];
+							}
+							return -1;
+						}
+						
+						@Override
+						public int read(byte[] b) throws IOException {
+							return this.read(b,0,b.length);
+						}
+						
+						@Override
+						public int read(byte[] b, int off, int len)
+								throws IOException {
+							int totalBytesRead=-1;
+							while((off<len)&&(_rowDataBytesIndex<_rowDataBytes.length)){
+								b[off++]=_rowDataBytes[_rowDataBytesIndex++];
+								totalBytesRead++;
+							}
+							return totalBytesRead;
+						}
+						
+					}, _filterIOFileCollectResponse,0);
+					_filterIOFileCollectResponse.flush();
+				}
+			}
+			_rowDataBytes=null;
+		}
+	}
+	
+	@Override
+	public void cleanUpWidget() {
+		_filterIOFile.delete();
+		super.cleanUpWidget();
+	}
+}

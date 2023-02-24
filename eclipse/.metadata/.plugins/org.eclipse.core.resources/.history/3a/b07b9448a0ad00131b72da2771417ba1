@@ -1,0 +1,5 @@
+package baasserver.db;
+
+public interface IDBStartup {
+
+}

@@ -1,0 +1,46 @@
+package baasserver.db.web.system.definitions;
+
+import baasserver.db.web.system.Field;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class NumericField extends Field {
+
+	public NumericField(IOWidgetHandle parentWidget, IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+	
+	@Override
+	public String fieldDefinition() {
+		if(this.dbParentWidget().dbManager().dbType().equals("sqlserver")||this.dbParentWidget().dbManager().dbType().equals("postgresql")){
+			Double defaultValue=this.defaultValue();
+			if(this.hasProperty("DEFAULT")){
+				String defaultStringValue=this.property("DEFAULT");
+				defaultValue=Double.valueOf(defaultStringValue.equals("")?"0":defaultStringValue);
+			}
+			return "["+this.fieldName()+"] numeric("+String.valueOf(this.size())+","+String.valueOf(this.precision())+") "+(defaultValue==null?" NOT NULL":" DEFAULT "+(this.precision()==0?String.valueOf(defaultValue.longValue()):String.valueOf(defaultValue.doubleValue())));
+		}
+		return super.fieldDefinition();
+	}
+	
+	public Double defaultValue(){
+		return null;
+	}
+	
+	public int size(){
+		String size=this.property("size");
+		if(size.equals("")){
+			size="18";
+		}
+		return Integer.parseInt(size);
+	}
+	
+	public int precision(){
+		String size=this.property("size");
+		if(size.equals("")){
+			size="0";
+		}
+		return Integer.parseInt(size);
+	}
+	
+}

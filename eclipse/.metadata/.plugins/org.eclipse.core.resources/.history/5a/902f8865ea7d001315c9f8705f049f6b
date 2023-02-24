@@ -1,0 +1,29 @@
+package inovo.automation;
+
+import java.util.ArrayList;
+import java.util.Calendar;
+
+public class Request extends inovo.queues.Request {
+	private ArrayList<Calendar> _schedules=new ArrayList<Calendar>();
+	private ArrayList<Calendar> _activeSchedules=new ArrayList<Calendar>();
+	
+	public Request(Calendar[] schedules){
+		super();
+		for(Calendar schedule:schedules){
+			this._schedules.add(schedule);
+		}
+		
+		this._activeSchedules.addAll(_schedules);
+	}
+	
+	@Override
+	public boolean canExecute() {
+		Calendar schedule=this._schedules.get(0);
+		if()
+	}
+	
+	@Override
+	public boolean canContinue() {
+		return !this._schedules.isEmpty();
+	}
+}

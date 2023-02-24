@@ -1,0 +1,373 @@
+package lancet.leads.automation;
+
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.TreeMap;
+
+import inovo.db.Database;
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+
+public class SMSExportConfiguration extends InovoHTMLPageWidget {
+
+	public SMSExportConfiguration(InovoWebWidget parentWidget,
+			InputStream inStream) {
+		super(parentWidget, inStream);
+	}
+	
+	
+	@Override
+	public void pageContent() throws Exception {
+		this.startElement("div", new String[]{"id=smsmessagelayoutconfig"}, true);
+			this.smsmessagelayoutconfig();
+		this.endElement("div", true);
+	}
+
+	public void smsmessagelayoutconfig() throws Exception{
+		this.startTable(null);
+			this.startRow(null);
+				this.startCell(null);
+					this.startTable(null);
+						this.startRow(null);
+							this.startCell(new String[]{"style=text-align:right"});
+								this.fieldLabel("SMS MESSAGE DEFINITION");
+							this.endCell();
+							this.startCell(null);
+								this.fieldInput("NEWSMSLAYOUTDEFINITION", "", "text", true, null);
+							this.endCell();
+						this.endRow();
+						this.startRow(null);
+						this.startCell(new String[]{"style=text-align:right"});
+							this.fieldLabel("SMS MESSAGE DESCRIPTION");
+						this.endCell();
+						this.startCell(null);
+							this.fieldInput("NEWSMSLAYOUTDESCRIPTION", "", "text", true, null);
+						this.endCell();
+					this.endRow();
+					this.endTable();
+				this.endCell();
+			this.endRow();
+			this.startRow(null);
+				this.startCell(new String[]{"cols=2"});
+					this.action("ADD NEW SMS MESSAGE LAYOUT", "newsmsmessagelayout", "", "", "", "", "", "");
+				this.endCell();
+			this.endRow();
+		this.endTable();
+		this.startElement("div",new String[]{"id=smsmessagelayouts"}, true);this.smsmessagelayouts(); this.endElement("div", true);
+	}
+
+
+	public void smsmessagelayouts() throws Exception{
+		this.startTable(null);
+			this.startRow(null);
+				this.startColumn("");
+					this.respondString("SMS LAYOUTS");
+				this.endColumn();
+				this.startColumn("");
+					this.respondString("SMS MESSAGE LAYOUT");
+				this.endColumn();
+			this.endRow();
+			this.startRow(null);
+				this.startCell(new String[]{"style=vertical-align:top"});
+					ArrayList<String[]> actionsSMSMessageLayouts=new ArrayList<String[]>();
+					TreeMap<Integer,ArrayList<String>> smsmessagelayoutsset=new TreeMap<Integer, ArrayList<String>>();
+					Database.executeDBRequest(smsmessagelayoutsset,"LANCETLEADSAUTOMATION", "SELECT ID,SMS_MESSAGE_NAME,SMS_MESSAGE_DESCRIPTION FROM <DBUSER>.LANCET_SMS_MESSAGE ORDER BY SMS_MESSAGE_NAME,SMS_MESSAGE_DESCRIPTION", null,null);
+					if(smsmessagelayoutsset!=null){
+						for(int rowindex:smsmessagelayoutsset.keySet()){
+							if(rowindex==0) continue;
+							actionsSMSMessageLayouts.add(new String[]{
+									"caption="+smsmessagelayoutsset.get(rowindex).get(1),
+									"title="+smsmessagelayoutsset.get(rowindex).get(2),
+									"urlparams=SELECTEDSMSLAYOUTID="+smsmessagelayoutsset.get(rowindex).get(0),
+									"command=smsmessagelayout",
+									"actiontarget=smsmessagelayout"});
+						}
+					}
+					Database.cleanupDataset(smsmessagelayoutsset);
+					smsmessagelayoutsset=null;
+					this.actions(actionsSMSMessageLayouts, true);
+				this.endCell();
+				this.startCell(new String[]{"style=vertical-align:top","id=smsmessagelayout"});
+				this.endCell();
+			this.endRow();
+		this.endTable();
+	}
+	
+	public void newsmsmessagelayout() throws Exception{
+		ArrayList<String> newsmslayoutErrors=new ArrayList<String>();
+		HashMap<String,String> newSMSMessageParams=new HashMap<String,String>();
+		this.importRequestParametersIntoMap(newSMSMessageParams, null);
+		if(newSMSMessageParams.get("NEWSMSLAYOUTDEFINITION").equals("")){
+			newsmslayoutErrors.add("NO SMS MESSAGE DEFINITION ENTERED");
+		}
+		else{
+			if(newSMSMessageParams.get("NEWSMSLAYOUTDESCRIPTION").equals("")){
+				newSMSMessageParams.put("NEWSMSLAYOUTDESCRIPTION",newSMSMessageParams.get("NEWSMSLAYOUTDEFINITION"));
+			}
+			newSMSMessageParams.put("NEWSMSLAYOUTDEFINITIONCOUNT", "0");
+			Database.executeDBRequest(null,"LANCETLEADSAUTOMATION", "SELECT COUNT(*) AS NEWSMSLAYOUTDEFINITIONCOUNT FROM <DBUSER>.LANCET_SMS_MESSAGE WHERE UPPER(SMS_MESSAGE_NAME)=UPPER(:NEWSMSLAYOUTDEFINITION )", newSMSMessageParams,null);
+			if(newSMSMessageParams.get("NEWSMSLAYOUTDEFINITIONCOUNT").equals("0")){
+				Database.executeDBRequest(null,"LANCETLEADSAUTOMATION", "INSERT INTO <DBUSER>.LANCET_SMS_MESSAGE (SMS_MESSAGE_NAME,SMS_MESSAGE_DESCRIPTION) VALUES (UPPER(:NEWSMSLAYOUTDEFINITION),UPPER(:NEWSMSLAYOUTDESCRIPTION))", newSMSMessageParams,null);
+				this.replaceComponentContent("smsmessagelayoutconfig");
+					this.smsmessagelayoutconfig();
+				this.endReplaceComponentContent();
+			}
+			else{
+				newsmslayoutErrors.add("SMS MESSAGE DEFINITION ALREADY EXIST");
+			}
+		}
+		if(!newsmslayoutErrors.isEmpty()){
+			this.showDialog("", new String[]{"title=NEW SMS MESSAGE LAYOUT","contentid=addnewsmsmessagelayout"});
+			this.replaceComponentContent("addnewsmsmessagelayout");
+				this.startElement("ul", new String[]{"class=ui-state-error"}, true);
+					while(!newsmslayoutErrors.isEmpty()){
+						this.startElement("li", null, true); this.respondString(newsmslayoutErrors.remove(0)); this.endElement("li", true);
+					}
+				this.endElement("ul", true);
+			this.endReplaceComponentContent();
+		}
+	}
+	
+	public void smsmessagelayout() throws Exception{
+		String smslayoutid=this.requestParameter("SELECTEDSMSLAYOUTID");
+		this.fieldHidden("SMSLAYOUTID",(smslayoutid= (smslayoutid.equals("")?this.requestParameter("SMSLAYOUTID"):smslayoutid)));
+		this.setRequestParameter("SMSLAYOUTID", smslayoutid, true);
+		TreeMap<Integer,ArrayList<String>> smslayoutinfoSet=new TreeMap<Integer,ArrayList<String>>();
+		Database.executeDBRequest(smslayoutinfoSet,"LANCETLEADSAUTOMATION", "SELECT ID,SMS_MESSAGE_NAME,SMS_MESSAGE_DESCRIPTION FROM <DBUSER>.LANCET_SMS_MESSAGE WHERE ID="+smslayoutid, null,null);
+		HashMap<String,String> smslayoutinfo=Database.rowData(smslayoutinfoSet,1);
+		Database.cleanupDataset(smslayoutinfoSet);
+		this.startTable(null);
+			this.startRow(null);
+				this.startColumn("font-size:0.8em");this.respondString("SMS MESSAGE DETAILS");
+			this.endRow();
+			this.startRow(null);
+				this.startCell(new String[]{"class=ui-widget-content"});
+					this.startTable(null);
+						this.startRow(null);
+							this.startCell(new String[]{"style=vertical-align:top;text-align:right"});
+								this.fieldLabel("SMS MESSAGE NAME");
+							this.endCell();
+							this.startCell(null);
+								this.fieldInput("SMS_MESSAGE_NAME", smslayoutinfo.get("SMS_MESSAGE_NAME"), "text", true,null);
+							this.endCell();
+						this.endRow();
+						this.startRow(null);
+							this.startCell(new String[]{"style=vertical-align:top;text-align:right"});
+								this.fieldLabel("SMS MESSAGE DESCRIPTION");
+							this.endCell();
+							this.startCell(null);
+								this.fieldInput("SMS_MESSAGE_DESCRIPTION", smslayoutinfo.get("SMS_MESSAGE_DESCRIPTION"), "text", true,null);
+							this.endCell();
+						this.endRow();
+						this.startRow(null);
+							this.startCell(new String[]{"cols=2"});
+								this.action("UPDATE SMS MESSAGE DETAILS", "updatesmsmessagedetails", "", "", "", "", "", "");
+							this.endCell();	
+						this.endRow();
+					this.endTable();
+				this.endCell();
+			this.endRow();
+			this.startRow(null);
+				this.startColumn("font-size:0.8em");this.respondString("SMS LAYOUT SECTIONS");
+			this.endRow();
+			this.startRow(null);
+				this.startCell(new String[]{"class=ui-widget-content","id=smslayoutsections"});
+					this.smslayoutsections();
+				this.endCell();
+			this.endRow();
+		this.endTable();
+	}
+	
+	public void addsmsmessagesection() throws Exception{
+		if(this.requestParameter("NEW_SMS_MESSAGE_CONTENT").equals("")&&this.requestParameter("NEW_SMS_MESSAGE_TYPE").equals("")){
+			return;
+		}
+		
+		HashMap<String,String> newsmsmesagesectioninfo=new HashMap<String,String>();
+		
+		this.importRequestParametersIntoMap(newsmsmesagesectioninfo, null);
+		
+		if(!this.requestParameter("NEW_SMS_MESSAGE_CONTENT").equals("")){
+			Database.executeDBRequest(null,"LANCETLEADSAUTOMATION", "INSERT INTO <DBUSER>.LANCET_SMS_MESSAGE_SECTIONS (SECTION_TYPE ,SECTION_CONTENT ,SECTION_ORDER,SMS_MESSAGE_ID) SELECT 'MESSAGE',:NEW_SMS_MESSAGE_CONTENT ,(SELECT (COUNT(*)+1) FROM <DBUSER>.LANCET_SMS_MESSAGE_SECTIONS WHERE SMS_MESSAGE_ID=:SMSLAYOUTID),:SMSLAYOUTID", newsmsmesagesectioninfo,null);
+		}
+		if(!this.requestParameter("NEW_SMS_MESSAGE_TYPE").equals("")){
+			Database.executeDBRequest(null,"LANCETLEADSAUTOMATION", "INSERT INTO <DBUSER>.LANCET_SMS_MESSAGE_SECTIONS (SECTION_TYPE ,SECTION_CONTENT ,SECTION_ORDER,SMS_MESSAGE_ID) SELECT 'FIELD',:NEW_SMS_MESSAGE_TYPE ,(SELECT (COUNT(*)+1) FROM <DBUSER>.LANCET_SMS_MESSAGE_SECTIONS WHERE SMS_MESSAGE_ID=:SMSLAYOUTID),:SMSLAYOUTID", newsmsmesagesectioninfo,null);
+		}
+		
+		this.replaceComponentContent("smslayoutsections");
+			this.smslayoutsections();
+		this.endReplaceComponentContent();
+	}
+	
+	public void smslayoutsections() throws Exception{
+		TreeMap<Integer,ArrayList<String>> machingFieldsSet=new TreeMap<Integer, ArrayList<String>>();
+		Database.executeDBRequest(machingFieldsSet,"LANCETLEADSAUTOMATION", "SELECT TOP 1 * FROM <DBUSER>.LANCET_ACCOUNTS_VIEW",null,null);
+		ArrayList<String> machingFields=new ArrayList<String>(machingFieldsSet.get(0));
+		
+		Database.cleanupDataset(machingFieldsSet);
+		machingFieldsSet=null;
+		
+		HashMap<String,String> smslayoutsectionfieldsoptions=new HashMap<String,String>();
+		while(!machingFields.isEmpty()){
+			smslayoutsectionfieldsoptions.put(machingFields.get(0), machingFields.remove(0));
+		}
+		this.startTable(null);
+			this.startRow(null);
+				this.startCell(null);
+					this.fieldLabel("NEW SMS MESSAGE SECTIONS");
+				this.endCell();
+				this.startCell(null);
+					this.fieldInput("NEW_SMS_MESSAGE_CONTENT", "", "text", true, null);
+				this.endCell();
+				this.startCell(null);
+					this.fieldInput("NEW_SMS_MESSAGE_TYPE", "", "select", true, null, smslayoutsectionfieldsoptions);
+				this.endCell();
+			this.endRow();
+		this.endTable();
+		this.action("ADD SMS MESSAGE SECTION", "addsmsmessagesection", "", "", "", "", "", "");
+		
+		TreeMap<Integer,ArrayList<String>> smslayoutsectionsset=new TreeMap<Integer, ArrayList<String>>();
+		Database.executeDBRequest(smslayoutsectionsset,"LANCETLEADSAUTOMATION", "SELECT ID ,SECTION_TYPE ,SECTION_CONTENT ,SECTION_ORDER ,CREATIONDATE,(SELECT COUNT(*) FROM <DBUSER>.LANCET_SMS_MESSAGE_SECTIONS WHERE SMS_MESSAGE_ID="+this.requestParameter("SMSLAYOUTID")+") AS TOTALSECTIONS FROM <DBUSER>.LANCET_SMS_MESSAGE_SECTIONS WHERE SMS_MESSAGE_ID="+this.requestParameter("SMSLAYOUTID")+" ORDER BY SECTION_ORDER", null,null);
+		if(smslayoutsectionsset!=null){		
+			if(!smslayoutsectionsset.isEmpty()){
+				this.action("PREVIEW SMS LAYOUT", "previewsmslayout", "", "", "", "", "", "");
+			}
+			this.startTable(null);
+				int smssectionorder=0;
+				for(int rowindex:smslayoutsectionsset.keySet()){
+					if(rowindex==0) continue;
+					this.startRow(null);
+						HashMap<String,String> smsMessageSectionInfo=Database.rowData(smslayoutsectionsset, rowindex);
+						this.startCell(null);
+							this.action("UP"," ","movesection", "", "", "", "ui-icon-circle-triangle-n", "", "MOVE=UP&SECTIONID="+smsMessageSectionInfo.get("ID")+"&SECTION_ORDER="+smsMessageSectionInfo.get("SECTION_ORDER")+"&TOTALSECTIONS="+smsMessageSectionInfo.get("TOTALSECTIONS"));
+						this.endCell();
+						this.startCell(null);
+							this.action("DOWN"," ","movesection", "", "", "", "ui-icon-circle-triangle-s", "", "MOVE=DOWN&SECTIONID="+smsMessageSectionInfo.get("ID")+"&SECTION_ORDER="+smsMessageSectionInfo.get("SECTION_ORDER")+"&TOTALSECTIONS="+smsMessageSectionInfo.get("TOTALSECTIONS"));
+						this.endCell();
+						this.startCell(null);
+							this.action("DELETE"," ","deletesection", "", "", "", "ui-icon-circle-minus", "", "SECTIONID="+smsMessageSectionInfo.get("ID")+"&SECTION_ORDER="+smsMessageSectionInfo.get("SECTION_ORDER")+"&TOTALSECTIONS="+smsMessageSectionInfo.get("TOTALSECTIONS"));
+						this.endCell();
+						this.startCell(null);
+							 this.respondString((smsMessageSectionInfo.get("SECTION_TYPE").equals("FIELD")?"[":"")+ encodeHTML(smsMessageSectionInfo.get("SECTION_CONTENT"))+(smsMessageSectionInfo.get("SECTION_TYPE").equals("FIELD")?"]":""));
+						this.endCell();
+					this.endRow();
+					smsMessageSectionInfo.clear();
+					smsMessageSectionInfo=null;
+				}
+			this.endTable();
+		}
+		Database.cleanupDataset(smslayoutsectionsset);
+	}
+	
+	public void previewsmslayout() throws Exception{
+		this.showDialog("", new String[]{"title=PREVIEW SMS LAYOUT","contentid=smslayoutselected"});
+		this.replaceComponentContent("smslayoutselected");
+			TreeMap<Integer,ArrayList<String>> smslayoutsectionsset=Database.executeDBRequest("LANCETLEADSAUTOMATION", "SELECT ID ,SECTION_TYPE ,SECTION_CONTENT ,SECTION_ORDER ,CREATIONDATE,(SELECT COUNT(*) FROM <DBUSER>.LANCET_SMS_MESSAGE_SECTIONS WHERE SMS_MESSAGE_ID="+this.requestParameter("SMSLAYOUTID")+") AS TOTALSECTIONS FROM <DBUSER>.LANCET_SMS_MESSAGE_SECTIONS WHERE SMS_MESSAGE_ID="+this.requestParameter("SMSLAYOUTID")+" ORDER BY SECTION_ORDER", null,null);
+			if(smslayoutsectionsset!=null){
+				String smsContentLine="";
+				HashMap<String,String> templateSessionEntry=new HashMap<String,String>();
+				
+				this.startElement("div",new String[]{ "class=ui-widget-content" }, true);
+					for(int rowindex:smslayoutsectionsset.keySet()){
+						if(rowindex==0) continue;
+						templateSessionEntry.clear();
+						templateSessionEntry.putAll(Database.rowData(smslayoutsectionsset, rowindex));
+						if(templateSessionEntry.get("SECTION_TYPE").equals("FIELD")){
+							smsContentLine+="[";
+						}
+						smsContentLine+=(templateSessionEntry.get("SECTION_CONTENT"));
+						if(templateSessionEntry.get("SECTION_TYPE").equals("FIELD")){
+							smsContentLine+="]";
+						}
+						smsContentLine+=" ";
+					}
+					this.respondString(encodeHTML(smsContentLine.trim()));
+				this.endElement("div", true);
+			}
+		this.endReplaceComponentContent();
+	}
+	
+	public void movesection() throws Exception{
+		HashMap<String,String> smssectionmoveinfo=new HashMap<String,String>();
+		this.importRequestParametersIntoMap(smssectionmoveinfo, null);
+		int totalsections=Integer.parseInt(smssectionmoveinfo.get("TOTALSECTIONS"));
+		int sectionorder=Integer.parseInt(smssectionmoveinfo.get("SECTION_ORDER"));
+		boolean changedmove=false;
+		if(smssectionmoveinfo.get("MOVE").equals("UP")){
+			if(sectionorder>1&&totalsections>1){
+				Database.executeDBRequest("LANCETLEADSAUTOMATION", "UPDATE <DBUSER>.LANCET_SMS_MESSAGE_SECTIONS SET SECTION_ORDER=((SECTION_ORDER)+1) WHERE SMS_MESSAGE_ID=:SMSLAYOUTID AND SECTION_ORDER=((:SECTION_ORDER)-1)", smssectionmoveinfo,null);
+				Database.executeDBRequest("LANCETLEADSAUTOMATION", "UPDATE <DBUSER>.LANCET_SMS_MESSAGE_SECTIONS SET SECTION_ORDER=((SECTION_ORDER)-1) WHERE ID=:SECTIONID", smssectionmoveinfo,null);
+				changedmove=true;
+			}			
+		}
+		else if(smssectionmoveinfo.get("MOVE").equals("DOWN")){
+			if(sectionorder>=1&&totalsections>1&&sectionorder<totalsections){
+				Database.executeDBRequest("LANCETLEADSAUTOMATION", "UPDATE <DBUSER>.LANCET_SMS_MESSAGE_SECTIONS SET SECTION_ORDER=((SECTION_ORDER)-1) WHERE SMS_MESSAGE_ID=:SMSLAYOUTID AND SECTION_ORDER=((:SECTION_ORDER)+1)", smssectionmoveinfo,null);
+				Database.executeDBRequest("LANCETLEADSAUTOMATION", "UPDATE <DBUSER>.LANCET_SMS_MESSAGE_SECTIONS SET SECTION_ORDER=((SECTION_ORDER)+1) WHERE ID=:SECTIONID", smssectionmoveinfo,null);
+				changedmove=true;
+			}	
+		}
+		
+		if(changedmove){
+			this.replaceComponentContent("smslayoutsections"); this.smslayoutsections(); this.endReplaceComponentContent();
+		}
+	}
+
+	public void deletesection() throws Exception{
+		HashMap<String,String> smssectionmoveinfo=new HashMap<String,String>();
+		this.importRequestParametersIntoMap(smssectionmoveinfo, null);
+		int totalsections=Integer.parseInt(smssectionmoveinfo.get("TOTALSECTIONS"));
+		int sectionorder=Integer.parseInt(smssectionmoveinfo.get("SECTION_ORDER"));
+		
+		if(sectionorder<=totalsections){
+			Database.executeDBRequest("LANCETLEADSAUTOMATION", "DELETE FROM <DBUSER>.LANCET_SMS_MESSAGE_SECTIONS WHERE ID="+smssectionmoveinfo.get("SECTIONID"), null,null);
+			while(sectionorder<totalsections){
+				Database.executeDBRequest("LANCETLEADSAUTOMATION", "UPDATE <DBUSER>.LANCET_SMS_MESSAGE_SECTIONS SET SECTION_ORDER="+String.valueOf(sectionorder)+" WHERE SMS_MESSAGE_ID=:SMSLAYOUTID AND SECTION_ORDER=("+String.valueOf((sectionorder+1))+")", smssectionmoveinfo,null);
+				sectionorder++;
+			}
+		}
+		
+		this.replaceComponentContent("smslayoutsections"); this.smslayoutsections(); this.endReplaceComponentContent();
+	}
+
+	public void updatesmsmessagedetails() throws Exception{
+		HashMap<String,String> smsmessagedetails=new HashMap<String,String>();
+		this.importRequestParametersIntoMap(smsmessagedetails, null);
+		ArrayList<String> errorsSMSDetails=new ArrayList<String>();
+		if(this.requestParameter("SMS_MESSAGE_NAME").equals("")){
+			errorsSMSDetails.add("NO SMS MESSAGE NAME ENTERED");
+		}
+		else{
+			if(smsmessagedetails.get("SMS_MESSAGE_DESCRIPTION").equals("")){
+				smsmessagedetails.put("SMS_MESSAGE_DESCRIPTION", smsmessagedetails.get("SMS_MESSAGE_NAME"));
+			}
+			smsmessagedetails.put("SMS_MESSAGE_COUNT", "0");
+			Database.executeDBRequest("LANCETLEADSAUTOMATION", "SELECT COUNT(*) AS SMS_MESSAGE_COUNT FROM <DBUSER>.LANCET_SMS_MESSAGE WHERE UPPER(SMS_MESSAGE_NAME)=UPPER(:SMS_MESSAGE_NAME) AND ID <> :SMSLAYOUTID", smsmessagedetails,null);
+			if(smsmessagedetails.get("SMS_MESSAGE_COUNT").equals("0")){
+				Database.executeDBRequest("LANCETLEADSAUTOMATION", "UPDATE <DBUSER>.LANCET_SMS_MESSAGE SET SMS_MESSAGE_NAME=:SMS_MESSAGE_NAME,SMS_MESSAGE_DESCRIPTION=:SMS_MESSAGE_DESCRIPTION WHERE ID=:SMSLAYOUTID", smsmessagedetails,null);
+			}
+			else{
+				errorsSMSDetails.add("SMS MESSAGE NAME ALREADY GIVEN TO ANOTHER SMS LAYOUT");
+			}
+		}
+		
+		if(!errorsSMSDetails.isEmpty()){
+			this.showDialog("",new String[]{ "title=UPDATE SMS MESSAGE DETAILS","contentid=smsmessagedetailsdlg","BUTTON:CONFIRM="});
+			this.replaceComponentContent("smsmessagedetailsdlg");
+				this.startElement("ul", new String[]{"class=ui-state-error"}, true);
+					while(!errorsSMSDetails.isEmpty()){
+						this.startElement("li", null, true);
+							this.respondString(errorsSMSDetails.remove(0));
+						this.endElement("li", true);
+					}
+				this.endElement("ul", true);
+			this.endReplaceComponentContent();
+		}
+		else{
+			this.replaceComponentContent("smsmessagelayout");
+				this.smsmessagelayout();
+			this.endReplaceComponentContent();
+		}
+	}
+}

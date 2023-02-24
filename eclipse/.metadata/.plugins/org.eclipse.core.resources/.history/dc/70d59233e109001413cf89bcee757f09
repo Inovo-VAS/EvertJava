@@ -1,0 +1,33 @@
+package lancet.leads.automation;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class AccountsLeadsExportQueue{
+	private ExecutorService _exportAccounts=Executors.newCachedThreadPool();
+	private boolean _killExportQueue;
+	private Object _exportCheckLock=new Object();
+	public AccountsLeadsExportQueue(){
+		this._exportAccounts.execute(new Runnable() {
+			public void run() {
+				
+			}
+		});
+	}
+	
+	public void checkExportFilesExists(){
+		while(!_killExportQueue){
+			synchronized (_exportCheckLock) {
+				try {
+					_exportCheckLock.wait(1024);
+				} catch (InterruptedException e) {
+				}
+			}
+		}
+	}
+	
+	public void killExportQueue(){
+		this._killExportQueue=true;
+		
+	}
+}

@@ -1,0 +1,38 @@
+package lancet.leads.automation;
+
+import inovo.db.Database;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+
+public class UnloadAccounts {
+	
+	private String _fileRequestDescription="";
+	
+	
+	public UnloadAccounts(){
+		this._unloadAccountsRef=this;
+	}
+	
+	public void setFileRequestRescription(String fileRequestDescription){
+		this._fileRequestDescription=fileRequestDescription;
+	}
+	
+	private UnloadAccounts _unloadAccountsRef=null;
+	public void readRowData(Integer rowIndex,ArrayList<String> rowData,ArrayList<String> columns){
+		HashMap<String,String> unloadAccounsInfo=Database.rowData(columns, rowData);
+		unloadAccounsInfo.put("UNLOADREQUESTDESCRIPTION", _fileRequestDescription);
+		unloadAccounsInfo.clear();
+		unloadAccounsInfo=null;
+		
+		
+		
+		synchronized (_unloadAccountsRef) {
+			try {
+				_unloadAccountsRef.wait(10);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+	}
+}

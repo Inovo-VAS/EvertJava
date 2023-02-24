@@ -1,0 +1,7 @@
+package baasserver.db.system;
+
+import baasserver.Server;
+
+public class DBServer extends Server {
+
+}

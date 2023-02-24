@@ -1,0 +1,17 @@
+package org.quartz.dbtables.sqlserver;
+
+import baasserver.db.protocols.DBWidgetHandle;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class Tables extends DBWidgetHandle {
+
+	public Tables(IOWidgetHandle parentWidget,
+			IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+
+	public String cleanupAction(){
+		return this.property("CLEANUPACTION");
+	}
+}

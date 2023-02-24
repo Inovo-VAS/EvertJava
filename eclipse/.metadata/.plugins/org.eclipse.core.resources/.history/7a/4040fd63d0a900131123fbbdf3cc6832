@@ -1,0 +1,15 @@
+package baasserver.netty;
+
+public class NettyServer implements Runnable {
+
+	private int _port=0;
+	public NettyServer(int port){
+		this._port=port;
+	}
+	
+	@Override
+	public void run() {
+		
+	}
+
+}

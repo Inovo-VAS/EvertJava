@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Copy element &apos;ReflectUtils.java&apos; to &apos;paasscripting/src/paas.scripting&apos;&#x0D;&#x0A;- Original project: &apos;paas&apos;&#x0D;&#x0A;- Destination element: &apos;paasscripting/src/paas.scripting&apos;&#x0D;&#x0A;- Original element: &apos;paas.reflection.ReflectUtils.java&apos;" description="Copy compilation unit" destination="=paasscripting/src&lt;paas.scripting" element1="/src&lt;paas.reflection{ReflectUtils.java" files="0" flags="589830" folders="0" id="org.eclipse.jdt.ui.copy" policy="org.eclipse.jdt.ui.copyResources" stamp="1413890144834" units="1" version="1.0"/>
+</session>

@@ -1,0 +1,12 @@
+package baasserver;
+
+import java.nio.channels.SocketChannel;
+
+public class Client implements Runnable {
+	SocketChannel _socketChannel=null;
+
+	@Override
+	public void run() {
+	}
+	
+}

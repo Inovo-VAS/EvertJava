@@ -1,0 +1,352 @@
+package baas.net.handlers;
+
+import java.io.ByteArrayOutputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+
+import baas.net.Server;
+import baas.net.ServerRequestHandle;
+import baas.net.broker.RequestHandleBroker;
+import baas.net.broker.RequestWidget;
+
+public class ServerMarkupRequestHandle extends ServerRequestHandle {
+
+	private static HashMap<String,String> _mimeTypes=new HashMap<String,String>();
+	
+	public static void registerMimeTypes(String mimeExtension,String contentType){
+		_mimeTypes.put(mimeExtension, contentType);
+	}
+	
+	public static String registeredMimeType(String mimeExtension){
+		mimeExtension=_mimeTypes.get(mimeExtension);
+		return (mimeExtension==null?"text/plain":mimeExtension);
+	}
+	
+	public ServerMarkupRequestHandle(Server server, SocketChannel sc)
+			throws IOException {
+		super(server, sc);
+	}
+	
+	private long _requiredContentLength=0;
+	boolean _foundCommand=false;
+	boolean _foundurl=false;
+	boolean _foundprotocol=false;
+	boolean _foundHeaders=false;
+	boolean _foundContent=false;
+
+	String _headerLine="";
+	int _responseStatus=200;
+	String _responseMessage="Ok";
+	
+	public void setResponseStatus(int status,String message){
+		this._responseStatus=status;
+		this._responseMessage=message;
+	}
+	
+	private boolean _hasMultiPartContent=false;
+	private boolean _hasUrlFormEncoded=false;
+	@Override
+	public void processBytesArrayReadByte(byte rb) throws Exception {
+		if(!_foundContent){
+			if(!_foundHeaders){
+				if(!_foundCommand){
+					if(!(_foundCommand=(rb==32))) _command+=(char)rb;
+				}
+				else if(!_foundurl){
+					if(!(_foundurl=(rb==32))){
+						_url+=(char)rb;
+					}
+					else{
+						try {
+							if(_url.indexOf("?")>-1){
+								this.parseUrlEncodedParams(_url.substring(_url.indexOf("?")+1).toCharArray());
+								_url=_url.substring(0,_url.indexOf("?"));
+							}
+						} catch (Exception e) {
+							e.printStackTrace();
+						}
+					}
+				}
+				else if(!_foundprotocol){
+					if(!(_foundprotocol=(rb==10))){
+						if(rb!=13) _protocol+=(char)rb;
+					}
+					else if(rb==10){
+						_foundHeaders=true;						
+					}
+				}
+			}
+			else if(_foundHeaders){
+				if(rb==10){
+					if(_headerLine.indexOf(":")>-1){
+						this.setRequestHeader(_headerLine.substring(0, _headerLine.indexOf(":")).trim(),_headerLine.substring(_headerLine.indexOf(":")+1).trim());
+					}
+					else{
+						_foundContent=true;
+						if(!this.requestHeader("CONTENT-LENGTH").equals("")) _requiredContentLength=Long.parseLong(this.requestHeader("CONTENT-LENGTH"));
+						if(_requiredContentLength==0){
+							this.performRequest();
+						}
+						else{
+							_hasMultiPartContent=(this.requestHeader("CONTENT-TYPE").indexOf("multipart/form-data")>-1);
+							_hasUrlFormEncoded=(this.requestHeader("CONTENT-TYPE").indexOf("www-form-urlencoded")>-1);
+						}
+					}
+					_headerLine="";
+				}
+				else{
+					if(rb!=13) _headerLine+=(char)rb;
+				}
+			}
+		}
+		else if(_foundContent){
+			if(_requiredContentLength>0){
+				if(_hasMultiPartContent) this.processMultiPartContentByte(rb);
+			}
+			_requiredContentLength--;
+			if(_requiredContentLength==0){
+				this.performRequest();
+			}
+		}
+	}
+	
+	private boolean _foundBoundary=false;
+	private boolean _foundMProperties=true;
+	private boolean _foundMContent=false;
+	private byte[] _currentMatchPhrase=new byte[0];
+	private int _currentMatchPhraseIndex=0;
+	private byte[] _readBytesBuffer=new byte[1024*1024];
+	int _readBytesBufferIndex=0;
+	private String mpartLine="";
+	private ArrayList<ByteArrayOutputStream> _readBytesBufferArray=new ArrayList<ByteArrayOutputStream>();
+	private byte[] _boundaryBytes=null;
+	private HashMap<String,String> _mPartProperties=new HashMap<String,String>();
+	
+	private OutputStream _mContentOutput=null;
+	
+	private void processMultiPartContentByte(byte br) throws IOException{
+		if(!_foundBoundary){
+			if(this.flushByteUpTo(br,"\r\n".getBytes(),null)){
+				if(this._readBytesBufferArray.isEmpty()){
+					return;
+				}
+				_boundaryBytes=("\r\n"+this._readBytesBufferArray.remove(0).toString()).getBytes();
+				_foundBoundary=true;
+			}
+		}
+		else if(!_foundMContent){
+			if(this.flushByteUpTo(br, "\r\n".getBytes(),null)){
+				mpartLine="";
+				while(!_readBytesBufferArray.isEmpty())  mpartLine+=_readBytesBufferArray.remove(0).toString();
+				if(!mpartLine.equals("")&&!_foundMProperties) _foundMProperties=true;
+				if(mpartLine.equals("")){
+					if(_foundMProperties){
+						if(_mPartProperties.containsKey("FILENAME")){
+							this.setRequestParameter(_mPartProperties.get("NAME"), _mPartProperties.get("FILENAME"), true);
+							this.setRequestParameterProperty(_mPartProperties.get("NAME"),"FILENAME", _mPartProperties.get("FILENAME"));
+							if (_mPartProperties.get("FILENAME").equals("")){
+								_mContentOutput=new ByteArrayOutputStream();
+							}
+							else{
+								_mContentOutput=new FileOutputStream(this.requestParameterFile(_mPartProperties.get("NAME")));
+							}
+						}
+						else{
+							_mContentOutput=new ByteArrayOutputStream();
+						}
+						_foundMContent=true;
+					}
+				}
+				else if(mpartLine.startsWith("Content-Disposition")){
+					mpartLine=mpartLine.substring(mpartLine.indexOf(":")+1).trim();
+					_mPartProperties.put("Content-Disposition", mpartLine.substring(0,mpartLine.indexOf(";")).trim());
+					mpartLine=mpartLine.substring(mpartLine.indexOf(";")+1).trim();
+					while(mpartLine.indexOf("=")>-1){
+						String mpartName=mpartLine.substring(0,mpartLine.indexOf("=")).trim().toUpperCase();
+						mpartLine=mpartLine.substring(mpartLine.indexOf("=")+1).trim();
+						String mpartValue=mpartLine.substring(0,(mpartLine.indexOf(";")>-1?mpartLine.indexOf(";"):mpartLine.length()));
+						if(mpartLine.indexOf(";")>-1){
+							mpartLine=mpartLine.substring(mpartLine.indexOf(";")+1).trim();
+						}
+						while(mpartValue.startsWith("\"")&&mpartValue.endsWith("\"")){
+							mpartValue=mpartValue.substring(1,mpartValue.length()-1);
+						}
+						_mPartProperties.put(mpartName, (mpartName.equals("NAME")? mpartValue.toUpperCase():mpartValue));
+					}
+				}
+				else if(mpartLine.indexOf(":")>-1){
+					_mPartProperties.put(mpartLine.substring(0,mpartLine.indexOf(":")).trim().toUpperCase(),mpartLine.substring(mpartLine.indexOf(":")+1).trim());
+				}
+				else if(mpartLine.equals("--")){
+					return;
+				}	
+			}
+		}
+		else if(_foundMContent){
+			if(this.flushByteUpTo(br, _boundaryBytes, _mContentOutput)){
+				if(_mPartProperties.containsKey("FILENAME")){
+					_mContentOutput.flush();
+					_mContentOutput.close();
+					
+				}
+				else{
+					this.setRequestParameter(_mPartProperties.get("NAME"),((ByteArrayOutputStream)_mContentOutput).toString() , false);
+					_mContentOutput.close();
+				}
+				String paramName=_mPartProperties.get("NAME");
+				while(!_mPartProperties.isEmpty()){
+					String mname=(String)_mPartProperties.keySet().toArray()[0];
+					if(_mPartProperties.containsKey("FILENAME")){
+						this.setRequestParameterProperty(paramName, mname, _mPartProperties.remove(mname));
+					}
+					else{
+						_mPartProperties.remove(mname);
+					}
+					this._mPartProperties.keySet().remove(mname);
+				}
+				_mContentOutput=null;
+				_foundMContent=false;
+				_foundMProperties=false;
+			}				
+		}
+	}
+	
+	private boolean flushByteUpTo(byte br, byte[] bytesToMatch,OutputStream altOutput) throws IOException {
+		if(!new String(_currentMatchPhrase).equals(new String(bytesToMatch))){
+			_currentMatchPhrase=bytesToMatch;
+			while(!_readBytesBufferArray.isEmpty()) _readBytesBufferArray.remove(0);
+		}
+		if(br==_currentMatchPhrase[_currentMatchPhraseIndex]){
+			_currentMatchPhraseIndex++;
+			if(_currentMatchPhraseIndex==_currentMatchPhrase.length){
+				if(_readBytesBufferIndex>0){
+					if(altOutput!=null){
+						altOutput.write(_readBytesBuffer, 0, _readBytesBufferIndex);
+					}
+					else{
+						ByteArrayOutputStream barrstream=new ByteArrayOutputStream();
+						barrstream.write(_readBytesBuffer, 0, _readBytesBufferIndex);
+						_readBytesBufferArray.add(barrstream);
+					}
+					_readBytesBufferIndex=0;
+				}
+				_currentMatchPhraseIndex=0;
+				return true;
+			}
+			return false;
+		}
+		int nextMPhraseIndex=0;
+		while(_currentMatchPhraseIndex>0){
+			_readBytesBuffer[_readBytesBufferIndex++]=_currentMatchPhrase[nextMPhraseIndex++];
+			if(_readBytesBufferIndex==(1024*1024)){
+				if(altOutput!=null){
+					altOutput.write(_readBytesBuffer, 0, _readBytesBufferIndex);
+				}
+				else{
+					ByteArrayOutputStream barrstream=new ByteArrayOutputStream();
+					barrstream.write(_readBytesBuffer, 0, _readBytesBufferIndex);
+					_readBytesBufferArray.add(barrstream);
+				}
+				_readBytesBufferIndex=0;
+			}
+			_currentMatchPhraseIndex--;
+		}
+		_readBytesBuffer[_readBytesBufferIndex++]=br;
+		if(_readBytesBufferIndex==(1024*1024)){
+			if(altOutput!=null){
+				altOutput.write(_readBytesBuffer, 0, _readBytesBufferIndex);
+			}
+			else{
+				ByteArrayOutputStream barrstream=new ByteArrayOutputStream();
+				barrstream.write(_readBytesBuffer, 0, _readBytesBufferIndex);
+				_readBytesBufferArray.add(barrstream);
+			}
+			_readBytesBufferIndex=0;
+		}
+		return false;
+	}
+
+	@Override
+	public void prepairForHandleDisconnect() throws IOException{
+		ByteArrayOutputStream markupHeaderResponse=new ByteArrayOutputStream();
+		this._bufferOutput.add(0, markupHeaderResponse);
+		this.setResponseHeader("CONTENT-LENGTH", String.valueOf(_totalBytesWritten));
+		
+		markupHeaderResponse.write((this._protocol+" "+String.valueOf(_responseStatus)+" "+this._responseMessage+"\r\n").getBytes());
+		while(!this._responseHeaders.isEmpty()){
+			String respHeader=(String)this._responseHeaders.keySet().toArray()[0];
+			markupHeaderResponse.write((respHeader.toUpperCase()+": "+ this._responseHeaders.remove(respHeader)+"\r\n").getBytes());
+			this._responseHeaders.keySet().remove(respHeader);
+		}
+		markupHeaderResponse.write("\r\n".getBytes());
+	}
+	
+	@Override
+	public void performRequest() throws Exception {
+		this.setResponseHeader("CONNECTION", "Close");
+		
+		if(this._url.lastIndexOf(".")>0){
+			this.setResponseHeader("CONTENT-TYPE", registeredMimeType(_url.substring(_url.lastIndexOf("."))));
+		}
+		else{
+			this.setResponseHeader("CONTENT-TYPE", "text/plain");
+		}
+		
+		if(this._url.equals("/jquery/jquery.js")){
+			baas.utils.Utils.resourceToOutputStream("/jquery/jquery.min.js",this);
+			this.respondBytes("\r\n".getBytes());
+			baas.utils.Utils.resourceToOutputStream("/jquery/jquery.blockui.js",this);
+			this.respondBytes("\r\n".getBytes());
+			baas.utils.Utils.resourceToOutputStream("/jquery/jquery.form.min.js",this);
+		}
+		else if(this._url.equals("/jquery/jquery.ui.js")){
+			baas.utils.Utils.resourceToOutputStream("/jquery/jquery-ui.min.js",this);
+			this.respondBytes("\r\n".getBytes());
+			baas.utils.Utils.resourceToOutputStream("/jquery/jquery-ui-i18n.min.js",this);
+		}
+		else if(this._url.equals("/jquery/jquery.ui.css")){
+			baas.utils.Utils.resourceToOutputStream("/jquery/jquery-ui.min.css",this,"images/".getBytes(),"/jquery/images/".getBytes());
+			this.respondString("\r\n\r\n");
+			this.respondString("\r\n.ui-tabs-vertical { width: 55em; }\r\n");
+			this.respondString("\r\n.ui-tabs-vertical .ui-tabs-nav { padding: .2em .1em .2em .2em; float: left; width: 12em; }\r\n");
+			this.respondString("\r\n.ui-tabs-vertical .ui-tabs-nav li { clear: left; width: 100%; border-bottom-width: 1px !important; border-right-width: 0 !important; margin: 0 -1px .2em 0; }\r\n");
+			this.respondString("\r\n.ui-tabs-vertical .ui-tabs-nav li a { display:block; }\r\n");
+			this.respondString("\r\n.ui-tabs-vertical .ui-tabs-nav li.ui-tabs-active { padding-bottom: 0; padding-right: .1em; border-right-width: 1px; border-right-width: 1px; }\r\n");
+			this.respondString("\r\n.ui-tabs-vertical .ui-tabs-panel { padding: 1em; float: right; width: 40em;}\r\n");
+			baas.utils.Utils.resourceToOutputStream("/jquery/demos.css",this);
+		}
+		else{
+			if(this._url.lastIndexOf(".")>0){
+				baas.utils.Utils.resourceToOutputStream(this._url,this);
+			}
+			else{
+				if (!RequestHandleBroker.performRequestHandle(this._url,this)){
+					baas.utils.Utils.resourceToOutputStream(this._url,this);
+				}
+			}
+		}
+		
+		this.writeResponseBuffer(true);
+	}
+	
+	@Override
+	public void cleanupRequestHandle() {
+		if(_mContentOutput!=null){
+			try {
+				_mContentOutput.close();
+				_mContentOutput=null;
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+			
+		}
+		super.cleanupRequestHandle();
+	}
+}

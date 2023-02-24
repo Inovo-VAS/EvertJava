@@ -1,0 +1,34 @@
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.Date;
+
+import inovo.automated.work.AutomatedWorkManager;
+import inovo.automation.AutomationControlQueue;
+import inovo.automation.AutomationControlRequest;
+import inovo.automation.db.Queue;
+import inovo.automation.db.Request;
+import inovo.db.Database;
+import inovo.servlet.InovoCoreEnvironmentManager;
+
+import javax.servlet.ServletContext;
+
+public class InovoEnvironmentManager extends InovoCoreEnvironmentManager
+{
+	private AutomatedWorkManager _automatedWorkManager=null;
+ public void initializeServletContext(ServletContext sc)
+  {
+    super.initializeServletContext(sc);
+    _automatedWorkManager=AutomatedWorkManager.automatedWorkManager();
+  }
+
+  public String defaultLocalPath(String suggestedlocalpah)
+  {
+    return super.defaultLocalPath(suggestedlocalpah);
+  }
+
+  public void disposeServletContext(ServletContext sc)
+  {
+	_automatedWorkManager.shutdown();
+	super.disposeServletContext(sc);
+  }
+}

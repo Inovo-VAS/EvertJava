@@ -1,0 +1,7 @@
+package baasserver.server;
+
+import baasserver.io.nio.ServerConnectionsAcceptor;
+
+public class ServerConnectionsAcceptor extends ServerConnectionsAcceptor {
+
+}

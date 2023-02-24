@@ -1,0 +1,63 @@
+package baasserver.web.system;
+
+import java.util.HashMap;
+
+import baasserver.db.protocols.DBWidgetHandle;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class Dialog extends DBWidgetHandle {
+
+	public static String _unblockDialogScript="$.unblockUI();";
+	
+	public Dialog(IOWidgetHandle parentWidget, IOProcessorHandle processor)  throws Exception{
+		super(parentWidget, processor);
+	}
+	
+	public String[] dialogButtons(){
+		return new String[]{"OK"};
+	}
+	
+	public String[] fields(){
+		return null;
+	}
+	
+	public String webActionRequest(String[] actionparams){
+		HashMap<String,Object> actionParamsToUse=new HashMap<String,Object>();
+		actionParamsToUse.put("CALLBACKURL", "");
+		actionParamsToUse.put("FORM", "");
+		actionParamsToUse.put("ACTIONTARGET", "");
+		return webActionRequest(actionParamsToUse);
+	}
+	
+	public String webActionRequest(HashMap<String,Object> actionparams){
+		if(!actionparams.containsKey("CALLBACKURL")) actionparams.put("CALLBACKURL", "");
+		if(!actionparams.containsKey("FORM")) actionparams.put("FORM", "");
+		if(!actionparams.containsKey("ACTIONTARGET")) actionparams.put("ACTIONTARGET", "");
+		return "webActionRequest(\""+actionparams.get("CALLBACKURL)+""\",\"formid\",\"actiontarget\");";
+	}
+	
+	public String fieldLabel(String fieldKey){
+		return this.formatedSubjectTitle(fieldKey," ");
+	}
+	
+	public String fieldName(String fieldKey){
+		return this.formatedSubjectTitle(fieldKey,"_");
+	}
+	
+	public String fieldType(String fieldKey){
+		return "";
+	}
+
+	public String buttonCaption(String buttonKey){
+		return buttonKey;
+	}
+	
+	public String buttonScriptAction(String buttonKey){
+		return this.buttonScriptAction(buttonKey,true);
+	}
+	
+	public String buttonScriptAction(String buttonKey,boolean removeDialog){
+		return (removeDialog?"$(\'#dialog_"+this.property("form")+"\').html('');":"")+ _unblockDialogScript;
+	}
+}

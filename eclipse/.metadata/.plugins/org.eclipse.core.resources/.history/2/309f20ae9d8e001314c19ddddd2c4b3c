@@ -1,0 +1,18 @@
+package baasserver;
+
+import java.io.IOException;
+import java.io.OutputStream;
+
+public class ClientOutputStream extends OutputStream {
+
+	private Client _client=null;
+	public ClientOutputStream(Client client){
+		
+	}
+	
+	@Override
+	public void write(int arg0) throws IOException {
+		
+	}
+
+}

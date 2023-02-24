@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Rename type &apos;baasserver.reflection.CompilerClassObject&apos; to &apos;CompilerClassFileObject&apos;&#x0D;&#x0A;- Original project: &apos;baasserver&apos;&#x0D;&#x0A;- Original element: &apos;baasserver.reflection.CompilerClassObject&apos;&#x0D;&#x0A;- Renamed element: &apos;baasserver.reflection.CompilerClassFileObject&apos;&#x0D;&#x0A;- Update references to refactored element&#x0D;&#x0A;- Update textual occurrences in comments and strings" description="Rename type &apos;CompilerClassObject&apos;" flags="589830" id="org.eclipse.jdt.ui.rename.type" input="/src&lt;baasserver.reflection{CompilerClassObject.java[CompilerClassObject" matchStrategy="1" name="CompilerClassFileObject" qualified="false" references="true" similarDeclarations="false" stamp="1384952973742" textual="false" version="1.0"/>
+</session>

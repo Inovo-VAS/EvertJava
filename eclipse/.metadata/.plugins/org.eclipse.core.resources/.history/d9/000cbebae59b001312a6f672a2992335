@@ -1,0 +1,566 @@
+package baasserver.io.nio.handlers;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.UnsupportedEncodingException;
+import java.net.ContentHandler;
+import java.net.URLDecoder;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+
+import baasserver.io.handler.IOHandler;
+import baasserver.io.nio.ServerReaderInputStream;
+import baasserver.io.nio.ServerReaderWriter;
+import baasserver.io.nio.ServerWriterOutputStream;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IORequestHandle;
+
+public class RequestHandler extends IOHandler {
+
+	private HashMap<String,ArrayList<String>> _reqParams=new HashMap<String,ArrayList<String>>();
+	private HashMap<String,HashMap<String,String>> _reqParamsProperties=new HashMap<String,HashMap<String,String>>();
+	private HashMap<String,String> _reqRequestHeaders=new HashMap<String,String>();
+	private HashMap<String,String> _reqResponseHeaders=new HashMap<String,String>();
+	private HashMap<String,File> _reqParamFiles=new HashMap<String, File>();
+	
+	private int _reqResponseStatus=200;
+	private String _reqResponseStatusMessage="Ok";
+	
+	private String _reqUrl="";
+	private String _reqCommand="";
+	private String _reqProtocol="";
+	private boolean _requestCompleted=false;
+	
+	public void readInputStream(InputStream inputStream,int readBufferSize) throws Exception{
+		baasserver.io.IOUtils.inputStreamToIOHandler(inputStream, this,readBufferSize);
+		if(this._requestStageAt==RequestEnum.headerNameRequest){
+			this._requestStageAt=RequestEnum.contentRequest;
+			this.performRequest();
+		}
+	}
+	
+	private RequestContentHandler _requestContentHandler=null;
+	
+	@Override
+	public void performRequest() throws Exception{
+		_requestCompleted=false;
+		this.processRequest();
+		_requestCompleted=true;
+	}
+	
+	private long _totalRequestBytesOutputLength=0;
+	public boolean requestCompteted(){
+		if(this._requestCompleted){
+			this.setReqResponseHeader("CONTENT-LENGTH", String.valueOf(_totalRequestBytesOutputLength));
+			this.setReqResponseHeader("CONNECTION", "close");
+			synchronized (_requestBytesOutputList) {
+				_requestBytesOutputList.add(0,(this._reqProtocol+" "+String.valueOf(this._reqResponseStatus)+" "+this._reqResponseStatusMessage+"\r\n").getBytes());
+			}
+		}
+		return this._requestCompleted;
+	}
+
+	private ArrayList<byte[]> _requestBytesOutputList=new ArrayList<byte[]>();
+	
+	private byte[] _currentBytesBeingProcessed=null;
+	private int _currentBytesBeingProcessedIndex=0;
+	
+	@Override
+	public void readFromInputStream(byte[] bytesReadFromStream,
+			InputStream input) throws Exception{
+		this.processBytesRead(bytesReadFromStream);
+	}
+
+	private enum RequestEnum{
+		none,
+	    command,
+		url,
+		protocol,
+		headerNameRequest,
+		headerValueRequest,
+		contentRequest,
+		headerNameResponse,
+		headerValueResponse,
+		contentResponse,
+		statusResponse,
+		statusMessageResponse
+	}
+	
+	private RequestEnum _requestStageAt=RequestEnum.none;
+	
+	private String _reqHeaderName="";
+	private String _reqHeaderValue="";
+	private long _requestRequiredContentLength=0;
+	private long _requestContentRemainingLength=0;
+	private boolean _doneReading=false;
+	private void processBytesRead(byte[] bytesReadFromStream) throws Exception{
+		boolean breakLoop=false;
+		int bytesReadFromStreamIndex=((_requestStageAt==RequestEnum.command)?bytesReadFromStream.length:0);
+		for(byte br:bytesReadFromStream){
+			bytesReadFromStreamIndex++;
+			switch (_requestStageAt) {
+			case none:
+				 	switch(br){
+				 	case 32:
+				 		_requestStageAt=RequestEnum.url;
+				 		break;
+				 	default:
+				 		this._reqCommand+=(char)br;
+				 	}
+					break;
+			case url:
+					switch(br){
+				 	case 32:
+				 		if(_reqUrl.indexOf("?")>-1){
+				 			this.prepairForProcessingUrlEncodedParams();
+							this.processUrlEncodedParams(this._reqUrl.substring(this._reqUrl.indexOf("?")+1).getBytes());
+							this.wrapupAfterProcessingUrlEncodedParams();
+							this._possibleParamName="";
+				 			this._possibleParamValue="";
+							this._reqUrl=this._reqUrl.substring(0,this._reqUrl.indexOf("?"));
+						}
+				 		_requestStageAt=RequestEnum.protocol;
+				 		break;
+				 	default:
+				 		this._reqUrl+=(char)br;
+				 	}
+			    	break;
+			case protocol:
+					switch(br){
+					case 13:
+						continue;
+					case 10:
+						_requestStageAt=RequestEnum.headerNameRequest;
+						break;
+					default:
+						this._reqProtocol+=(char)br;
+				 		
+				 	}
+					break;
+			case headerNameRequest:
+					switch(br){
+					case 13:
+						continue;
+					case 58:
+						this._requestStageAt=RequestEnum.headerValueRequest;
+						break;
+					case 10:
+						if(_reqHeaderName.equals("")){
+							if(this._reqRequestHeaders.containsKey("CONTENT-LENGTH")){
+								this._requestRequiredContentLength=Long.parseLong(this._reqRequestHeaders.get("CONTENT-LENGTH"));
+								this._requestContentRemainingLength=(this._requestRequiredContentLength>0?2:0);
+							}
+							System.out.print(this.reqRequestHeader("CONTENT-TYPE"));
+							this._requestStageAt=RequestEnum.contentRequest;
+							if(this._doneReading=this._requestContentRemainingLength==this._requestRequiredContentLength){
+								this.performRequest();
+							}
+						}
+						break;
+					default:
+						this._reqHeaderName+=(char)br;
+				 	}
+			    	break;
+			case headerValueRequest:
+					switch(br){
+					case 13:
+						continue;
+					case 10:
+						this._reqRequestHeaders.put(_reqHeaderName.trim().toUpperCase(), _reqHeaderValue.trim());
+						this._reqHeaderName="";
+						this._reqHeaderValue="";
+						this._requestStageAt=RequestEnum.headerNameRequest;
+						break;
+					default:
+						this._reqHeaderValue+=(char)br;
+				 	}
+		    	break;
+			case contentRequest:
+					int bytesReadFromStreamLength=bytesReadFromStream.length;
+					byte[] contentBytes=(bytesReadFromStreamIndex==bytesReadFromStream.length?bytesReadFromStream:new byte[bytesReadFromStream.length-bytesReadFromStreamIndex]);
+					if(bytesReadFromStreamIndex<bytesReadFromStream.length){
+						System.arraycopy(bytesReadFromStream, bytesReadFromStreamIndex-1, contentBytes, 0, contentBytes.length);
+					}
+					this.processContentBytesReceived(contentBytes);
+					if(_requestRequiredContentLength>0){
+						if(_doneReading=((_requestContentRemainingLength+=contentBytes.length)==this._requestRequiredContentLength)){
+							_doneReading=true;
+						}
+					}
+					breakLoop=true;
+			    break;
+			}
+			if(breakLoop){
+				break;
+			}
+		}
+	}
+	
+	public boolean isDoneReading(){
+		return this._doneReading;
+	}
+	
+	public void processContentBytesReceived(byte[] contentBytes) throws Exception{
+		if((this._requestContentHandler=(this._requestContentHandler==null?(RequestContentHandler)this.requestContentHandlerClass().getConstructor(RequestHandler.class).newInstance(new Object[]{this}):this._requestContentHandler)).processContentBytes(contentBytes)){
+			_requestStageAt=RequestEnum.contentResponse;
+			this.performRequest();
+		}
+	}
+	
+	public void processRequest() throws Exception{
+		this.setMarkupRequestContentTypeResponse(this._reqUrl);
+		if(this._reqUrl.lastIndexOf(".")>-1){
+			if(this._reqUrl.indexOf("/jquery/")>-1){
+				if(this._reqUrl.endsWith("/jquery-all.js")){
+					this.writeEmbeddedResource("/"+this.reqBaseNameSpace()+"/jquery/jquery-min.js");
+					this.write("\r\n".getBytes());
+					this.writeEmbeddedResource("/"+this.reqBaseNameSpace()+"/jquery/jquery.form.min.js");
+					this.write("\r\n".getBytes());
+					this.writeEmbeddedResource("/"+this.reqBaseNameSpace()+"/jquery/canvas/jcanvas.min.js");
+					this.write("\r\n".getBytes());
+					this.writeEmbeddedResource("/"+this.reqBaseNameSpace()+"/jquery/jquery.blockUI.min.js");
+				}
+				else if(this._reqUrl.endsWith("/jquery-ui.all.js")){
+					this.writeEmbeddedResource("/"+this.reqBaseNameSpace()+"/jquery/ui/jquery-ui.min.js");
+					this.write("\r\n".getBytes());
+					this.writeEmbeddedResource("/"+this.reqBaseNameSpace()+"/jquery/ui/jquery.ui.menubar.js");
+					this.write("\r\n".getBytes());
+					this.writeEmbeddedResource("/"+this.reqBaseNameSpace()+"/jquery/ui/i18n/jquery-ui-i18n.min.js");
+				}
+				else if(this._reqUrl.endsWith("/jquery-ui.min.css")||this._reqUrl.endsWith("/jquery-ui.css")){
+					ByteArrayOutputStream jqueryCSSOutput=new ByteArrayOutputStream();
+					this.writeEmbeddedResourceToAleternateOutputStream("/"+this.reqBaseNameSpace()+"/jquery/ui/styling/"+this._reqUrl.substring(this._reqUrl.lastIndexOf("/")+1), jqueryCSSOutput);
+					this.write(jqueryCSSOutput.toString().replaceAll("images/","/"+this.reqBaseNameSpace()+"/jquery/ui/images/").getBytes());
+					jqueryCSSOutput.reset();
+					jqueryCSSOutput=null;
+					this.writeEmbeddedResource("/"+this.reqBaseNameSpace()+"/jquery/ui/styling/jquery.ui.menubar.css");
+				}
+				else{
+					this.writeEmbeddedResource("/"+this.reqBaseNameSpace()+"/jquery/"+this._reqUrl.substring(this._reqUrl.indexOf("/jquery/")+"/jquery/".length()));
+				}
+			}
+			else if(this._reqUrl.equals("/log.log")){
+				this.writeEmbeddedResource("/log.log");
+			}
+			else{
+				this.performHandle();
+			}
+		}
+		else if(this._reqUrl.equals("/shutdown-all")){
+			this.write(("SHUTDOWN-ALL ("+new SimpleDateFormat("dd MMM yyyy HH:mm:ss").format(new Date())+")").getBytes());
+			//this.shutdownAll();
+		}
+		else if(this._reqUrl.equals("/shutdown-server")){
+			this.write(("SHUTDOWN-SERVER ("+new SimpleDateFormat("dd MMM yyyy HH:mm:ss").format(new Date())+")").getBytes());
+			//this.shutdownRequestEnvironment();
+		}
+		else{
+			this.performHandle();
+		}
+	}
+	
+	public String reqURL(){
+		return this._reqUrl;
+	}
+	
+	public void performHandle() throws Exception{
+		String reqUrlNoExtension=reqURL();
+		if(reqUrlNoExtension.lastIndexOf(".")>-1){
+			reqUrlNoExtension=reqUrlNoExtension.substring(0,reqUrlNoExtension.lastIndexOf("."));
+		}
+		Class<?> classFound=baasserver.reflection.REFUtils.findClass(reqUrlNoExtension.substring(0,reqUrlNoExtension.lastIndexOf("/")), reqUrlNoExtension.substring(reqUrlNoExtension.lastIndexOf("/")+1),false);
+		this.processWidget(classFound);
+	}
+	
+	public void processWidget(Class<?> classFound) throws Exception{
+		if(classFound==null){
+			this.writeEmbeddedResource(this.reqURL());
+		}
+		else{
+			Class<?> processHandlerClass=this.processHandlerClass();
+			IOProcessorHandle processor=(IOProcessorHandle)processHandlerClass.getConstructor(IOProcessorHandle.class, Class.class,IORequestHandle.class).newInstance(new Object[]{null,classFound,this});
+			processor.process();
+			processor.cleanupProcessor();
+		}
+	}
+	
+	public Class<?> processHandlerClass() throws Exception{
+		String processHandlerClassPath=this.getClass().getName();
+		processHandlerClassPath=processHandlerClassPath.substring(0,processHandlerClassPath.length()-"RequestHandle".length())+"ProcessorHandle";
+		return baasserver.reflection.REFUtils.findClass(processHandlerClassPath, false);
+	}
+	
+	private void setMarkupRequestContentTypeResponse(String reqUrl) {
+		if(reqUrl.toLowerCase().endsWith(".js")){
+			this.setReqResponseHeader("CONTENT-TYPE", "text/javascript");
+		}
+		else if(reqUrl.toLowerCase().endsWith(".htm")||reqUrl.toLowerCase().endsWith(".html")){
+			this.setReqResponseHeader("CONTENT-TYPE", "text/html");
+		}
+		else if(reqUrl.toLowerCase().endsWith(".xml")){
+			this.setReqResponseHeader("CONTENT-TYPE", "text/xml");
+		}
+		else if(reqUrl.toLowerCase().endsWith(".css")){
+			this.setReqResponseHeader("CONTENT-TYPE", "text/CSS");
+		}
+		else if(reqUrl.toLowerCase().endsWith(".gif")){
+			this.setReqResponseHeader("CONTENT-TYPE", "image/GIF");
+		}
+		else if(reqUrl.toLowerCase().endsWith(".png")){
+			this.setReqResponseHeader("CONTENT-TYPE", "image/PNG");
+		}
+		else if(reqUrl.toLowerCase().endsWith(".jpg")||reqUrl.endsWith(".jpeg")){
+			this.setReqResponseHeader("CONTENT-TYPE", "image/JPEG");
+		}
+		else{
+			this.setReqResponseHeader("CONTENT-TYPE", "text/plain");
+		}
+	}
+	
+	public String reqBaseNameSpace(){
+		String baseNameSpace=this.getClass().getName();
+		return (baseNameSpace.indexOf(".")>-1?baseNameSpace.substring(0,baseNameSpace.indexOf(".")):"baasserver");
+	}
+	
+	public void writeEmbeddedResource(String embeddedResourcePath) throws Exception{
+		InputStream bytesIn=(InputStream) baasserver.reflection.REFUtils.getResourceAsStream(embeddedResourcePath);
+		if(bytesIn!=null){				
+			int bytesAvailable=0;
+			byte[] bytesOutRead=new byte[8912];
+			
+			while((bytesAvailable=bytesIn.read(bytesOutRead))>-1){
+				if(bytesAvailable>0){
+					byte[] bytesToWrite=new byte[bytesAvailable];
+					System.arraycopy(bytesOutRead, 0, bytesToWrite, 0, bytesAvailable);
+					this.write(bytesToWrite);
+				}
+			}
+		}
+	}
+	
+	public void writeEmbeddedResourceToAleternateOutputStream(String embeddedResourcePath,OutputStream altoutput) throws Exception{
+		InputStream bytesIn=(InputStream) this.getClass().getResourceAsStream(embeddedResourcePath);
+		if(bytesIn!=null){				
+			int bytesAvailable=0;
+			byte[] bytesOutRead=new byte[8912];
+			
+			while((bytesAvailable=bytesIn.read(bytesOutRead))>-1){
+				if(bytesAvailable>0){
+					byte[] bytesToWrite=new byte[bytesAvailable];
+					System.arraycopy(bytesOutRead, 0, bytesToWrite, 0, bytesAvailable);
+					altoutput.write(bytesToWrite);
+				}
+			}
+		}
+	}
+
+	public Class<?> requestContentHandlerClass(){
+		if(this.reqRequestHeader("CONTENT-TYPE").indexOf("multipart/form-data")>-1){
+			return MultiPartContentHandler.class;
+		}
+		return RequestContentHandler.class;
+	}
+	
+	public String reqRequestHeader(String headerName){
+		String headerValue=this._reqRequestHeaders.get(headerName=headerName.toUpperCase());
+		return (headerValue==null?"":headerValue);
+	}
+	
+	public void setReqRequestHeader(String headerName,String headerValue){
+		this._reqRequestHeaders.put(headerName.toUpperCase(), headerValue);
+	}
+	
+	public String reqResponseHeader(String headerName){
+		String headerValue=this._reqResponseHeaders.get(headerName=headerName.toUpperCase());
+		return (headerValue==null?"":headerValue);
+	}
+	
+	public void setReqResponseHeader(String headerName,String headerValue){
+		this._reqResponseHeaders.put(headerName.toUpperCase(), headerValue);
+	}
+
+	@Override
+	public void reset() {
+		this._reqCommand="";
+		this._reqUrl="";
+		this._reqProtocol="";
+		this._reqHeaderName="";
+		this._reqHeaderValue="";
+		this._requestContentHandler=null;
+		this._currentBytesBeingProcessed=null;
+		this._currentBytesBeingProcessedIndex=0;
+		
+		this._reqResponseStatus=0;
+		this._reqResponseStatusMessage="";
+		this._reqRequestHeaders.clear();
+		this._reqResponseHeaders.clear();
+		
+		while(!this._reqParamsProperties.isEmpty()){
+			this._reqParamsProperties.remove(this._reqParamsProperties.keySet().toArray()[0]).clear();
+		}
+		
+		while(!this._reqParams.isEmpty()){
+			this._reqParams.remove(this._reqParams.keySet().toArray()[0]).clear();
+		}
+		
+		synchronized (_requestBytesOutputList) {
+			_requestBytesOutputList.clear();
+		}
+		
+		this._totalRequestBytesOutputLength=0;
+		
+		this._requestContentRemainingLength=0;
+		this._requestRequiredContentLength=0;
+		this._requestContentHandler=null;
+		
+		while(!this._reqParamFiles.isEmpty()){
+			this._reqParamFiles.remove(this._reqParamFiles.keySet().toArray()[0]).delete();
+		}
+	}
+
+	private enum UrlParamEncodeStageEnum{
+		name,
+		value
+	}
+	
+	private UrlParamEncodeStageEnum _urlParamEncodeStageEnumStage=UrlParamEncodeStageEnum.name;
+	
+	private String _possibleParamName="";
+	private String _possibleParamValue="";
+	
+	public void prepairForProcessingUrlEncodedParams(){
+		this._possibleParamName="";
+		this._possibleParamValue="";
+	}
+	
+	public void wrapupAfterProcessingUrlEncodedParams(){
+		if(!_possibleParamName.equals("")){
+			this.setReqParameter(_possibleParamName,_possibleParamValue,false);
+			this.prepairForProcessingUrlEncodedParams();
+		}
+	}
+	
+	public void processUrlEncodedParams(byte[] bytesUrlEncoded) throws UnsupportedEncodingException {
+		for(byte bc:bytesUrlEncoded){
+			switch(_urlParamEncodeStageEnumStage){
+			case name:
+				switch(bc){
+				case 61:
+					_possibleParamName=URLDecoder.decode(_possibleParamName, "UTF-8");
+					_urlParamEncodeStageEnumStage=UrlParamEncodeStageEnum.value;
+					break;
+				default:
+					_possibleParamName+=(char)bc;	
+				}
+				break;
+			case value:
+				switch(bc){
+				case 38:
+					if(!_possibleParamValue.equals("")){
+						_possibleParamValue=URLDecoder.decode(_possibleParamValue, "UTF-8");
+					}
+					this.setReqParameter(_possibleParamName,_possibleParamValue,false);
+					_possibleParamName="";
+					_possibleParamValue="";
+					_urlParamEncodeStageEnumStage=UrlParamEncodeStageEnum.name;
+					break;
+				default:
+					_possibleParamValue+=(char)bc;	
+				}
+				break;
+			}			
+		}
+	}
+	
+	public void setReqParameter(String paramName, String paramValue, boolean override) {
+		ArrayList<String> paramValues=this._reqParams.get(paramName=paramName.toUpperCase());
+		if(paramValues==null){
+			this._reqParams.put(paramName, paramValues=new ArrayList<String>());
+		}
+		else if(override){
+			paramValues.clear();
+		}
+		if(!(paramValue=(paramValue==null?"":paramValue.trim())).equals("")){
+			paramValues.add(paramValue);
+		}
+	}
+	
+	public ArrayList<String> reqParameter(String paramName){
+		ArrayList<String> paramValues=this._reqParams.get(paramName=paramName.toUpperCase());
+		return paramValues;
+	}
+	
+	public String reqStringParameter(String paramName){
+		ArrayList<String> paramValues=this._reqParams.get(paramName=paramName.toUpperCase());
+		if(paramValues==null){
+			return "";
+		}
+		if(paramValues.isEmpty()){
+			return "";
+		}
+		return paramValues.get(0);
+	}
+
+	@Override
+	public void write(byte[] bytesToWrite) throws Exception {
+		_totalRequestBytesOutputLength+=(bytesToWrite==null?0:bytesToWrite.length);
+		synchronized (_requestBytesOutputList) {
+			_requestBytesOutputList.add(bytesToWrite);
+		}
+	}
+	
+	public boolean requestBytesOutputAvailable(){
+		return !this._requestBytesOutputList.isEmpty();
+	}
+	
+	public void retrieveRequestBytesOutput(ArrayList<byte[]> destinationBytesOutput){
+		if(destinationBytesOutput!=null){
+			synchronized (destinationBytesOutput) {
+				synchronized (_requestBytesOutputList) {
+					if(!_requestBytesOutputList.isEmpty()){
+						destinationBytesOutput.addAll(_requestBytesOutputList);
+						_requestBytesOutputList.clear();
+					}
+				}
+			}
+		}
+	}
+
+	public void flushRequestBytesIntoOutputStream(
+			OutputStream output) throws IOException {
+		synchronized (_requestBytesOutputList) {
+			while(!_requestBytesOutputList.isEmpty()) output.write(_requestBytesOutputList.remove(0));
+		}
+	}
+
+	public void setReqParameterProperty(String parameterName,
+			String paramPropertyName, String paramPropertyValue) {
+		HashMap<String,String> paramProperties=_reqParamsProperties.get(parameterName=parameterName.toUpperCase());
+		if(paramProperties==null){
+			_reqParamsProperties.put(parameterName, paramProperties=new HashMap<String,String>());
+		}
+		paramProperties.put(paramPropertyName.toUpperCase(), paramPropertyValue);
+	}
+	
+	public String reqParameterProperty(String parameterName,String paramPropertyName){
+		HashMap<String,String> paramProperties=_reqParamsProperties.get(parameterName=parameterName.toUpperCase());
+		if(paramProperties==null){
+			return "";
+		}
+		String paramPropertyValue=paramProperties.get(paramPropertyName);
+		return (paramPropertyValue==null?"":paramPropertyValue);
+	}
+	
+	public void setReqFileParam(String parameterName,File parameterFile){
+		this._reqParamFiles.put(parameterName.toUpperCase(), parameterFile);
+	}
+	
+	public File reqFileParam(String parameterName){
+		return this._reqParamFiles.get(parameterName.toUpperCase());
+	}
+}

@@ -1,0 +1,91 @@
+package saas.io;
+
+import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+
+public class JarFileReader {
+	
+	private ZipFile _zipFile=null;
+	
+	private HashMap<String,ArrayList<String>> _filesRefMap=new HashMap<String, ArrayList<String>>();
+
+	public JarFileReader(String jarFile) throws Exception{
+		this._zipFile=new ZipFile(jarFile);
+		this.loadJarFileStructureMap();
+	}
+
+	private void loadJarFileStructureMap() {
+		HashMap<String,ArrayList<String>> filesRefMap=new HashMap<String, ArrayList<String>>();
+		ArrayList<String> filesMap=null;
+		
+		try {
+	        Enumeration<? extends ZipEntry> e = this._zipFile.entries();
+	        String fileMapPath="/";
+	        String lastfileMapPath="";
+	        String fileToMap="";
+	        
+	        filesRefMap.put(fileMapPath, filesMap=new ArrayList<String>());
+	        
+	        while (e.hasMoreElements()) {
+	            ZipEntry entry = (ZipEntry) e.nextElement();
+	            if(entry.isDirectory()){
+	            	if(!fileMapPath.equals(entry.getName())){
+	            		fileMapPath=entry.getName();
+	            		if(!fileMapPath.equals("/")&&filesMap!=null){
+	            			lastfileMapPath=fileMapPath.substring(0,fileMapPath.length()-1);
+	            			filesMap.add(0, (lastfileMapPath.indexOf("/")==-1?lastfileMapPath:lastfileMapPath.substring(lastfileMapPath.lastIndexOf("/")+1)));
+	            		}
+	            		filesMap=filesRefMap.get(fileMapPath);
+	            		if(filesMap==null) filesRefMap.put(fileMapPath, filesMap=new ArrayList<String>());
+	            		
+	            	}
+	            } 
+            	else if(!fileMapPath.equals("")&&filesMap!=null){
+            		fileToMap=entry.getName().substring(fileMapPath.length());
+            		if(filesMap.indexOf(fileToMap)==-1) filesMap.add(fileToMap);
+            	}
+	        }
+	    } catch (Exception e) {
+	        e.printStackTrace();
+	    }
+		
+		synchronized (_filesRefMap) {
+			_filesRefMap.clear();
+			_filesRefMap.putAll(filesRefMap);
+		}
+		filesRefMap.clear();
+		filesRefMap=null;
+	}
+	
+	public InputStream getResourceAsStream(String resourcepath) throws Exception{
+		InputStream inputRespurceStream=null;
+		if(resourcepath.indexOf("/")>-1){
+			String resourcepathroot=resourcepath.substring(0,resourcepath.indexOf("/")+1);
+			String resourceitem=resourcepath.substring(resourcepath.indexOf("/")+1);
+			ArrayList<String> possibleResourceElements=this._filesRefMap.get(resourcepathroot);
+			if(possibleResourceElements!=null){
+				for(String resourceElem:possibleResourceElements){
+					if(resourceitem.toLowerCase().equals(resourceElem.toLowerCase())){
+						ZipEntry zipEntryFound=this._zipFile.getEntry(resourcepathroot+resourceElem);
+						BufferedInputStream bufferInput=new BufferedInputStream(this._zipFile.getInputStream(zipEntryFound));
+						ByteArrayOutputStream bytesOut=new ByteArrayOutputStream();
+						saas.io.IOUtils.readInputStreamToOutputStream(bufferInput, bytesOut);
+						inputRespurceStream=new ByteArrayInputStream(bytesOut.toByteArray());
+						bytesOut.close();
+						bufferInput.close();
+						break;
+					}
+				}
+			}
+		}
+		return inputRespurceStream;
+	}
+}

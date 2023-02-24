@@ -1,0 +1,17 @@
+<% if(widget.topWidget().property("widget").equals("")) { %>
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="ISO-8859-1"/>
+		<style type="text/css">@IMPORT url("/jquery/jquery-ui.min.css");</style>
+		<script type="text/javascript" src="/jquery/jquery-all.js"></script>
+		<script type="text/javascript" src="/jquery/jquery-ui.all.js"></script>
+	</head>
+	<body style="margin: 0px">
+		<script type="text/javascript" src="<% =widget.topWidget().fullPathWidgetClassName(); %>.js"></script>
+<% } %>
+		<widget></widget>
+<% if(widget.topWidget().property("widget").equals("")) { %>
+	</body>
+</html>
+<% } %>

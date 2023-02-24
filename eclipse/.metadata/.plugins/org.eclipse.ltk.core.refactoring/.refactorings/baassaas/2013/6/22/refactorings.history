@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Rename type &apos;sas.net.web.widget.WBaseWigdet&apos; to &apos;WBaseWidget&apos;&#x0D;&#x0A;- Original project: &apos;sas&apos;&#x0D;&#x0A;- Original element: &apos;sas.net.web.widget.WBaseWigdet&apos;&#x0D;&#x0A;- Renamed element: &apos;sas.net.web.widget.WBaseWidget&apos;&#x0D;&#x0A;- Update references to refactored element&#x0D;&#x0A;- Update textual occurrences in comments and strings" description="Rename type &apos;WBaseWigdet&apos;" flags="589830" id="org.eclipse.jdt.ui.rename.type" input="/src&lt;sas.net.web.widget{WBaseWigdet.java[WBaseWigdet" matchStrategy="1" name="WBaseWidget" qualified="false" references="true" similarDeclarations="false" stamp="1370064548465" textual="false" version="1.0"/>
+</session>

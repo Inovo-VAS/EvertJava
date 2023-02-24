@@ -1,0 +1,24 @@
+package inovo.monitoring.monitors;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class Monitor implements Runnable{
+	
+	private static ExecutorService _monitorsServices=null;
+	
+	public void requestCompleted(MonitorRequest monitorRequest) {
+		
+	}
+	
+	public static void initiateMonitor(Monitor monitor){
+		if(_monitorsServices==null){
+			_monitorsServices=Executors.newCachedThreadPool();
+		}
+	}
+
+	@Override
+	public void run() {
+		
+	}
+}

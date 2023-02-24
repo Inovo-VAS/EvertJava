@@ -1,0 +1,35 @@
+package inovo.automated.work;
+
+import java.io.InputStream;
+
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+
+public class Configuration extends InovoHTMLPageWidget {
+
+	public Configuration(InovoWebWidget parentWidget, InputStream inStream) {
+		super(parentWidget, inStream);
+	}
+
+	
+	@Override
+	public void pageContent() throws Exception {
+		this.action("ADD WORK", "addwork", "", "", "", "", "", "");
+	}
+	
+	public void addwork() throws Exception{
+		this.showDialog("", "contentid=addworkdialog|title=ADD WORK|BOTTONS:CONFIRM=command=confirmaddwork|BUTTONS:CANCEL=".split("[|]"));
+		this.replaceComponentContent("addworkdialog");
+			this.startTable(null);
+				this.startRow(null);
+					this.startColumn("font-size:0.8em");
+						this.respondString("NAME");
+					this.endColumn();
+					this.startCell(null);
+						this.fieldInput("NEWWORKNAME", "", "text", true, null);
+					this.endCell();
+				this.endRow();
+			this.endTable();
+		this.endReplaceComponentContent();
+	}
+}

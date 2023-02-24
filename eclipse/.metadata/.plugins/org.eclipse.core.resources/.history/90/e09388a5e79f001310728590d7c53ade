@@ -1,0 +1,7 @@
+package org.quartz.dbtables.sqlserver;
+
+import baasserver.db.protocols.DBWidgetHandle;
+
+public class Tables extends DBWidgetHandle {
+
+}

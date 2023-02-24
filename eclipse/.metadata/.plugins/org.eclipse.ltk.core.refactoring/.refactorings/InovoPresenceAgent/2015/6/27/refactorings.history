@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring accessors="true" comment="Delete 4 elements from project &apos;InovoPresenceAgent&apos;&#x0D;&#x0A;- Original project: &apos;InovoPresenceAgent&apos;&#x0D;&#x0A;- Original elements:&#x0D;&#x0A;     InovoPresenceAgent/src/com4j&#x0D;&#x0A;     InovoPresenceAgent/src/com4j.stdole&#x0D;&#x0A;     InovoPresenceAgent/src/com4j.util&#x0D;&#x0A;     com4j.dll" description="Delete elements" element1="src/presence/pcoagent/com4j.dll" element2="/src&lt;com4j.util" element3="/src&lt;com4j.stdole" element4="/src&lt;com4j" elements="3" flags="589830" id="org.eclipse.jdt.ui.delete" resources="1" stamp="1435659506238" subPackages="false" version="1.0"/>
+</session>

@@ -1,0 +1,146 @@
+package baasserver.io.handler;
+
+import java.io.IOException;
+import java.lang.reflect.Method;
+import java.nio.Buffer;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.Set;
+import java.nio.channels.Channel;
+import java.nio.channels.SelectableChannel;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
+import java.nio.channels.spi.SelectorProvider;
+
+public class InputOutputHandler implements Runnable {
+
+	private SelectableChannel _channel=null;
+	private Selector _selector;
+	public InputOutputHandler(SelectableChannel channel) throws Exception{
+		this._channel=channel;
+		this._selector=SelectorProvider.provider().openSelector();
+		this.initiateSelectorChannel(this._selector,this._channel);
+	}
+	
+	public void initiateSelectorChannel(Selector selector,
+			SelectableChannel channel) throws Exception{
+	}
+
+	public void readBytesFromChannel(ArrayList<byte[]> bytesReadFromBuffer,Channel channel,int bufferReadSize) throws Exception{
+		ByteBuffer bufferToReadInto=ByteBuffer.allocate(bufferReadSize);
+		
+		Method readChannel=baasserver.reflection.REFUtils.findMethod("read", channel.getClass(), new Class<?>[]{ByteBuffer.class}, false);
+		
+		int bytesRead =  (int) readChannel.invoke(channel, new Object[]{bufferToReadInto});
+	    while (bytesRead != -1) {
+
+	    	bufferToReadInto.flip();
+
+	    	while(bufferToReadInto.hasRemaining()){
+	    		byte[] bytesToRead=new byte[bytesRead];
+	    		bufferToReadInto.get(bytesToRead,0,bytesToRead.length);
+				bytesReadFromBuffer.add(bytesToRead);
+	    	}
+
+	    	bufferToReadInto.clear();
+	    	bytesRead = (int) readChannel.invoke(channel, new Object[]{bufferToReadInto});
+	    }
+	}
+
+	public void writeBytesToChannel(final ArrayList<byte[]> bytesWrittenToBuffer,final Channel channel) throws IOException{
+		new Thread(){
+			public void run() {
+				Selector sel=null;
+				try {
+					Method channelWrite=baasserver.reflection.REFUtils.findMethod("write", channel.getClass(), new Class<?>[]{ByteBuffer.class}, true);
+					sel = SelectorProvider.provider().openSelector();
+					registerReadWriteAcceptConnect(sel,channel,"write");
+					Object busyWritingLock=new Object();
+					while(!bytesWrittenToBuffer.isEmpty()){
+						ByteBuffer bytesWrite=ByteBuffer.wrap(bytesWrittenToBuffer.remove(0));
+						boolean doneWriting=false;
+						while(!doneWriting){
+							while(sel.select()>0){
+								Iterator<SelectionKey> selKeySet=sel.keys().iterator();
+								while(selKeySet.hasNext()){
+									SelectionKey selKey=selKeySet.next();
+									if(selKey.isValid()){
+										if(selKey.isWritable()){
+											channelWrite.invoke(channel, new Object[]{bytesWrite});
+											if(bytesWrite.remaining()>0){
+												registerReadWriteAcceptConnect(sel,channel,"write");
+											}
+											else{
+												doneWriting=true;
+											}
+										}
+									}
+									selKeySet.remove();
+								}
+								if(doneWriting) break;
+							}
+							synchronized (busyWritingLock) {
+								busyWritingLock.wait(5);
+							}
+						}
+					}	
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+				try {
+					if(sel!=null) sel.close();
+				} catch (IOException e) {
+				}
+				try {
+					doneWriting();
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+			}
+		}.start();
+	}
+	
+	public void doneWriting() throws Exception{
+	}
+	
+	public void connectChannel() throws Exception{
+		Selector selConnect=SelectorProvider.provider().openSelector();
+		this.registerReadWriteAcceptConnect(selConnect, _channel, "connect");
+		boolean connected=false;
+		while(!connected){
+			while(selConnect.select()>0){
+				Iterator<SelectionKey> selKeysSet=selConnect.keys().iterator();
+				while(selKeysSet.hasNext()){
+					SelectionKey selKeyConnect=selKeysSet.next();
+					if(!connected){
+						if(selKeyConnect.isValid()){
+							if(selKeyConnect.isConnectable()){
+								if(((SocketChannel)_channel).isConnectionPending()){
+									connected=true;
+								}
+							}
+						}
+						
+					}
+				}
+			}
+		}
+	}
+	
+	public void registerReadWriteAcceptConnect(Selector sel,Channel channel,String registerAction) throws Exception{
+		Method registerReadWriteAcceptConnect=baasserver.reflection.REFUtils.findMethod("register", channel.getClass(), new Class<?>[]{Selector.class,int.class}, false);
+		int selectableEnum=((registerAction=registerAction.toLowerCase()).equals("read")?SelectionKey.OP_READ:registerAction.equals("write")?SelectionKey.OP_WRITE:registerAction.equals("connect")?SelectionKey.OP_CONNECT:registerAction.equals("accept")?SelectionKey.OP_ACCEPT:0);
+		registerReadWriteAcceptConnect.invoke(channel, new Object[]{sel,selectableEnum});
+	}
+
+	@Override
+	public void run() {
+		
+	}
+	
+	public void writeBytesToOutput(ArrayList<byte[]> bytesToWriteToHandleOutput) throws IOException{
+		this.writeBytesToChannel(bytesToWriteToHandleOutput, _channel);
+	}
+}

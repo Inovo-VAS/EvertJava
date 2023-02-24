@@ -1,0 +1,281 @@
+package inovo.flat.file.leads.importer;
+import inovo.db.Database;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.HashMap;
+
+
+public class FlatFileRequestContentImporter implements Runnable{
+	
+	private HashMap<String,String> _flatFileRequestContentImportSettings=null;
+	private File _fileToImport=null;
+	private final Object _fileToImportLock=new Object();
+	private int _currentFileContentLength=0;
+	private int _currentFileErrorContentLength=0;
+	private int _headerColumnsCount=0;
+	
+	public FlatFileRequestContentImporter(HashMap<String,String> flatFileRequestContentImportSettings,File fileToImport){
+		this._flatFileRequestContentImportSettings=flatFileRequestContentImportSettings;
+		this._fileToImport=fileToImport;
+		this._currentFileContentLength=Integer.parseInt(flatFileRequestContentImportSettings.get("REQUESTFILEIMPORTLINECOUNT").equals("")?"0":flatFileRequestContentImportSettings.get("REQUESTFILEIMPORTLINECOUNT"));
+		this._currentFileErrorContentLength=Integer.parseInt(flatFileRequestContentImportSettings.get("REQUESTFILEIMPORTFAILURELINECOUNT").equals("")?"0":flatFileRequestContentImportSettings.get("REQUESTFILEIMPORTFAILURELINECOUNT"));
+	}
+	
+	public void importFlatFileContent(){
+		FileInputStream fin=null;
+		try {
+			fin = new FileInputStream(_fileToImport);
+		} catch (FileNotFoundException e2) {
+			// TODO Auto-generated catch block
+			e2.printStackTrace();
+		}
+		long startTime=Calendar.getInstance().getTimeInMillis();
+		System.out.println("START TIME:"+startTime);
+		if(fin!=null){
+			try {
+				this.readRowsFromStream(fin, "CSV", null, this, "readFileRowData", "COLDELIM="+this._flatFileRequestContentImportSettings.get("COMADELIM"));
+			} catch (Exception e1) {
+				// TODO Auto-generated catch block
+				e1.printStackTrace();
+			}
+			try {
+				fin.close();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			fin=null;
+		}
+		long endTime=Calendar.getInstance().getTimeInMillis();
+		System.out.println("END TIME: "+endTime);
+		System.out.println("TIME DIF SECONDS: "+(endTime-startTime)/1000);
+		
+		this._flatFileRequestContentImportSettings.put("REQUESTFILEIMPORTSTATUS", this._currentFileErrorContentLength==0?"1":"4");
+		this._flatFileRequestContentImportSettings.put("REQUESTFILEIMPORTCONTENTSTATUSDESCRIPTION", this._currentFileErrorContentLength==0?"":"NOT ALL LINES WAS IMPORTED");
+		
+		try {
+			Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.LEADSDATAFILEALLIASREQUEST SET REQUESTLASTHANDLEDATETIME=GETDATE(),REQUESTFILEIMPORTSTATUS=:REQUESTFILEIMPORTSTATUS,REQUESTFILEIMPORTCONTENTSTATUSDESCRIPTION=:REQUESTFILEIMPORTCONTENTSTATUSDESCRIPTION,REQUESTFILEIMPORTLINECOUNT=(SELECT COUNT(*) AS REQUESTFILEIMPORTLINECOUNT FROM <DBUSER>.LEADSDATAFILEALLIASREQUESTCONTENT WHERE FLATFILEALIASREQUESTID=:ID)  WHERE ID=:ID", this._flatFileRequestContentImportSettings, null);
+		} catch (Exception e) {
+			// TODO FAILED UPDATING FILEIMORT COMPLETION STATUS
+			e.printStackTrace();
+		}
+	}
+	
+	private HashMap<String,String> _fileEntryContent=null;
+	private StringBuilder _sqlContentInsertStatement=new StringBuilder();
+	private int _fieldCount=0;
+	private String _fieldName="";
+	
+	public void readFileRowData(Integer rowindex,ArrayList<String> rowColumns,ArrayList<String> rowData){
+		if(this._currentFileContentLength>0){
+			this._currentFileContentLength--;
+			return;
+		}
+		if(_fileEntryContent!=null){
+			_fileEntryContent.clear();
+			_fileEntryContent=null;
+			_fileEntryContent=new HashMap<String, String>();
+		}
+		else{
+			_fileEntryContent=new HashMap<String, String>();
+		}
+		
+		_sqlContentInsertStatement.setLength(0);
+		_sqlContentInsertStatement.append("INSERT INTO <DBUSER>.[LEADSDATAFILEALLIASREQUESTCONTENT] "+
+           "([FLATFILEALIASREQUESTID] "+
+           ",[ENTRYCREATIONDATETIME] "+
+           ",[ROWTYPE] "+
+           ",[COLUMNCOUNT]"+
+           ",[ENTRYSTATUS]"+
+           ",[ENTRYSTATUSDESCRIPTION]");
+		
+		_fieldCount=1;
+		while(_fieldCount<=rowData.size()){
+			_sqlContentInsertStatement.append(",FIELD"+String.valueOf(_fieldCount++)+" ");
+		}
+		
+		this._sqlContentInsertStatement.append(        
+       ") VALUES (");
+		
+		this._sqlContentInsertStatement.append(
+       ":REQUESTID"+
+       ",GETDATE() "+
+       ",:ROWTYPE "+
+       ",:COLUMNCOUNT "+
+       ",ENTRYSTATUS "+
+       ",ENTRYSTATUSDESCRIPTION "
+		);
+		_fileEntryContent.put("REQUESTID", _flatFileRequestContentImportSettings.get("ID"));
+		_fileEntryContent.put("COLUMNCOUNT",String.valueOf(rowData.size()));
+		_fieldCount=0;
+		while(_fieldCount<rowData.size()){
+			_fieldCount++;
+			_fileEntryContent.put((_fieldName="FIELD"+String.valueOf(_fieldCount)),rowData.get(_fieldCount-1));
+			_sqlContentInsertStatement.append(",:"+_fieldName+" ");
+		}
+		_sqlContentInsertStatement.append(")");
+		if(rowindex==0){
+			_fileEntryContent.put("ROWTYPE", "COLUMNS");
+		}
+		else{
+			_fileEntryContent.put("ROWTYPE", "DATA");
+		}
+		
+		try {
+			Database.executeDBRequest(null, "FLATFILELEADSIMPORTER", _sqlContentInsertStatement.substring(0,_sqlContentInsertStatement.length()),_fileEntryContent , null);
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			this._currentFileErrorContentLength++;
+		}
+		_fileEntryContent.clear();
+		_fileEntryContent=null;
+		/*try {
+			Thread.sleep(2);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}*/
+	}
+	
+	private enum CSVContentStage{
+		none,
+		string
+	}
+	
+	
+	private void readRowsFromStream(InputStream dataStream, String streamformat,
+			ArrayList<String> rowColumns,Object rowReadMethodOwner,String readRowMethod,String...contentProperties) throws Exception{
+		if(",FLAT,CSV,".indexOf(","+(streamformat=(streamformat==null?"CSV":streamformat.toUpperCase()).trim())+",")==-1){
+			streamformat="CSV";
+		}
+		boolean disposeColumnsWhenDone=(rowColumns==null);
+		int currentRowIndex=0;
+		Method rowDataMethod=(rowReadMethodOwner==null?null:inovo.adhoc.AdhocUtils.findMethod(rowReadMethodOwner.getClass().getMethods(), readRowMethod, false));
+		ArrayList<String> rowData=new ArrayList<String>();
+		
+		HashMap<String,String> additionalProperties=new HashMap<String, String>();
+		
+		if(contentProperties!=null){
+			for(String propItem:contentProperties){
+				if(propItem.isEmpty()) continue;
+				if(propItem.indexOf("=")>-1){
+					additionalProperties.put(propItem.substring(0,propItem.indexOf("=")).trim().toUpperCase(), propItem.substring(propItem.indexOf("=")+1).trim());
+				}
+			}
+		}
+		
+		StringBuilder tempContent=new StringBuilder();
+		if(streamformat.equals("CSV")||streamformat.equals("FLAT")){
+			CSVContentStage csvContentStage=CSVContentStage.none;
+			if(rowColumns==null){
+				rowColumns=new ArrayList<String>();
+			}
+			int inputRead=0;
+			int inputBufferIndex=0;
+			byte br=0;
+			char cr=0;
+			byte[] inputBuffer=new byte[8192];
+			
+			char colDelim=',';
+			char prevStringChar=0;
+			char stringParenthis='\"';
+			if(additionalProperties.containsKey("TEXTPAR")){
+				if(!additionalProperties.get("TEXTPAR").equals("")) stringParenthis=additionalProperties.get("TEXTPAR").charAt(0);
+			}
+			
+			if(additionalProperties.containsKey("COLDELIM")){
+				if(!additionalProperties.get("COLDELIM").equals("")) colDelim=additionalProperties.get("COLDELIM").charAt(0);
+			}
+			
+			while((inputRead=dataStream.read(inputBuffer, 0, inputBuffer.length))>-1){
+				if(inputRead>0){
+					inputBufferIndex=0;
+					while(inputBufferIndex<inputRead){						
+						cr=(char)(br=inputBuffer[inputBufferIndex++]);
+						if(streamformat.equals("CSV")){
+							switch(csvContentStage){
+							case none:
+								switch(cr){
+								case 10:
+										prevStringChar=0;
+										
+										rowData.add(tempContent.substring(0,tempContent.length()).trim());
+										if(currentRowIndex==0){
+											rowColumns.isEmpty();
+											rowColumns.addAll(rowData);
+										}
+										if(rowDataMethod!=null&&rowReadMethodOwner!=null){
+											try{
+												rowDataMethod.invoke(rowReadMethodOwner,new Object[]{currentRowIndex,rowColumns,rowData});
+											}
+											catch(Exception rce){
+												rce.printStackTrace();
+												//TODO
+											}
+										}
+										currentRowIndex++;
+										tempContent.setLength(0);
+										rowData.clear();
+									break;
+								case 13:continue;
+								default:
+									if(cr==colDelim){
+										prevStringChar=0;
+										rowData.add(tempContent.substring(0,tempContent.length()).trim());
+										tempContent.setLength(0);
+									}
+									else if(cr==stringParenthis){
+										csvContentStage=CSVContentStage.string;
+									}
+									else{
+										tempContent.append(cr);
+									}
+									break;
+								}
+								break;
+							case string:
+								if(cr==stringParenthis){
+									if(prevStringChar==stringParenthis){
+										tempContent.append(cr);
+										prevStringChar=0;
+									}
+									else{
+										prevStringChar=0;
+										csvContentStage=CSVContentStage.none;
+									}
+								}
+								else{
+									tempContent.append(cr);
+									prevStringChar=cr;
+								}
+								break;
+							default:
+								break;							
+							}
+						}
+					}
+				}
+			}
+		}
+		tempContent.setLength(0);
+		tempContent=null;
+		additionalProperties.clear();
+		additionalProperties=null;	
+		if(disposeColumnsWhenDone){
+			rowColumns.clear();
+			rowColumns=null;
+		}
+	}
+
+	@Override
+	public void run() {
+		this.importFlatFileContent();
+	}
+}

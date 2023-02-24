@@ -1,0 +1,587 @@
+package inovo.flat.file.leads.importer;
+
+import inovo.db.Database;
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Set;
+import java.util.TreeMap;
+
+public class FlatFileLeadsConfiguration extends InovoHTMLPageWidget
+{
+  public FlatFileLeadsConfiguration(InovoWebWidget parentWidget, InputStream inStream)
+  {
+    super(parentWidget, inStream);
+  }
+
+  public void pageContent() throws Exception
+  {
+    startTable(new String[] { "class=ui-widget-content" });
+    	startRow(null);
+    		startCell(null);
+    			fieldLabel("FILE ALIAS");
+    		endCell();
+    		startCell(null);
+    			fieldInput("ADHOCFILEALIAS", "", "text", true, null);
+    		endCell();
+    	endRow();
+    	startRow(null);
+    		startCell(new String[] { "colspan=2" });
+			    action("ADD ALIAS", "addfilealias", "", getClass().getName(), "", "", "ui-icon-circle-plus", "");
+			    action("SEARCH", "searchfilealias", "", getClass().getName(), "", "", "ui-icon-search", "");
+			    action("CLONE ALIAS", "clonefilealias", "", getClass().getName(), "", "", "ui-icon-copy", "");
+			endCell();
+		endRow();
+    endTable();
+    startElement("div", new String[] { "id=filealiases" }, true); endElement("div", true);
+    endElement("div", true);
+  }
+
+  public void filealiases() throws Exception {
+    HashMap<String,String> filealiasesfoundparams = new HashMap<String,String>();
+    filealiasesfoundparams.put("ADHOCFILEALIAS", requestParameter("ADHOCFILEALIAS"));
+    TreeMap<Integer,ArrayList<String>> filealiasesfound = new TreeMap<Integer, ArrayList<String>>();
+    Database.executeDBRequest(filealiasesfound,"FLATFILELEADSIMPORTER", "SELECT [ID],[ALIAS] FROM <DBUSER>.[LEADSDATAFILEALIAS] WHERE UPPER([ALIAS]) LIKE :ADHOCFILEALIAS + '%'", filealiasesfoundparams,null);
+    startTable(null);
+    	startRow(null);
+    		startColumn("");
+    			respondString("CONFIGURED FILE ALIASSES");
+    		endColumn();
+    		startColumn("");
+    			respondString("FILE ALIAS");
+    		endColumn();
+    	endRow();
+    	startRow(null);
+    		startCell(new String[] { "style=vertical-align:top;background-color:#A9A9A9" });
+    			ArrayList filealiasactions = new ArrayList();
+
+			    for (Iterator localIterator = filealiasesfound.keySet().iterator(); localIterator.hasNext(); ) { int rowindex = ((Integer)localIterator.next()).intValue();
+			      if (rowindex != 0)
+			        filealiasactions.add(new String[] { "caption=" + Database.rowField(filealiasesfound, rowindex, "ALIAS").toUpperCase(), "title=" + Database.rowField(filealiasesfound, rowindex, "ALIAS").toUpperCase(), "urlparams=SELECTEDFILEALIASID=" + Database.rowField(filealiasesfound, rowindex, "ID"), "endicon=ui-icon-extlink", "widget=" + getClass().getName(), "command=selectedfilealias", "actiontarget=selectedfilealias" });
+			    }
+			    actions(filealiasactions, true);
+			endCell();
+			startCell(new String[] { "style=vertical-align:top", "id=selectedfilealias" });
+			endCell();
+		endRow();
+    endTable();
+    Database.cleanupDataset(filealiasesfound);
+    filealiasesfound=null;
+  }
+
+  public void selectedfilealias() throws Exception {
+    String filealiasid = requestParameter("SELECTEDFILEALIASID");
+    if (filealiasid.equals("")) filealiasid = requestParameter("FILEALIASID");
+
+    fieldHidden("FILEALIASID", filealiasid);
+
+    HashMap<String,String> filealiassettings = new HashMap<String,String>();
+
+    TreeMap<Integer, ArrayList<String>> filealiassettingsset=new TreeMap<Integer, ArrayList<String>>();
+    Database.executeDBRequest(filealiassettingsset,"FLATFILELEADSIMPORTER", "SELECT * FROM <DBUSER>.[LEADSDATAFILEALIAS] WHERE [ID]=" + filealiasid, null,null);
+    filealiassettings.putAll(Database.rowData(filealiassettingsset, 1));
+    boolean enableFields = (filealiassettings.get("ENABLEALIAS")).toUpperCase().equals("FALSE");
+    startTable(new String[] { "style=" + (enableFields ? "background-color:#FFFFFF" : "background-color:#EAEAEA") });
+    	startRow(null);
+    		startCell(null);
+    			startTable(new String[] { "width=100%" });
+    				startRow(null);
+    					startColumn("width:100%");
+    						respondString("BASIC SETTINGS");
+    					endColumn();
+    				endRow();
+    			endTable();
+    			startTable(null);
+    				startRow(null);
+    					startCell(null);
+    						action(enableFields ? "ENABLE FILE IMPORT" : "DISABLE FILE IMPORT", "enabledisablefilealias", "", getClass().getName(), "", "", "", "enabledisableimport=" + (enableFields ? "ENABLE" : "DISABLE"));
+    					endCell();
+					    if (enableFields) {
+					    startCell(null);
+					      action("UPDATE FILE IMPORT DETAILS", "updatefileimportdetails", "", getClass().getName(), "", "", "", "");
+					     endCell();
+					    }
+					endRow();
+				endTable();
+			endCell();
+		endRow();
+		startRow(null);
+			startCell(null);
+				startTable(null);
+					startRow(null);
+						startCell(null);
+							fieldLabel("FILE ALIAS " + (enableFields ? "(DISABLED)" : "(ENABLED)"));
+						endCell();
+						startCell(null);
+							fieldInput("ALIAS", filealiassettings.get("ALIAS"), "text", enableFields, null);
+						endCell();
+						startCell(null);
+							fieldLabel("FILE PICKUP PATH");
+						endCell();
+						startCell(null);
+							fieldInput("SOURCEPATH", filealiassettings.get("SOURCEPATH"), "text", enableFields, new String[] { "size=50" });
+						endCell();
+					this.endRow();
+					this.startRow(null);
+						startCell(null);
+							fieldLabel("FILE COLUMN DELIMETER");
+						endCell();
+						startCell(null);
+							fieldInput("COMADELIM", filealiassettings.get("COMADELIM"), "text", enableFields, new String[] { "size=1" });
+						endCell();
+						startCell(null);
+							fieldLabel("FILE PICKUP MASK");
+						endCell();
+						startCell(null);
+							fieldInput("FILELOOKUPMASK", filealiassettings.get("FILELOOKUPMASK"), "text", enableFields, new String[] { "size=50" });
+						endCell();
+					endRow();
+				endTable();
+				startTable(null);
+					startRow(null);
+						startCell(null);
+							fieldLabel("IMPORT FILE FIELDS");
+						endCell();
+					endRow();
+					startRow(null);
+						startCell(null);
+							fieldInput("CURRENTFILEFIELDS", filealiassettings.get("CURRENTFILEFIELDS"), "multiline", enableFields, new String[] { "cols=100", "rows=3" });
+						endCell();
+					endRow();
+				endTable();
+			endCell();
+		endRow();
+		startRow(null);
+    		startCell(null);
+    			startTable(null);
+    				startRow(null);
+    					startCell(null);
+    						fieldLabel("SERVICE NR FIELD");
+    					endCell();
+    					startCell(null);
+    						fieldInput("SERVICEIDFIELD", filealiassettings.get("SERVICEIDFIELD"), "text", enableFields, null);
+    					endCell();
+    					startCell(null);
+    						fieldLabel("DEFAULT SERVICE NR");
+    					endCell();
+    					startCell(null);
+    						fieldInput("DEFAULTSERVICEID", filealiassettings.get("DEFAULTSERVICEID"), "text", enableFields, null);
+    					endCell();
+    				endRow();
+    				startRow(null);
+    					startCell(null);
+    						fieldLabel("SERVICE LOAD NR FIELD");
+    					endCell();
+    					startCell(null);
+    						fieldInput("LOADIDFIELD", filealiassettings.get("LOADIDFIELD"), "text", enableFields, null);
+    					endCell();
+    					startCell(null);
+    						fieldLabel("DEFAULT SERVICE LOAD NR");
+    					endCell();
+    					startCell(null);
+    						fieldInput("DEFAULTLOADID", filealiassettings.get("DEFAULTLOADID"), "text", enableFields, null);
+    					endCell();
+    				endRow();
+    				startRow(null);
+    					startCell(null);
+    						fieldLabel("SERVICE LOAD PRIORITY FIELD");
+    					endCell();
+    					startCell(null);
+    						fieldInput("PRIORITYFIELD", filealiassettings.get("PRIORITYFIELD"), "text", enableFields, null);
+    					endCell();
+    					startCell(null);
+    						fieldLabel("DEFAULT SERVICE LOAD PRIORITY");
+    					endCell();
+    					startCell(null);
+    						fieldInput("DEFAULTPRIORITY", filealiassettings.get("DEFAULTPRIORITY"), "text", enableFields, null);
+    					endCell();
+    				endRow();
+    				startRow(null);
+    					startCell(null);
+    						fieldLabel("SOURCE ID FIELD");
+    					endCell();
+    					startCell(null);
+    						fieldInput("SOURCEIDFIELD", filealiassettings.get("SOURCEIDFIELD"), "text", enableFields, null);
+    					endCell();
+    					startCell(null);
+							fieldLabel("LEAD REQUEST TYPE FIELD");
+						endCell();
+						startCell(null);
+							fieldInput("LEADREQUESTTYPEFIELD", filealiassettings.get("LEADREQUESTTYPEFIELD"), "text", enableFields, null);
+						endCell();
+    				endRow();
+    			endTable();
+    			startTable(null);
+    				startRow(null);
+    					startCell(null);
+    						startTable(null);
+    							startRow(null);
+    								startCell(null);
+    									fieldLabel("CALLER NAME FIELD(S) MASK");
+    								endCell();
+    							endRow();
+    							startRow(null);
+    								startCell(null);
+    									fieldInput("CALLERNAMEFIELDS", filealiassettings.get("CALLERNAMEFIELDS"), "multiline", enableFields, new String[] { "cols=50", "rows=5" });
+    								endCell();
+    							endRow();
+    						endTable();
+    					endCell();
+    					startCell(null);
+    						startTable(null);
+    							startRow(null);
+    								startCell(null);
+    									fieldLabel("COMMENTS FIELD(S) MASK");
+    								endCell();
+    							endRow();
+    							startRow(null);
+    								startCell(null);
+    									fieldInput("COMMENTSFIELDS", filealiassettings.get("COMMENTSFIELDS"), "multiline", enableFields, new String[] { "cols=50", "rows=5" });
+    								endCell();
+    							endRow();
+    						endTable();
+    					endCell();
+    				endRow();
+    			endTable();
+    		endCell();
+    	endRow();
+    	startRow(null);
+    		startColumn("");
+    			respondString("SERVICE (CAMPAIGN) LOAD AND CALL CREATION SETTINGS");
+    		endColumn();
+    	endRow();
+    	startRow(null);
+    		startCell(null);
+    			startTable(null);
+    				startRow(null);
+    					/*startCell(new String[]{"style=vertical-align:top"});
+    						startTable(new String[] { "style=border:solid 1px #A8A8A8" });
+    							startRow(null);
+    								startCell(null);
+    									fieldLabel("USE FILE NAME WHEN CREATING LOAD");
+    								endCell();
+    								startCell(null);
+    									fieldInput("USEFILENAMEASLOADNAME",(enableFields?"TRUE":(filealiassettings.get("USEFILENAMEASLOADNAME").toUpperCase().equals("TRUE")?"TRUE":"FALSE")), "checkbox", enableFields, (filealiassettings.get("USEFILENAMEASLOADNAME")).toUpperCase().equals("TRUE") ? new String[] { "checked=checked" } : null);
+    								endCell();
+    							endRow();
+    						endTable();
+    					endCell();*/
+    					startCell(new String[]{"style=vertical-align:top"});
+    						startTable(new String[] { "style=border:solid 1px #A8A8A8" });
+    							startRow(null);
+    								startCell(null);
+    									fieldLabel("FORCE CREATING LOAD");
+    								endCell();
+    								startCell(null);
+    									fieldInput("FORCECREATINGLOAD", (enableFields?"TRUE":(filealiassettings.get("FORCECREATINGLOAD").toUpperCase().equals("TRUE")?"TRUE":"FALSE")), "checkbox", enableFields, (filealiassettings.get("FORCECREATINGLOAD")).toUpperCase().equals("TRUE") ? new String[] { "checked=checked" } : null);
+    								endCell();
+    							endRow();
+    						endTable();
+    					endCell();
+    					startCell(null);
+    						startTable(new String[] { "style=border:solid 1px #A8A8A8" });
+	    						startRow(null);
+    								startCell(null);
+    									fieldLabel("ENABLE LOAD WHEN CREATED");
+    								endCell();
+    								startCell(null);
+    									fieldInput("ENABLENEWLOAD", (enableFields?"TRUE":(filealiassettings.get("ENABLENEWLOAD").toUpperCase().equals("TRUE")?"TRUE":"FALSE")), "checkbox", enableFields, (filealiassettings.get("ENABLENEWLOAD")).toUpperCase().equals("TRUE") ? new String[] { "checked=checked" } : null);
+    								endCell();
+   								endRow();
+   								startRow(null);
+									startCell(null);
+										fieldLabel("LOAD NAME MASK");
+									endCell();
+									startCell(null);
+										fieldInput("LOADNAMEMASK", filealiassettings.get("LOADNAMEMASK"), "text", enableFields, null);
+									endCell();
+								endRow();
+   							endTable();
+   						endCell();
+   					endRow();
+   				endTable();
+   			endCell();
+   		endRow();
+   		startRow(null);
+   			startColumn("");
+   				respondString("FILE IMPORT - ADVANCED SQL COMMAND ACTIONS");
+   			endColumn();
+   		endRow();
+   		startRow(null);
+   			startCell(null);
+	   			startTable(null);
+					startRow(null);
+						startCell(null);
+							fieldLabel("ALTERNATE SOURCEID SQLCOMMAND");
+						endCell();
+					endRow();
+					startRow(null);
+						startCell(null);
+							fieldInput("ALTERNATESOURCEIDSQLCOMMAND", filealiassettings.get("ALTERNATESOURCEIDSQLCOMMAND"), "multiline", enableFields, new String[] { "cols=100", "rows=5" });
+						endCell();
+					endRow();
+				endTable();
+	   			startTable(null);
+					startRow(null);
+						startCell(null);
+							fieldLabel("PRE-BATCH-IMPORT-SQLCOMMAND");
+						endCell();
+					endRow();
+					startRow(null);
+						startCell(null);
+							fieldInput("PREBATCHIMPORTSQLCOMMAND", filealiassettings.get("PREBATCHIMPORTSQLCOMMAND"), "multiline", enableFields, new String[] { "cols=100", "rows=5" });
+						endCell();
+					endRow();
+				endTable();
+				startTable(null);
+				startRow(null);
+					startCell(null);
+						fieldLabel("POST-BATCH-IMPORT-SQLCOMMAND");
+					endCell();
+				endRow();
+				startRow(null);
+					startCell(null);
+						fieldInput("POSTBATCHIMPORTSQLCOMMAND", filealiassettings.get("POSTBATCHIMPORTSQLCOMMAND"), "multiline", enableFields, new String[] { "cols=100", "rows=5" });
+					endCell();
+				endRow();
+			endTable();
+   			endCell();
+   		endRow();
+   		startRow(null);
+   			startColumn("");
+    				respondString("PHONE NUMBER FIELD(S) FILE MAPPING");
+   			endColumn();
+   		endRow();
+   		startRow(null);
+   			startCell(null);
+  				startTable(null);
+   					startRow(null);
+   						for (int phonenr = 1; phonenr <= 10; phonenr++) {
+							startCell(new String[] { "nowrap=nowrap" });
+								fieldLabel("PHONE NR " + String.valueOf(phonenr) + " FIELD");
+							endCell();
+							startCell(null);
+								fieldInput("PHONE" + String.valueOf(phonenr) + "FIELD", filealiassettings.get("PHONE" + String.valueOf(phonenr) + "FIELD"), "text", enableFields, null);
+							endCell();
+							if (phonenr % 2 == 0) {
+								endRow();
+								startRow(null);
+							}
+						}
+					endRow();
+				endTable();
+			endCell();
+		endRow();
+   		startRow(null);
+   			startColumn("");
+   				respondString("METAFIELD(S) FILE MAPPING - LEADS AUTOMATION STAGING TABLE");
+   			endColumn();
+   		endRow();
+   		startRow(null);
+			startCell(null);
+				startTable(null);
+					startRow(null);
+						for (int metafieldnr = 1; metafieldnr <= 20; metafieldnr++) {
+							startCell(null);
+								startTable(null);
+									startRow(null);
+										startCell(new String[] { "nowrap=nowrap" });
+											fieldLabel("METAFIELD" + String.valueOf(metafieldnr));
+										endCell();
+									endRow();
+									startRow(null);
+										startCell(null);
+											fieldInput("METAFIELD" + String.valueOf(metafieldnr), filealiassettings.get("METAFIELD" + String.valueOf(metafieldnr)), "multiline", enableFields, new String[] { "cols=50", "rows=3" });
+										endCell();
+									endRow();
+								endTable();
+							endCell();
+							if (metafieldnr % 2 == 0) {
+								endRow();
+								startRow(null);
+							}
+						}
+					endRow();
+				endTable();
+			endCell();
+		endRow();
+	endTable();
+	Database.cleanupDataset(filealiassettingsset);
+	filealiassettingsset=null;
+  }
+
+  public void enabledisablefilealias()
+    throws Exception
+  {
+    if (requestParameter("enabledisableimport").equals("DISABLE")) {
+      Database.executeDBRequest(null,"FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.[LEADSDATAFILEALIAS] SET [ENABLEALIAS]='FALSE' WHERE [ID]=" + requestParameter("FILEALIASID"), null,null);
+      replaceComponentContent("selectedfilealias");
+      selectedfilealias();
+      endReplaceComponentContent();
+    }
+    else if (requestParameter("enabledisableimport").equals("ENABLE")) {
+      Database.executeDBRequest(null,"FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.[LEADSDATAFILEALIAS] SET [ENABLEALIAS]='TRUE' WHERE [ID]=" + requestParameter("FILEALIASID"), null,null);
+      replaceComponentContent("selectedfilealias");
+      selectedfilealias();
+      endReplaceComponentContent();
+    }
+  }
+
+  public void updatefileimportdetails() throws Exception {
+    HashMap<String,String> filesettingstoupdate = new HashMap<String,String>();
+    importRequestParametersIntoMap(filesettingstoupdate, "FILEALIASID,ALIAS,SOURCEIDFIELD,SERVICEIDFIELD,LEADREQUESTTYPEFIELD,DEFAULTSERVICEID,LOADIDFIELD,DEFAULTLOADID,PRIORITYFIELD,DEFAULTPRIORITY,CALLERNAMEFIELDS,COMMENTSFIELDS,USEFILENAMEASLOADNAME,FORCECREATINGLOAD");
+    importRequestParametersIntoMap(filesettingstoupdate, "PHONE1FIELD,PHONE2FIELD,PHONE3FIELD,PHONE4FIELD,PHONE5FIELD,PHONE6FIELD,PHONE7FIELD,PHONE8FIELD,PHONE9FIELD,PHONE10FIELD");
+    importRequestParametersIntoMap(filesettingstoupdate, "METAFIELD1,METAFIELD2,METAFIELD3,METAFIELD4,METAFIELD5,METAFIELD6,METAFIELD7,METAFIELD8,METAFIELD9,METAFIELD10");
+    importRequestParametersIntoMap(filesettingstoupdate, "METAFIELD11,METAFIELD12,METAFIELD13,METAFIELD14,METAFIELD15,METAFIELD16,METAFIELD17,METAFIELD18,METAFIELD19,METAFIELD20");
+    importRequestParametersIntoMap(filesettingstoupdate, "SOURCEPATH,CURRENTFILEFIELDS,ENABLENEWLOAD,COMADELIM,FILELOOKUPMASK,LOADNAMEMASK");
+    importRequestParametersIntoMap(filesettingstoupdate, "ALTERNATESOURCEIDSQLCOMMAND,PREBATCHIMPORTSQLCOMMAND,POSTBATCHIMPORTSQLCOMMAND");
+    
+    filesettingstoupdate.put("DEFAULTSERVICEID",filesettingstoupdate.get("DEFAULTSERVICEID")==null?"0":filesettingstoupdate.get("DEFAULTSERVICEID"));
+    filesettingstoupdate.put("DEFAULTLOADID",filesettingstoupdate.get("DEFAULTLOADID")==null?"0":filesettingstoupdate.get("DEFAULTLOADID"));
+    
+    if ((filesettingstoupdate.get("DEFAULTPRIORITY")).equals("")) filesettingstoupdate.put("DEFAULTPRIORITY", "100");
+    //if ((filesettingstoupdate.get("USEFILENAMEASLOADNAME")).equals("")) filesettingstoupdate.put("USEFILENAMEASLOADNAME", "FALSE");
+    if ((filesettingstoupdate.get("FORCECREATINGLOAD")).equals("")) filesettingstoupdate.put("FORCECREATINGLOAD", "FALSE");
+    if ((filesettingstoupdate.get("ENABLENEWLOAD")).equals("")) filesettingstoupdate.put("ENABLENEWLOAD", "FALSE");
+
+    ArrayList<String> filesettingstoupdateerrors = new ArrayList<String>();
+    
+    ArrayList<String> filesettingstoupdatewarnings = new ArrayList<String>();
+    
+    ArrayList<String> currentFileFields = new ArrayList<String>();
+    String coldelim=filesettingstoupdate.get("COMADELIM");
+    if(coldelim.equals("")){
+    	coldelim=",";
+    	filesettingstoupdate.put("COMADELIM", coldelim);
+    }
+    for (String currentfilefield : (filesettingstoupdate.get("CURRENTFILEFIELDS")).split("["+coldelim+"]")) {
+      if (!currentfilefield.trim().equals("")) {
+        currentFileFields.add(currentfilefield.toUpperCase().trim());
+      }
+    }
+    if ((filesettingstoupdate.get("ALIAS")).equals("")) {
+      filesettingstoupdateerrors.add("NO FILE ALIAS ENTERED");
+    }
+
+    if (!(filesettingstoupdate.get("SERVICEIDFIELD")).equals("")) {
+      filesettingstoupdate.put("SERVICEIDFIELD", (filesettingstoupdate.get("SERVICEIDFIELD")).trim().toUpperCase());
+      if (currentFileFields.indexOf(filesettingstoupdate.get("SERVICEIDFIELD")) == -1) {
+        filesettingstoupdateerrors.add("THE FIELD SPECIFIED FOR SERVICE NR IS NOT VALID");
+      }
+    }
+    if (!(filesettingstoupdate.get("LOADIDFIELD")).equals("")) {
+      filesettingstoupdate.put("LOADIDFIELD", (filesettingstoupdate.get("LOADIDFIELD")).trim().toUpperCase());
+      if (currentFileFields.indexOf(filesettingstoupdate.get("LOADIDFIELD")) == -1) {
+        filesettingstoupdateerrors.add("THE FIELD SPECIFIED FOR SERVICE LOAD NR IS NOT VALID");
+      }
+    }
+    if (!(filesettingstoupdate.get("SOURCEIDFIELD")).equals("")) {
+        filesettingstoupdate.put("SOURCEIDFIELD", (filesettingstoupdate.get("SOURCEIDFIELD")).trim().toUpperCase());
+        if (currentFileFields.indexOf(filesettingstoupdate.get("SOURCEIDFIELD")) == -1) {
+          filesettingstoupdateerrors.add("THE FIELD SPECIFIED FOR SOURCE ID IS NOT VALID");
+        }
+      }
+    if (!(filesettingstoupdate.get("PRIORITYFIELD")).equals("")) {
+        filesettingstoupdate.put("PRIORITYFIELD", (filesettingstoupdate.get("PRIORITYFIELD")).trim().toUpperCase());
+        if (currentFileFields.indexOf(filesettingstoupdate.get("PRIORITYFIELD")) == -1) {
+          filesettingstoupdateerrors.add("THE FIELD SPECIFIED FOR CALL PRIORITY IS NOT VALID");
+        }
+      }
+    
+    if (!(filesettingstoupdate.get("LEADREQUESTTYPEFIELD")).equals("")) {
+      filesettingstoupdate.put("LEADREQUESTTYPEFIELD", (filesettingstoupdate.get("LEADREQUESTTYPEFIELD")).trim().toUpperCase());
+      if (currentFileFields.indexOf(filesettingstoupdate.get("LEADREQUESTTYPEFIELD")) == -1) {
+        filesettingstoupdateerrors.add("THE FIELD SPECIFIED FOR LEAD REQUEST TYPE IS NOT VALID");
+      }
+    }
+
+    boolean firstPhonenrFound = false;
+    for (int phonenr = 1; phonenr <= 10; phonenr++) {
+      filesettingstoupdate.put("PHONE" + String.valueOf(phonenr) + "FIELD", (filesettingstoupdate.get("PHONE" + String.valueOf(phonenr) + "FIELD")).trim().toUpperCase());
+      String phonenrtouse = filesettingstoupdate.get("PHONE" + String.valueOf(phonenr) + "FIELD");
+      if (!firstPhonenrFound) {
+        firstPhonenrFound = !phonenrtouse.equals("");
+      }
+      if ((!phonenrtouse.equals("")) && 
+        (currentFileFields.indexOf(phonenrtouse) == -1)) {
+        filesettingstoupdateerrors.add("THE FIELD SPECIFIED FOR PHONE" + String.valueOf(phonenr) + "FIELD IS NOT VALID");
+      }
+
+    }
+    
+    if (filesettingstoupdateerrors.isEmpty()) {
+      Database.executeDBRequest(null,"FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.[LEADSDATAFILEALIAS] SET [ALIAS] = UPPER(:ALIAS) ,[SOURCEIDFIELD] = :SOURCEIDFIELD ,[SERVICEIDFIELD] = :SERVICEIDFIELD,[DEFAULTSERVICEID] = :DEFAULTSERVICEID ,[LOADIDFIELD] = :LOADIDFIELD,[DEFAULTLOADID] = :DEFAULTLOADID ,[PRIORITYFIELD] = :PRIORITYFIELD, [DEFAULTPRIORITY] = :DEFAULTPRIORITY,[CALLERNAMEFIELDS] = :CALLERNAMEFIELDS ,[COMMENTSFIELDS] = :COMMENTSFIELDS ,[USEFILENAMEASLOADNAME] = :USEFILENAMEASLOADNAME ,[FORCECREATINGLOAD] = :FORCECREATINGLOAD,[ALTERNATESOURCEIDSQLCOMMAND]=:ALTERNATESOURCEIDSQLCOMMAND,[LEADREQUESTTYPEFIELD]=:LEADREQUESTTYPEFIELD ,[PREBATCHIMPORTSQLCOMMAND]=:PREBATCHIMPORTSQLCOMMAND ,[POSTBATCHIMPORTSQLCOMMAND]=:POSTBATCHIMPORTSQLCOMMAND ,[PHONE1FIELD] = :PHONE1FIELD ,[PHONE2FIELD] = :PHONE2FIELD ,[PHONE3FIELD] = :PHONE3FIELD ,[PHONE4FIELD] = :PHONE4FIELD ,[PHONE5FIELD] = :PHONE5FIELD ,[PHONE6FIELD] = :PHONE6FIELD ,[PHONE7FIELD] = :PHONE7FIELD ,[PHONE8FIELD] = :PHONE8FIELD,[PHONE9FIELD] = :PHONE9FIELD ,[PHONE10FIELD] = :PHONE10FIELD ,[METAFIELD1] = :METAFIELD1,[METAFIELD2] = :METAFIELD2 ,[METAFIELD3] = :METAFIELD3,[METAFIELD4] = :METAFIELD4,[METAFIELD5] = :METAFIELD5 ,[METAFIELD6] = :METAFIELD6,[METAFIELD7] = :METAFIELD7,[METAFIELD8] = :METAFIELD8,[METAFIELD9] = :METAFIELD9,[METAFIELD10] = :METAFIELD10,[METAFIELD11] = :METAFIELD11,[METAFIELD12] = :METAFIELD12 ,[METAFIELD13] = :METAFIELD13,[METAFIELD14] = :METAFIELD14 ,[METAFIELD15] = :METAFIELD15,[METAFIELD16] = :METAFIELD16 ,[METAFIELD17] = :METAFIELD17,[METAFIELD18] = :METAFIELD18,[METAFIELD19] = :METAFIELD19,[METAFIELD20] = :METAFIELD20 ,[SOURCEPATH] = :SOURCEPATH ,[CURRENTFILEFIELDS] = :CURRENTFILEFIELDS ,[ENABLENEWLOAD] = :ENABLENEWLOAD,[FILELOOKUPMASK]=:FILELOOKUPMASK,[COMADELIM]=:COMADELIM ,[LOADNAMEMASK]=:LOADNAMEMASK WHERE [ID]=" + requestParameter("FILEALIASID"), filesettingstoupdate,null);
+    }
+    else {
+      showDialog("", new String[] { "title=UPDATE FILE IMPORT ALIAS", "contentid=filesettingstoupdateerrors" });
+      replaceComponentContent("filesettingstoupdateerrors");
+      startElement("ul", new String[] { "style=color:#EA3333" }, true);
+      for (; !filesettingstoupdateerrors.isEmpty(); 
+        endElement("li", true)) { startElement("li", null, true); respondString(encodeHTML(filesettingstoupdateerrors.remove(0)));
+      }
+
+      endElement("ul", true);
+      endReplaceComponentContent();
+    }
+
+    filesettingstoupdate.clear();
+  }
+
+  public void searchfilealias() throws Exception {
+    replaceComponentContent("filealiases");
+    filealiases();
+    endReplaceComponentContent();
+  }
+
+  public void addfilealias() throws Exception {
+    if (requestParameter("ADHOCFILEALIAS").equals("")) {
+      showDialog("", new String[] { "title=ADDING FILE ALIAS", "content=NO FILE ALIAS ENTERED" });
+    }
+    else {
+      HashMap<String,String> addedfileallliasparams = new HashMap<String,String>();
+      importRequestParametersIntoMap(addedfileallliasparams, "ADHOCFILEALIAS");
+      addedfileallliasparams.put("ADHOCFILEALIASCOUNT", "0");
+      Database.executeDBRequest(null,"FLATFILELEADSIMPORTER", "SELECT COUNT(*) AS ADHOCFILEALIASCOUNT FROM <DBUSER>.[LEADSDATAFILEALIAS] WHERE UPPER([ALIAS]) LIKE UPPER(:ADHOCFILEALIAS)", addedfileallliasparams,null);
+
+      if (!(addedfileallliasparams.get("ADHOCFILEALIASCOUNT")).equals("0")) {
+        showDialog("", new String[] { "title=ADDING FILE ALIAS", "content=FILE ALIAS [" + (addedfileallliasparams.get("ADHOCFILEALIAS")).toUpperCase() + "] ALREADY EXIST" });
+      }
+      else
+      {
+    	  String defaultLocalFilePickupFolder=inovo.servlet.InovoServletContextListener.inovoServletListener().configProperty("DEFAULTFILEPICKUPPATH");
+    	  defaultLocalFilePickupFolder=((defaultLocalFilePickupFolder=(defaultLocalFilePickupFolder==null?"":defaultLocalFilePickupFolder)).indexOf("\\")>-1?defaultLocalFilePickupFolder.replaceAll("[\\\\]", "/"):defaultLocalFilePickupFolder);
+    	  addedfileallliasparams.put("SOURCEPATH", defaultLocalFilePickupFolder);
+    	  
+          Database.executeDBRequest(null,"FLATFILELEADSIMPORTER", "INSERT INTO <DBUSER>.[LEADSDATAFILEALIAS] ([ALIAS],[ENABLEALIAS],[SOURCEPATH]) VALUES(UPPER(:ADHOCFILEALIAS),'FALSE',:SOURCEPATH)", addedfileallliasparams,null);
+          replaceComponentContent("filealiases");
+          filealiases();
+          endReplaceComponentContent();
+      }
+    }
+  }
+
+  public void clonefilealias() throws Exception {
+    if (requestParameter("ADHOCFILEALIAS").equals("")) {
+      showDialog("", new String[] { "title=ADDING FILE ALIAS", "content=NO FILE ALIAS ENTERED" });
+    }
+    else {
+      HashMap<String,String> addedfileallliasparams = new HashMap<String,String>();
+      importRequestParametersIntoMap(addedfileallliasparams, "ADHOCFILEALIAS");
+      addedfileallliasparams.put("ADHOCFILEALIASCOUNT", "0");
+      Database.executeDBRequest(null,"FLATFILELEADSIMPORTER", "SELECT COUNT(*) AS ADHOCFILEALIASCOUNT FROM <DBUSER>.[LEADSDATAFILEALIAS] WHERE UPPER([ALIAS]) LIKE UPPER(:ADHOCFILEALIAS)", addedfileallliasparams,null);
+      if (!(addedfileallliasparams.get("ADHOCFILEALIASCOUNT")).equals("0")) {
+        showDialog("", new String[] { "title=CLONING FILE ALIAS", "content=FILE ALIAS [" + (addedfileallliasparams.get("ADHOCFILEALIAS")).toUpperCase() + "] ALREADY EXIST" });
+      }
+      else {
+        addedfileallliasparams.put("ALIAS", requestParameter("ALIAS"));
+        Database.executeDBRequest(null,"FLATFILELEADSIMPORTER", "INSERT INTO <DBUSER>.[LEADSDATAFILEALIAS] ([ALIAS],[ENABLEALIAS],[SOURCEIDFIELD],[SERVICEIDFIELD],[DEFAULTSERVICEID],[LOADIDFIELD],[DEFAULTLOADID],[PRIORITYFIELD],[DEFAULTPRIORITY],[CALLERNAMEFIELDS],[COMMENTSFIELDS],[USEFILENAMEASLOADNAME],[FORCECREATINGLOAD],[PHONE1FIELD],[PHONE2FIELD],[PHONE3FIELD],[PHONE4FIELD],[PHONE5FIELD],[PHONE6FIELD],[PHONE7FIELD],[PHONE8FIELD],[PHONE9FIELD],[PHONE10FIELD],[METAFIELD1],[METAFIELD2],[METAFIELD3],[METAFIELD4],[METAFIELD5],[METAFIELD6],[METAFIELD7],[METAFIELD8],[METAFIELD9],[METAFIELD10],[METAFIELD11],[METAFIELD12],[METAFIELD13],[METAFIELD14],[METAFIELD15],[METAFIELD16],[METAFIELD17],[METAFIELD18],[METAFIELD19],[METAFIELD20],[SOURCEPATH],[CURRENTFILEFIELDS],[ENABLENEWLOAD],[LOADNAMEMASK],[FILELOOKUPMASK]) SELECT TOP 1 UPPER(:ADHOCFILEALIAS) AS [ALIAS],'FALSE' AS [ENABLEALIAS],[SOURCEIDFIELD],[SERVICEIDFIELD],[DEFAULTSERVICEID],[LOADIDFIELD],[DEFAULTLOADID],[PRIORITYFIELD],[DEFAULTPRIORITY],[CALLERNAMEFIELDS],[COMMENTSFIELDS],[USEFILENAMEASLOADNAME],[FORCECREATINGLOAD],[PHONE1FIELD],[PHONE2FIELD],[PHONE3FIELD],[PHONE4FIELD],[PHONE5FIELD],[PHONE6FIELD],[PHONE7FIELD],[PHONE8FIELD],[PHONE9FIELD],[PHONE10FIELD],[METAFIELD1],[METAFIELD2],[METAFIELD3],[METAFIELD4],[METAFIELD5],[METAFIELD6],[METAFIELD7],[METAFIELD8],[METAFIELD9],[METAFIELD10],[METAFIELD11],[METAFIELD12],[METAFIELD13],[METAFIELD14],[METAFIELD15],[METAFIELD16],[METAFIELD17],[METAFIELD18],[METAFIELD19],[METAFIELD20],[SOURCEPATH],[CURRENTFILEFIELDS],[ENABLENEWLOAD],[LOADNAMEMASK],[FILELOOKUPMASK] FROM <DBUSER>.[LEADSDATAFILEALIAS] WHERE UPPER([ALIAS])=UPPER(:ALIAS)", addedfileallliasparams,null);
+        replaceComponentContent("filealiases");
+        filealiases();
+        endReplaceComponentContent();
+      }
+    }
+  }
+}

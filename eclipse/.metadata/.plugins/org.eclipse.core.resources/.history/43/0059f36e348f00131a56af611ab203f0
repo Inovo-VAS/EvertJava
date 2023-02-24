@@ -1,0 +1,148 @@
+package baasserver;
+
+import java.io.IOException;
+import java.nio.channels.ClosedChannelException;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
+import java.nio.channels.spi.SelectorProvider;
+import java.util.Iterator;
+
+import baasserver.protocols.IORequestHandle;
+import baasserver.protocols.IOutput;
+
+public class InputOutputHandle implements Runnable,IOutput {
+	
+	private SocketChannel _socketChannel=null;
+	private Selector _selHandle=null;
+	private IORequestHandle _requestHandle=null;
+	private Object _inputOutputHandleOwner=null;
+	
+	public InputOutputHandle(Object inputOutputHandleOwner,SocketChannel channel) throws IOException{
+		this._socketChannel=channel;
+		this._inputOutputHandleOwner=inputOutputHandleOwner;
+		this._socketChannel.configureBlocking(false);
+		this._selHandle=SelectorProvider.provider().openSelector();
+	}
+
+	@Override
+	public void writeBytes(byte[] bytesToWrite) {
+	}
+
+	@Override
+	public void writeBytesAppendTop(byte[] bytesToWrite) {
+	}
+
+	private boolean _canWriteBytes=false;
+	@Override
+	public void canWriteBytes() {
+		this._canWriteBytes=true;
+	}
+
+	private boolean _done=false;
+	@Override
+	public void done() {
+		this._done=true;
+	}
+
+	private boolean _stillNeedToRead=false;
+	@Override
+	public void canReadNextBytes() {
+		_stillNeedToRead=true;
+	}
+
+	private boolean _doneWriting=false;
+	@Override
+	public void doneWriting() {
+		this._done=this._requestHandle.reqDone();
+		this._doneWriting=_done;
+		try {
+			this.registerRead();
+		} catch (ClosedChannelException e) {
+		}
+	}
+
+	@Override
+	public void run() {
+		try{
+			this._requestHandle=this._client.nextIORequestHandle(this);
+			this._bytesArrayToWrite.addAll(this._output.readBytesWritten());
+			if(!this._bytesArrayToWrite.isEmpty()) registerWrite();
+			while(!_done){
+				try {
+					
+					while(this._selHandle.select()>0){
+						Iterator<SelectionKey> selKeys=this._selHandle.selectedKeys().iterator();
+						while(selKeys.hasNext()){
+							SelectionKey selKeyRW=selKeys.next();
+							if(selKeyRW.isValid()){
+								if(selKeyRW.isReadable()){
+									this.readFromKey(selKeyRW);
+									if(this._stillNeedToRead){
+										this._stillNeedToRead=false;
+										this.registerRead();
+									}
+									if(!this._bytesArrayToWrite.isEmpty()){
+										this.registerWrite();
+									}
+								}
+								else if(selKeyRW.isWritable()){
+									this.writeToKey(selKeyRW);
+								}
+								else{
+									selKeyRW.cancel();
+								}
+							}
+							selKeys.remove();
+						}
+						if(this._doneWriting){
+							break;
+						}
+						if(_done){
+							break;
+						}
+					}
+				} catch (IOException e) {
+					this._done=true;
+				}
+				synchronized (this) {
+					this.wait(2);
+				}
+			}
+		} catch (Exception e1) {
+			e1.printStackTrace();
+		}	
+		this._requestHandle.cleanupRequest();
+		try {
+			this._socketChannel.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		try {
+			this._selHandle.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		if(this._requestHandle.canShutdownAll()){
+			this.shutdownAll();
+			this._client.shutDownAll();
+			this._client.shutdownServer();
+		}
+		else if(this._requestHandle.canShutdownRequestEnvironment()){
+			this.shutdownRequestEnvironment();
+			this._client.shutdownServer();
+		}
+		this._requestHandle=null;
+	}
+
+	public void shutdownAll() {
+	}
+
+	private void registerRead() throws ClosedChannelException {
+		this._socketChannel.register(_selHandle, SelectionKey.OP_READ);		
+	}
+	
+	protected void registerWrite() throws ClosedChannelException {
+		this._socketChannel.register(_selHandle, SelectionKey.OP_WRITE);		
+	}
+}

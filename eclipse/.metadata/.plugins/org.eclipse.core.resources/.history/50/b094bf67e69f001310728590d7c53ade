@@ -1,0 +1,14 @@
+package org.quartz.dbtables.postgresql;
+
+import baasserver.db.protocols.DBWidgetHandle;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class Tables extends DBWidgetHandle {
+
+	public Tables_Postgres(IOWidgetHandle parentWidget,
+			IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+
+}

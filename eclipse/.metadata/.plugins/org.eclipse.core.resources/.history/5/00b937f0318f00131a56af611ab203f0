@@ -1,0 +1,7 @@
+package baasserver;
+
+import baasserver.protocols.IOutput;
+
+public class SocketHandle implements Runnable,IOutput {
+
+}

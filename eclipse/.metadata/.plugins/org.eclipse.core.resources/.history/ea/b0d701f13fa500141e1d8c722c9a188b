@@ -1,0 +1,99 @@
+package inovo.automated.work;
+
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import inovo.db.Database;
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+
+public class Configuration extends InovoHTMLPageWidget {
+
+	public Configuration(InovoWebWidget parentWidget, InputStream inStream) {
+		super(parentWidget, inStream);
+	}
+
+	
+	@Override
+	public void pageContent() throws Exception {
+		this.action("ADD WORK", "addwork", "", "", "", "", "", "");
+		this.startElement("div", "id=automatedworks".split("[|]"), true);
+		this.automatedWorks();
+		this.endElement("div", true);
+	}
+	
+	public void automatedWorks() throws Exception{
+		this.startTable(null);
+			this.startRow(null);
+				this.startCell("style=vertical-align:top".split("[|]"));
+					this.start
+				this.endCell();
+				this.startCell("id=automatedwork".split("[|]"));
+				this.endCell();
+			this.endRow();	
+		this.endTable();
+	}
+	
+	public void addwork() throws Exception{
+		this.showDialog("", "contentid=addworkdialog|title=ADD WORK|BUTTON:CONFIRM=command=confirmaddwork|BUTTON:CANCEL=".split("[|]"));
+		this.replaceComponentContent("addworkdialog");
+			this.startTable(null);
+				this.startRow(null);
+					this.startColumn("font-size:0.8em");
+						this.respondString("NAME");
+					this.endColumn();
+					this.startCell(null);
+						this.fieldInput("NEWWORKNAME", "", "text", true, null);
+					this.endCell();
+				this.endRow();
+				this.startRow(null);
+					this.startColumn("font-size:0.8em");
+						this.respondString("DESCRIPTION");
+					this.endColumn();
+					this.startCell(null);
+						this.fieldInput("NEWWORKDESCRIPTION", "", "text", true, null);
+					this.endCell();
+				this.endRow();
+			this.endTable();
+		this.endReplaceComponentContent();
+	}
+	
+	public void confirmaddwork() throws Exception{
+		ArrayList<String> addworkerrors=new ArrayList<String>();
+		if(this.requestParameter("NEWWORKNAME").equals("")){
+			addworkerrors.add("NO WORK NAME ENTERED");
+		}
+		if(addworkerrors.isEmpty()){
+			HashMap<String,String> addworkparams=new HashMap<String,String>();
+			addworkparams.put("NEWWORKNAME", this.requestParameter("NEWWORKNAME"));
+			addworkparams.put("NEWWORKDESCRIPTION", this.requestParameter("NEWWORKDESCRIPTION"));
+			addworkparams.put("NEWWORKCOUNT", "0");
+			Database.executeDBRequest(null,"AUTOMATEDWORK","SELECT COUNT(*) AS NEWWORKCOUNT FROM <DBUSER>.AUTOMATION WHERE UPPER(NAME) LIKE UPPER(:NEWWORKNAME)",addworkparams,this);
+			if(!addworkparams.get("NEWWORKCOUNT").equals("0")){
+				addworkerrors.add("WORK NAME ["+this.requestParameter("NEWWORKNAME").toUpperCase()+"] ALREADY USED");
+			}
+			else{
+				if(addworkparams.get("NEWWORKDESCRIPTION").equals("")) addworkparams.put("NEWWORKDESCRIPTION", addworkparams.get("NEWWORKNAME"));
+				Database.executeDBRequest(null,"AUTOMATEDWORK","INSERT INTO <DBUSER>.AUTOMATION (NAME,DESCRIPTION) SELECT UPPER(:NEWWORKNAME), UPPER(:NEWWORKDESCRIPTION) WHERE (SELECT COUNT(*) FROM <DBUSER>.AUTOMATION WHERE UPPER(NAME) LIKE UPPER(:NEWWORKNAME))=0",addworkparams,null);
+				this.replaceComponentContent("automatedWork");
+					this.automatedWorks();
+				this.endReplaceComponentContent();
+			}
+		}
+		if(!addworkerrors.isEmpty()){
+			showDialog("", "contentid=addworkerrorsdialog|title=ADD WORK ERRORS".split("[|]"));
+			this.replaceComponentContent("addworkerrorsdialog");
+				this.startTable(null);
+					while(!addworkerrors.isEmpty()){
+						this.startRow(null);
+							this.startCell(null);
+								this.respondString(addworkerrors.remove(0));
+							this.endCell();
+						this.endRow();
+					}
+				this.endTable();
+			this.endReplaceComponentContent();
+		}
+	}
+}

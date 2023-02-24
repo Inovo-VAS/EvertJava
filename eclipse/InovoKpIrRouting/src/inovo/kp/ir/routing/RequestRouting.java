@@ -1,0 +1,163 @@
+package inovo.kp.ir.routing;
+
+import java.io.InputStream;
+import java.util.HashMap;
+
+import inovo.servlet.InovoServletContextListener;
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+import inovo.web.sendreceive.RemoteSendReceive;
+
+public class RequestRouting extends InovoHTMLPageWidget {
+
+	public RequestRouting(InovoWebWidget parentWidget, InputStream inStream) {
+		super(parentWidget, inStream);
+	}
+
+	public void nextRoute() throws Exception{
+		HashMap<String,String> routingParams=new HashMap<String, String>();
+		for(String paramName:this.requestParameters().keySet()){
+			if("|UCID|PHONE|CUSTOMERID|CUSTOMEREMAIL|VDN|".indexOf(("|"+(paramName=paramName.toUpperCase())+"|"))==-1){
+				continue;
+			}
+			routingParams.put(paramName, this.requestParameter(paramName));
+		}
+		
+		try{
+			this.respondString(routingParams.containsKey("UCID")?this.sendRequest(routingParams):"ERROR");
+		}
+		catch(Exception e){
+			e.printStackTrace();
+		}
+		
+	}
+
+	private String sendRequest(HashMap<String, String> routingParams) throws Exception {
+		String sendRequest="";
+		
+		String wsurl=InovoServletContextListener.inovoServletListener().configProperty("wsurl");
+	
+		StringBuilder xmlRequest=new StringBuilder();
+		
+		InputStream resourceIn=this.getClass().getResourceAsStream("/inovo/kp/ir/routing/requestrouting.xml");
+		
+		int readCount=0;
+		byte[] readBytes=new byte[8192];
+		
+		while((readCount=resourceIn.read(readBytes,0,readBytes.length))>-1){
+			if(readCount>0){
+				xmlRequest.append(new String(readBytes,0,readCount));
+			}
+		}
+		
+		String paramName=routingParams.containsKey("CUSTOMERID")?"IDNumber":routingParams.containsKey("PHONE")?"contactNumber":routingParams.containsKey("CUSTOMEREMAIL")?"emailAddress":"";
+		
+		String paramValue=routingParams.containsKey("CUSTOMERID")?routingParams.get("CUSTOMERID"):routingParams.containsKey("PHONE")?routingParams.get("PHONE"):routingParams.containsKey("CUSTOMEREMAIL")?routingParams.get("CUSTOMEREMAIL"):"";
+		
+		while(xmlRequest.indexOf("PARAM")>-1){
+			xmlRequest.replace(xmlRequest.indexOf("PARAM"),xmlRequest.indexOf("PARAM")+"PARAM".length(), paramName);
+			if(xmlRequest.indexOf("PARAM-VALUE")>-1){
+				xmlRequest.replace(xmlRequest.indexOf("PARAM-VALUE"),xmlRequest.indexOf("PARAM-VALUE")+"PARAM-VALUE".length(), paramValue);
+			}
+			if(xmlRequest.indexOf("PARAM-VDN")>-1){
+				xmlRequest.replace(xmlRequest.indexOf("PARAM-VDN"),xmlRequest.indexOf("PARAM-VDN")+"PARAM-VDN".length(), routingParams.containsKey("VDN")?routingParams.get("VDN"):"");
+			}
+		}
+		
+		String[]headers=new String[]{
+				"Accept-Encoding: gzip,deflate",
+			"Content-Type: text/xml;charset=UTF-8",
+			"SOAPAction: \"http://tempuri.org/IPresence/SearchForCustomer\"",
+			"Connection: Keep-Alive"
+		};
+		/*POST http://10.1.10.190:85/KingPrice.Presence.WebServices/Presence.svc HTTP/1.1
+			
+			
+			
+			Content-Length: 313
+			Host: 10.1.10.190:85
+			
+			User-Agent: Apache-HttpClient/4.1.1 (java 1.5)*/
+		
+		
+		
+		StringBuilder xmlResponse=new StringBuilder();
+		
+		/*InputStream resourceOut=new ByteArr//this.getClass().getResourceAsStream("/inovo/kp/ir/routing/responserouting.xml");
+		
+		readCount=0;
+		
+		while((readCount=resourceOut.read(readBytes,0,readBytes.length))>-1){
+			if(readCount>0){
+				xmlResponse.append(new String(readBytes,0,readCount));
+			}
+		}*/
+	
+		HashMap<String,String> sessionParams=new HashMap<String, String>();
+		
+		try {
+			RemoteSendReceive.send("POST",wsurl /*"http://10.1.10.190:85/KingPrice.Presence.WebServices/Presence.svc"*/,xmlRequest,xmlResponse , headers);
+			
+			
+			sessionParams.put("UCID", routingParams.get("UCID"));
+			//<a:AgentId/>
+			sessionParams.put("AGENTID", readSoapValue("a:AgentId", xmlResponse.toString()));
+            //<a:Comment/>
+            sessionParams.put("COMMENT", readSoapValue("a:Comment", xmlResponse.toString()));
+            //<a:CustomerIDNumber>8807195221080</a:CustomerIDNumber>
+            sessionParams.put("CUSTOMERIDNUMBER", readSoapValue("a:CustomerIDNumber", xmlResponse.toString()));
+            //<a:CustomerName>Christopher</a:CustomerName>
+            sessionParams.put("CUSTOMERNAME", readSoapValue("a:CustomerName", xmlResponse.toString()));
+            //<a:CustomerSurname>Manicum</a:CustomerSurname>
+            sessionParams.put("CUSTOMERSURNAME", readSoapValue("a:CustomerSurname", xmlResponse.toString())); 
+            //<a:DivertVPN/>
+            sessionParams.put("DIVERTVPN", readSoapValue("a:DivertVPN", xmlResponse.toString()));
+            //<a:PolicyNumber>KP1006699</a:PolicyNumber>
+            sessionParams.put("POLICYNUMBER", readSoapValue("a:PolicyNumber", xmlResponse.toString()));
+            //<a:Priority>1</a:Priority>
+            sessionParams.put("PRIORITY", readSoapValue("a:Priority", xmlResponse.toString()));
+ 
+            String ucid=sessionParams.get("UCID");
+            
+            inovo.db.Database.executeDBRequest(null, "KPROUTING", "EXECUTE [PTOOLS].[APPEND_CALL_DATA] @UCID='"+ucid+"',@FIELDNAME='DIVERTVPN',@FIELDVALUE=:DIVERTVPN",sessionParams , null);
+            
+            sendRequest=sessionParams.get("DIVERTVPN");
+            
+			for(String sessionprop:sessionParams.keySet()){
+				if(sessionprop.equals("UCID")||sessionprop.equals("DIVERTVPN")) continue;
+				inovo.db.Database.executeDBRequest(null, "KPROUTING",  "EXECUTE [PTOOLS].[APPEND_CALL_DATA] @UCID='"+ucid+"',@FIELDNAME='"+sessionprop+"',@FIELDVALUE=:"+sessionprop,sessionParams , null);
+			}
+		} catch (Exception e) {
+			sessionParams.put("DIVERTVPN",sendRequest);
+			this.logRequest(wsurl,"ERROR",e,xmlRequest.substring(0,xmlRequest.length()),xmlResponse.substring(0,xmlResponse.length()),routingParams,sessionParams);
+			e.printStackTrace();
+			return "ERROR";
+		}
+		this.logRequest(wsurl,"SUCCESS",null,xmlRequest.substring(0,xmlRequest.length()),xmlResponse.substring(0,xmlResponse.length()),routingParams,sessionParams);
+		return sendRequest;
+	}
+	
+	private void logRequest(String wsurl,String label,Exception e,String xmlrequest,String xmlResponse,
+			HashMap<String, String> routingParams,
+			HashMap<String, String> sessionParams) {
+		inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("WS-URL="+wsurl);
+		inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("SOAP-REQ="+xmlrequest);
+		inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("SOAP-RES="+xmlResponse);
+		String errmsg=(e==null?"":("["+e.getMessage()+"]"));
+		inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug(label+errmsg+":routing-params="+routingParams.toString()+";response-params="+sessionParams.toString());
+	}
+
+	private String readSoapValue(String field,String xmlResponse){
+		if(xmlResponse.indexOf("<"+field)>-1){
+			xmlResponse=xmlResponse.substring(xmlResponse.indexOf(("<"+field))+("<"+field).length());
+			if(xmlResponse.indexOf(">")>xmlResponse.indexOf("/>")&&xmlResponse.indexOf("/>")>-1){
+				return "";
+			}
+			else{
+				xmlResponse=xmlResponse.substring(xmlResponse.indexOf(">")+">".length());
+				return xmlResponse.substring(0,xmlResponse.indexOf(("</"+field)));
+			}
+		}
+		return "";
+	}
+}

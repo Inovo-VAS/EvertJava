@@ -1,0 +1,28 @@
+package inovo.automated.work.steps;
+
+import java.io.File;
+import java.util.HashMap;
+
+import inovo.automated.work.AutomatedWorker;
+import inovo.automated.work.AutomatedWorkerStep;
+
+public class ImportFileStep extends AutomatedWorkerStep {
+
+	public ImportFileStep(AutomatedWorker automatedWorker,
+			HashMap<String, String> stepProperties) {
+		super(automatedWorker, stepProperties);
+	}
+
+	private File _fileDir=null;
+	
+	@Override
+	public void performAutomationStep() {
+		this.stepProperties().put("", "");
+		this.stepProperties().put("", "");
+		
+		_fileDir=new File(this.stepProperties().get(""));
+		if(_fileDir.isDirectory()){
+			
+		}
+	}
+}

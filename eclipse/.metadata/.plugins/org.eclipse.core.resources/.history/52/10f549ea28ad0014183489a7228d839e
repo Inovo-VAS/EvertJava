@@ -1,0 +1,138 @@
+package inovo.automated.work;
+
+import inovo.db.Database;
+
+import java.io.InputStream;
+import java.lang.reflect.InvocationTargetException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.TreeMap;
+
+public class AutomatedWorker implements Runnable {
+	
+	private AutomatedWorkManager _automationManager=null;
+	private HashMap<String, String> _automationSettings=new HashMap<String, String>();
+	public AutomatedWorker(AutomatedWorkManager automationManager,HashMap<String,String> automationSettings){
+		this._automationManager=automationManager;
+		this._automationSettings.putAll(automationSettings);
+	}
+
+	private boolean _shutdownWorker=false;
+	@Override
+	public void run() {
+		this.setScheduling();
+		try {
+			this.loadAutomationSteps();
+		} catch (Exception e1) {
+			e1.printStackTrace();
+		}
+		
+		while(!this._shutdownWorker&&!_automationManager._shutdownWorkManager){
+			
+			this.performAutomatedWorker();
+			try {
+				Thread.sleep(10);
+			} catch (InterruptedException e) {
+			}
+		}
+		_automationManager._automatedwork.remove(_automationSettings.get("AUTOMATEDID")).cleanupWorker();
+	}
+	
+	private ArrayList<Long> _dailyStamps=new ArrayList<Long>();
+	private Calendar _startUpStamp=Calendar.getInstance();
+	private void setScheduling() {
+		
+		try {
+			this.resetDailyStamps();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+	private void resetDailyStamps() throws Exception{
+		Calendar currentStamp=Calendar.getInstance();
+		currentStamp.setTime(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").parse(new SimpleDateFormat("yyyy-MM-dd").format(new Date())+" 23:59:59.999"));
+		if(this._startUpStamp.getTimeInMillis()>currentStamp.getTimeInMillis()){
+			
+		}
+	}
+
+	public void performAutomatedWorker() {
+		if(this._automationSteps.isEmpty()){
+			return;
+		}
+		
+		for (Integer stepIndex:this._automationSteps.keySet()){
+			this._automationSteps.get((Integer)stepIndex).performAutomationStep();
+		}
+	}
+
+	private TreeMap<Integer,HashMap<String,String>> _automationStepsSettings=new TreeMap<Integer, HashMap<String,String>>();
+	private TreeMap<Integer,AutomatedWorkerStep> _automationSteps=new TreeMap<Integer, AutomatedWorkerStep>();
+	
+	private void loadAutomationSteps() throws Exception{
+		Database.executeDBRequest(null, "AUTOMATEDWORK", "SELECT AUTOMATION_STEP.ID AS STEPID,AUTOMATION_STEP.NAME AS STEPNAME,AUTOMATION_STEP.DESCRIPTION AS STEPDESCRIPTION,AUTOMATION_STEP_TYPE.NAME AS STEPTYPENAME,AUTOMATION_STEP_TYPE.DESCRIPTION AS STEPTYPEDESCRIPTION FROM <DBUSER>.AUTOMATION_STEP INNER JOIN <DBUSER>.AUTOMATION_STEP_TYPE ON AUTOMATION_STEP_TYPE.ID=AUTOMATION_STEP.STEP_TYPE_ID AND AUTOMATIONID=:AUTOMATEDID",_automationSettings	, this,"readAutomationStepsData");
+	}
+	
+	private HashMap<String,String> _workStepSettings=new HashMap<String, String>();
+	private int _irowindex=0;
+	public void readAutomationStepsData(Integer rowIndex,ArrayList<String> rowData,ArrayList<String> rowColumns){
+		if(rowIndex==0) return;
+		_workStepSettings.clear();
+		_irowindex=0;
+		while(_irowindex<rowColumns.size()){
+			_workStepSettings.put(rowColumns.get(_irowindex), rowData.get(_irowindex++));
+		}
+		
+		if(!_automationStepsSettings.containsKey((Integer)rowIndex)){
+			try {
+				Class<?> workstepclass=findAutomationWorkStepClass("/inovo/automated/work/steps",_workStepSettings.get("STEPTYPENAME")+"Step");
+				if(workstepclass!=null){
+					_automationStepsSettings.put((Integer)rowIndex, new HashMap<String,String>(this._workStepSettings));
+					_automationSteps.put((Integer)rowIndex,(AutomatedWorkerStep)workstepclass.getConstructor(AutomatedWorker.class,HashMap.class).newInstance(this,_workStepSettings));
+				}
+				
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+	}
+	
+	private Class<?> findAutomationWorkStepClass(String workerClassPath,String workerClassName) throws Exception{
+		Class<?> findAutomationWorkStepClass=null;
+		InputStream inputPaths=this.getClass().getResourceAsStream(workerClassPath);
+		if(inputPaths!=null){
+			StringBuilder tempClassName=new StringBuilder();
+			for(byte b:inovo.adhoc.AdhocUtils.inputStreamToByteArray(inputPaths, 8192)){
+				switch(b){
+				case 10:
+					if(tempClassName.substring(0,tempClassName.length()).toLowerCase().equals(workerClassName.toLowerCase()+".class")){
+						workerClassPath=(workerClassPath+"/"+tempClassName.substring(0,tempClassName.length()-".class".length())).replaceAll("[////]", ".");
+						tempClassName.setLength(0);
+						return this.getClass().forName(workerClassPath.substring(1));
+					}
+					tempClassName.setLength(0);
+					break;
+				case 13:break;
+				default:
+					tempClassName.append((char)b);
+				}
+			}
+		}
+		return findAutomationWorkStepClass;
+	}
+	
+	private void cleanupWorker() {
+		_automationManager._workerKeysToShutdown.remove(_automationSettings.get("AUTOMATEDID"));
+		System.out.println("CLEANEDUP:WORK["+this._automationSettings.get("AUTOMATEDID")+"]");
+	}
+	
+	public void shutdownWorker(){
+		this._shutdownWorker=true;
+	}
+	
+	
+}

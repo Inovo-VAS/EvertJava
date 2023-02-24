@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Copy element &apos;InovoEnvironmentManager.java&apos; to &apos;InovoMonitoring/src&apos;&#x0D;&#x0A;- Original project: &apos;InovoPresenceUtils&apos;&#x0D;&#x0A;- Destination element: &apos;InovoMonitoring/src&apos;&#x0D;&#x0A;- Original element: &apos;InovoEnvironmentManager.java&apos;" description="Copy compilation unit" destination="=InovoMonitoring/src" element1="/src&lt;{InovoEnvironmentManager.java" files="0" flags="589830" folders="0" id="org.eclipse.jdt.ui.copy" policy="org.eclipse.jdt.ui.copyResources" stamp="1403689236369" units="1" version="1.0"/>
+</session>

@@ -1,0 +1,7 @@
+package baasserver.server;
+
+import baasserver.io.nio.AdvancedServer;
+
+public class Server extends AdvancedServer {
+
+}

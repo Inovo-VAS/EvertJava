@@ -1,0 +1,156 @@
+package inovo.presence.pmconsole;
+
+import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
+public class PMConsoleServiceQueue implements Runnable{
+	
+	private Map<String, PMConsoleApp> pmConsoleApps=null;
+	
+	private static PMConsoleServiceQueue pmConsoleServiceQueue=null;
+	
+	private static final Object lock=new Object();
+	
+	public static PMConsoleServiceQueue pmConsoleServiceQueue(){
+		if(pmConsoleServiceQueue==null){
+			synchronized (lock) {
+				pmConsoleServiceQueue=new PMConsoleServiceQueue();
+			}
+		}
+		return pmConsoleServiceQueue;
+	}
+	
+	public void registerPMApp(String ipaddress,String appname,int poolsize){
+		synchronized (lock) {
+			if((pmConsoleApps==null?(pmConsoleApps=new HashMap<String, PMConsoleApp>()):pmConsoleApps).containsKey(appname)){
+				
+			}
+			else{
+				PMConsoleApp pmConsoleApp=new PMConsoleApp(this,appname,ipaddress);
+				pmConsoleApp.setPoolSize(poolsize);
+				pmConsoleApps.put(appname, pmConsoleApp);
+				this.executePMConsoleApp(pmConsoleApp);
+			}
+		}
+	}
+	
+	private ExecutorService executorServicePMConsoleApps=null; 
+	
+	public void executePMConsoleApp(PMConsoleApp pmConsoleApp){
+		if(this.executorServicePMConsoleApps==null){
+			synchronized (lock) {
+				this.executorServicePMConsoleApps=new ThreadPoolExecutor(0, Integer.MAX_VALUE, 100, TimeUnit.MILLISECONDS,new java.util.concurrent.LinkedBlockingQueue<Runnable>());
+			}
+			this.executorServicePMConsoleApps.execute(pmConsoleApp);
+		}		
+	}
+
+	@Override
+	public void run() {
+		
+	}
+	
+	private boolean shutdown=false;
+	
+	public boolean isActiveQueue(){
+		return !this.shutdown;
+	}
+	
+	public void shutdownQueue(){
+		this.shutdown=true;
+		if(this.pmConsoleApps!=null){
+			while(!this.pmConsoleApps.isEmpty()){
+				try {
+					Thread.sleep(10);
+				} catch (InterruptedException e) {
+				}
+			}
+		}
+		if(this.executorServicePMConsoleApps!=null){
+			this.executorServicePMConsoleApps.shutdown();
+			while(!this.executorServicePMConsoleApps.isTerminated()){
+				try {
+					Thread.sleep(10);
+				} catch (InterruptedException e) {
+				}
+			}
+		}
+	}
+
+	public void removePMConsoleApp(PMConsoleApp pmConsoleApp) {
+		if(this.pmConsoleApps.containsKey(pmConsoleApp.appName())){
+			synchronized (lock) {
+				this.pmConsoleApps.remove(pmConsoleApp.appName());
+			}
+			pmConsoleApp.cleanupPMConsoleApp();
+		}
+	}
+	
+	public void pmCommand(String appName,String command,OutputStream out,String parseFormat) throws Exception{
+		PMConsoleApp pmConsoleApp=null;
+		if(this.pmConsoleApps.containsKey(appName)){
+			synchronized (lock) {
+				pmConsoleApp=this.pmConsoleApps.get(appName);
+			}
+		}
+		if(pmConsoleApp==null){
+			throw new Exception("NO CONSOLE APP REGISTERED - "+appName);
+		}
+		pmConsoleApp.pmcommand(command, out,parseFormat);
+	}
+
+	public PMConsoleApp pmConsoleApp(String appName) {
+		PMConsoleApp pmConsoleApp=null;
+		if(this.pmConsoleApps.containsKey(appName)){
+			synchronized (lock) {
+				pmConsoleApp=this.pmConsoleApps.get(appName);
+			}
+		}
+		return pmConsoleApp;
+	}
+
+	private final Object consoleServiceQueueLock=new Object();
+	
+	private class ServiceQueueState{
+		private List<HashMap<String,String>> pmApps=new ArrayList<HashMap<String,String>>();
+		
+		public ServiceQueueState(){
+			synchronized (lock) {
+				if(pmConsoleApps!=null){
+					for(String appName:pmConsoleApps.keySet()){
+						PMConsoleApp pmApp=pmConsoleApps.get(appName);
+						HashMap<String,String> pmAppSettings=new HashMap<String, String>();
+						pmAppSettings.put("IP-ADDRESS", pmApp.ipAddress());
+						pmAppSettings.put("APP-NAME", appName);
+						pmApps.add(pmAppSettings);
+					}
+				}
+			}
+		}
+
+		public void ouputQueueState(OutputStream out) throws Exception{
+			for(HashMap<String, String> appSettings:this.pmApps){
+				out.write(appSettings.toString().getBytes());
+			}
+			out.flush();
+		}
+	}
+	
+	public void ouputServiceQueue(OutputStream out) {
+		
+		if(out!=null){
+			ServiceQueueState serviceQueueState=new ServiceQueueState();
+			try {
+				serviceQueueState.ouputQueueState(out);
+			} catch (Exception e) {
+			}
+			serviceQueueState=null;
+		}
+	}
+}

@@ -1,0 +1,96 @@
+package baasserver;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
+import java.nio.channels.spi.SelectorProvider;
+import java.util.Iterator;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+
+import baasserver.protocols.IORequestHandle;
+import baasserver.protocols.IOutput;
+
+public class Client implements Runnable {
+	
+	//private static ExecutorService _runningClients=Executors.newSingleThreadExecutor(runningClientsThreadFactory());
+	
+	private SocketChannel _socketChannel=null;
+	private Selector _socketSelector=null;
+	private boolean _shutdownClient=false;
+	
+	private Class<?> _ioRequestHandleClass=null;
+	public Client(String protocol,String url,int port) throws IOException{
+		this._socketChannel=SocketChannel.open();
+		this._socketChannel.connect(new InetSocketAddress(protocol+ ":"+url,port));
+		this._socketSelector=SelectorProvider.provider().openSelector();
+		this._socketChannel.register(this._socketSelector ,SelectionKey.OP_CONNECT );
+	}
+	
+	@Override
+	public void run() {
+		while(!_shutdownClient){
+			try {
+				while(this._socketSelector.select()>0){
+					if(!_shutdownClient){
+						Iterator<SelectionKey> keyIterator= this._socketSelector.keys().iterator();
+						while(keyIterator.hasNext()){
+							SelectionKey selKey=keyIterator.next();
+							if(!this._shutdownClient){
+								if(selKey.isValid()){
+									if(selKey.isConnectable()){
+										new Thread(new ClientSocketHandle(this,this._socketChannel));
+									}
+								}
+							}
+							keyIterator.remove();
+						}
+					}
+					else{
+						break;
+					}
+				}
+			} catch (IOException e) {
+				_shutdownClient=true;
+				e.printStackTrace();
+			}
+			if(!_shutdownClient){
+				try {
+					synchronized (this) {
+						this.wait(2);
+					}
+				} catch (InterruptedException e) {
+					_shutdownClient=true;
+					e.printStackTrace();
+				}
+			}
+			else{
+				break;
+			}
+		}
+		try {
+			this._socketSelector.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		try {
+			this._socketChannel.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		new Thread(){
+			public void run() {
+				_runningClients.shutdownNow();
+			};
+		}.start();
+	}
+	
+	public IORequestHandle nextIORequestHandle(IOutput output) throws Exception{
+		return (IORequestHandle)this._ioRequestHandleClass.getConstructor(IOutput.class).newInstance(new Object[]{output});
+	}
+	
+}

@@ -1,0 +1,9 @@
+package inovo.monitoring.monitors;
+
+public class Monitor {
+
+	public void requestCompleted(MonitorRequest monitorRequest) {
+		
+	}
+
+}

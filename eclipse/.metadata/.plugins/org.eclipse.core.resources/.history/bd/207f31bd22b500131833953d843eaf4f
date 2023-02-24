@@ -1,0 +1,7 @@
+package baasserver.web.system.datagrid;
+
+import baasserver.protocols.IOWidgetHandle;
+
+public class DataGridHeader extends IOWidgetHandle {
+
+}

@@ -1,0 +1,38 @@
+import inovo.queues.Queue;
+import inovo.queues.Request;
+import inovo.servlet.InovoCoreEnvironmentManager;
+import javax.servlet.ServletContext;
+
+public class InovoEnvironmentManager extends InovoCoreEnvironmentManager
+{
+  public void initializeServletContext(ServletContext sc)
+  {
+    super.initializeServletContext(sc);
+    try {
+		new Queue(){
+			@Override
+			public void initiate() {
+				try {
+					this.queueRequest(new Request(){
+						
+					},false);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+		};
+	} catch (Exception e) {
+		System.out.println(e.getMessage());
+	}
+  }
+
+  public String defaultLocalPath(String suggestedlocalpah)
+  {
+    return super.defaultLocalPath("C:/projects/java/");
+  }
+
+  public void disposeServletContext(ServletContext sc)
+  {
+	super.disposeServletContext(sc);
+  }
+}

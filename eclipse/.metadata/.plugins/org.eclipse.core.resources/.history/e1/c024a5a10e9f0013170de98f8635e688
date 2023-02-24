@@ -1,0 +1,37 @@
+package baasserver.db.web.system.definitions;
+
+import baasserver.db.web.system.Field;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class VarcharField extends Field {
+
+	public VarcharField(IOWidgetHandle parentWidget, IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+
+	@Override
+	public String fieldDefinition() {
+		String defaultValue=this.defaultValue();
+		if(this.dbParentWidget().dbManager().dbType().equals("sqlserver")){
+			return "["+this.fieldName()+"] VARCHAR("+String.valueOf(this.fieldSize())+")"+();
+		}
+		else if(this.dbParentWidget().dbManager().dbType().equals("postgresql")){
+			return "["+this.fieldName()+"] character varying("+String.valueOf(this.fieldSize())+")";
+		}
+		return super.fieldDefinition();
+	}
+	
+	public int fieldSize(){
+		String fieldSizeString=this.property("SIZE");
+		return Integer.parseInt(fieldSizeString.equals("")?String.valueOf(this.defaultFieldSize()):fieldSizeString);
+	}
+	
+	public String defaultValue(){
+		return null;
+	}
+
+	private int defaultFieldSize() {
+		return 1000;
+	}
+}

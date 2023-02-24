@@ -1,0 +1,65 @@
+package pce.accountants.modules.admin;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.TreeMap;
+
+import pce.accountants.Index;
+import pce.accountants.Module;
+import pce.accountants.modules.admin.users.AddUser;
+import pce.accountants.modules.admin.users.UserDetails;
+import saas.db.Database;
+import saas.protocol.Request;
+import saas.protocol.Widget;
+import saas.protocol.widget.controls.ActionControl;
+
+public class Users extends Module {
+
+	public Users(Request request, Widget parentWidget)  throws Exception{
+		super(request, parentWidget);
+	}
+
+	@Override
+	public void executeModule() throws Exception {
+		ActionControl.simpleActionControl(this, "input", this.moduleId()+"_adduser", Index.class.getName().replaceAll("[.]", "_")+"_form", "", "adduser","/"+Users.class.getName().replaceAll("[.]", "/")+".html" , "value=ADD USER|type=button".split("[|]"));
+		
+		this.startComplexElement("table");
+			this.startComplexElement("tr");
+				this.startComplexElement("td");
+					this.users();
+				this.endComplexElement("td");
+				this.startComplexElement("td","id="+this.moduleId()+"_userinfo|style=vertical-align:top");this.endComplexElement("td");
+			this.endComplexElement("tr");
+		this.endComplexElement("table");
+	}
+
+	private boolean _foundUsers=false;
+	public void users() throws Exception{
+		_foundUsers=false;
+		Database.executeDBRequest("SYSTEM", "SELECT id,name from <DBNAME>.system.user" ,null, this, "userActionRowInfo");
+		if(_foundUsers){
+			this.endComplexElement("table");
+			_foundUsers=false;
+		}
+	}
+	
+	public void userActionRowInfo(Integer rowindex,ArrayList<String> rowData,ArrayList<String> rowColumns){
+		if(rowindex>0){
+			HashMap<String,String> userActionInfo=Database.rowData(rowColumns, rowData);
+			if(!_foundUsers){
+				_foundUsers=true;
+				this.startComplexElement("table");
+			}
+			
+			this.startComplexElement("tr");
+				ActionControl.complexActionControl(this, "td", "useraction"+String.valueOf(rowindex), userActionInfo.get("NAME"), Index.class.getName().replaceAll("[.]", "_")+"_form",this.moduleId()+"_userinfo" , "","/"+ UserDetails.class.getName().replaceAll("[.]", "/")+".html?selecteduserid="+userActionInfo.get("ID"), "class=ui-widget-content|style=padding:2px;font-size:0.8em;cursor:hand".split("[|]"));
+				userActionInfo.clear();
+				userActionInfo=null;
+			this.endComplexElement("tr");
+		}
+	}
+	
+	public void adduser() throws Exception{
+		new AddUser(this.request(), this).executeWidget();
+	}
+}

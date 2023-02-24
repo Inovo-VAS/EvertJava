@@ -1,0 +1,109 @@
+package baasserver.io.nio;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
+import java.nio.channels.spi.SelectorProvider;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+
+public class ServerReaderWriter implements Runnable {
+
+	private SocketChannel _channel=null;
+	private ServerConnectionsAcceptor _serverConnectionsAcceptor=null;
+	private boolean _shutdownReaderWriter=false;
+	private Selector _readWriteSelector=null;
+	
+	protected List _queueReads=new LinkedList();
+	
+	private ServerReaderInputStream _serverReaderInputStream=null;
+	private ServerWriterOutputStream _serverWriterOutputStream=null;
+	
+	public ServerReaderWriter(SocketChannel channel,ServerConnectionsAcceptor serverConnectionsAcceptor) throws Exception{
+		this._channel=channel;
+		this._channel.configureBlocking(false);
+		this._serverConnectionsAcceptor=serverConnectionsAcceptor;
+		this._readWriteSelector=SelectorProvider.provider().openSelector();
+		this._serverReaderInputStream=new ServerReaderInputStream(this);
+		this._serverWriterOutputStream=new ServerWriterOutputStream(this);
+		this.registerReader();
+	}
+	
+	private void registerReader() throws Exception{
+		this._channel.register(_readWriteSelector, SelectionKey.OP_READ);
+	}
+	
+	private void registerWrite() throws Exception{
+		this._channel.register(_readWriteSelector, SelectionKey.OP_READ);
+	}
+
+	@Override
+	public void run() {
+		while(!_shutdownReaderWriter){
+			
+			try {
+				this._readWriteSelector.select();
+				Iterator<SelectionKey> readWriteKeys = this._readWriteSelector.selectedKeys().iterator();
+				while(readWriteKeys.hasNext()){
+					SelectionKey possibleReadWriteKey=readWriteKeys.next();
+					readWriteKeys.remove();
+					if(!possibleReadWriteKey.isValid()) continue;
+					if(possibleReadWriteKey.isReadable()){
+						this.read(possibleReadWriteKey);
+					}
+					else if(possibleReadWriteKey.isWritable()){
+						this.write(possibleReadWriteKey);
+					}
+				}
+			} catch (Exception ae) {
+				ae.printStackTrace();
+			}
+		}
+	}
+
+	private void write(SelectionKey possibleReadWriteKey) {
+		
+	}
+	
+	private ByteBuffer _readBuffer=ByteBuffer.allocate(8912);
+	
+	private void read(SelectionKey possibleReadKey) throws IOException{
+		SocketChannel socketChannel = (SocketChannel) possibleReadKey.channel();
+
+		// Clear out our read buffer so it's ready for new data
+		this._readBuffer.clear();
+
+		// Attempt to read off the channel
+		int numRead;
+		try {
+			numRead = socketChannel.read(this._readBuffer);
+		} catch (IOException e) {
+			// The remote forcibly closed the connection, cancel
+			// the selection key and close the channel.
+			possibleReadKey.cancel();
+			socketChannel.close();
+			return;
+		}
+
+		if (numRead == -1) {
+			// Remote entity shut the socket down cleanly. Do the
+			// same from our end and cancel the channel.
+			possibleReadKey.channel().close();
+			possibleReadKey.cancel();
+			return;
+		}
+		byte[] data=new byte[numRead];
+		System.arraycopy(this._readBuffer.array(), 0, data, 0, numRead);
+		
+		synchronized (_queueReads) {
+			_queueReads.add(data);
+			_queueReads.notify();
+		}
+		
+		
+	}
+}

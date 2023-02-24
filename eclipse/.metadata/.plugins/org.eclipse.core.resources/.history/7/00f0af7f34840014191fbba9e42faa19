@@ -1,0 +1,23 @@
+package inovo.presence.administrator;
+
+import java.io.InputStream;
+import java.util.HashMap;
+
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+
+public class UrlTestPage extends InovoHTMLPageWidget {
+
+	public UrlTestPage(InovoWebWidget parentWidget, InputStream inStream) {
+		super(parentWidget, inStream);
+	}
+
+	@Override
+	public void pageContent() throws Exception {
+		HashMap<String,String> params=new HashMap<String, String>();
+		this.importRequestParametersIntoMap(params, null);
+		this.startTable(null);
+			
+		this.endTable();
+	}
+}

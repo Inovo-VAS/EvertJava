@@ -1,0 +1,21 @@
+package baasserver;
+
+import java.io.IOException;
+import java.io.InputStream;
+
+public class ClientInputStream extends InputStream {
+
+	private Client _client=null;
+	public ClientInputStream(Client client){
+		this._client=client;
+	}
+	
+	private ArrayList<byte[]> _bytesRead=new ArrayList<byte[]>();
+	
+	@Override
+	public int read() throws IOException {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
+}

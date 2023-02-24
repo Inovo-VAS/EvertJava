@@ -1,0 +1,46 @@
+package baasserver.web.system;
+
+import baasserver.db.protocols.DBWidgetHandle;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class Dialog extends DBWidgetHandle {
+
+	public static String _unblockDialogScript="$.unblockUI();";
+	public static String _="webActionRequest(\"callbackurl\",\"formid\",\"actiontarget\")";
+	public Dialog(IOWidgetHandle parentWidget, IOProcessorHandle processor)  throws Exception{
+		super(parentWidget, processor);
+	}
+	
+	public String[] dialogButtons(){
+		return new String[]{"OK"};
+	}
+	
+	public String[] fields(){
+		return null;
+	}
+	
+	public String fieldLabel(String fieldKey){
+		return this.formatedSubjectTitle(fieldKey," ");
+	}
+	
+	public String fieldName(String fieldKey){
+		return this.formatedSubjectTitle(fieldKey,"_");
+	}
+	
+	public String fieldType(String fieldKey){
+		return "";
+	}
+
+	public String buttonCaption(String buttonKey){
+		return buttonKey;
+	}
+	
+	public String buttonScriptAction(String buttonKey){
+		return this.buttonScriptAction(buttonKey,true);
+	}
+	
+	public String buttonScriptAction(String buttonKey,boolean removeDialog){
+		return (removeDialog?"$(\'#dialog_"+this.property("form")+"\').html('');":"")+ _unblockDialogScript;
+	}
+}

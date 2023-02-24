@@ -1,0 +1,15 @@
+package inovo.automated.work.steps;
+
+import java.util.HashMap;
+
+import inovo.automated.work.AutomatedWorker;
+import inovo.automated.work.AutomatedWorkerStep;
+
+public class ImportFileStep extends AutomatedWorkerStep {
+
+	public ImportFileStep(AutomatedWorker automatedWorker,
+			HashMap<String, String> stepProperties) {
+		super(automatedWorker, stepProperties);
+	}
+
+}

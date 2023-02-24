@@ -1,0 +1,13 @@
+package baasserver;
+
+import baasserver.protocols.IORequestHandle;
+import baasserver.protocols.IOutput;
+
+public class InputOutputHandleOwner {
+
+	public IORequestHandle nextIORequestHandle(
+			InputOutput output) throws Exception{
+		return null;
+	}
+
+}

@@ -1,0 +1,127 @@
+<classpath>
+  <container id="LancetLeadsAutomation!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="C:/projects/java/eclipse/LancetLeadsAutomation/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="LancetLeadsFileImportAutomation!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="C:/projects/java/eclipse/LancetLeadsFileImportAutomation/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoMessageGateway!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="C:/projects/java/eclipse/InovoMessageGateway/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoPresenceRespin!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="D:/projects/clients/inovo/java/eclipse/InovoPresenceRespin/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoDbFlatfileImport!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="D:/projects/clients/inovo/java/eclipse/InovoDbFlatfileImport/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoFlatFileLeadsImporter!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="C:/projects/java/eclipse/InovoFlatFileLeadsImporter/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoPresencePMConsole!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="D:/projects/clients/inovo/java/eclipse/InovoPresencePMConsole/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoCallInfo!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="D:/projects/inovo/java/eclipse/InovoCallInfo/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoPresenceComAdmin!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="D:/projects/clients/inovo/java/eclipse/InovoPresenceComAdmin/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoPresenceMailArchiver!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="C:/projects/java/eclipse/InovoPresenceMailArchiver/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoMonitoring!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="C:/projects/java/eclipse/InovoMonitoring/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoAutomation!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="C:/projects/java/eclipse/InovoAutomation/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoMessageGatewayFilters!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="C:/projects/java/eclipse/InovoMessageGatewayFilters/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoPresenceReports!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="C:/projects/java/eclipse/InovoPresenceReports/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoAvonCollections!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="D:/projects/clients/inovo/java/eclipse/InovoAvonCollections/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoFlatFileLeadsImporterEngine!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="C:/projects/java/eclipse/InovoFlatFileLeadsImporterEngine/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoAutomatedWork!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="C:/projects/java/eclipse/InovoAutomatedWork/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoProcessFlowAutomation!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="C:/projects/java/eclipse/InovoProcessFlowAutomation/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoPresenceAdministrator!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="D:/projects/clients/inovo/java/eclipse/InovoPresenceAdministrator/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoFlatFileLeadsImporterReports!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="D:/projects/clients/inovo/java/eclipse/InovoFlatFileLeadsImporterReports/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoMailReports!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="D:/projects/clients/inovo/java/eclipse/InovoMailReports/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoLocking!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="D:/projects/inovo/java/eclipse/InovoLocking/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoDbManager!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="D:/projects/clients/inovo/java/eclipse/InovoDbManager/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoIRInteractiveResources!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="D:/projects/clients/inovo/java/eclipse/InovoIRInteractiveResources/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+  <container id="InovoLeadsFilter!org.eclipse.jst.j2ee.internal.web.container">
+    <entry id="D:/projects/clients/inovo/java/eclipse/InovoLeadsFilter/WebContent/WEB-INF/lib/inovo.jar">
+      <source-attachment-path>/inovo</source-attachment-path>
+    </entry>
+  </container>
+</classpath>

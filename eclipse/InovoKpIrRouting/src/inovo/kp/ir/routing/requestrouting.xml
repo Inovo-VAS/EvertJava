@@ -1,0 +1,9 @@
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <tem:SearchForCustomer>
+         <tem:PARAM>PARAM-VALUE</tem:PARAM>
+         <tem:VDNId>PARAM-VDN</tem:VDNId>
+      </tem:SearchForCustomer>
+   </soapenv:Body>
+</soapenv:Envelope>

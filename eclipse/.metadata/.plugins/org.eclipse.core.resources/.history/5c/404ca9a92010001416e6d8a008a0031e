@@ -1,0 +1,274 @@
+package saas.protocol;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+public class Request {
+	
+	private String _requestCommand="";
+	private String _requestUrl="";
+	private String _requestUrlResource="";
+	private String _requestUrlExtension="";
+	private String _requestProtocol="";
+	
+	private HashMap<String,String> _requestHeaders=new HashMap<String, String>();
+	private HashMap<String,String> _responseHeaders=new HashMap<String, String>();
+	private HashMap<String, ArrayList<String>> _requestParams=new HashMap<String, ArrayList<String>>();
+	private HashMap<String, HashMap<String, String>> _requestParameterProperties=new HashMap<String, HashMap<String,String>>();
+	private HashMap<String, File> _requestParameterFiles=new HashMap<String, File>();
+		
+	private ArrayList<ByteArrayOutputStream> _requestOutputBuffer=new ArrayList<ByteArrayOutputStream>();
+	private ByteArrayOutputStream _currentRequestOutputBuffer=null;
+	private int _requestOutputBufferMax=Integer.MAX_VALUE;
+	private int _requestOutputBufferIndex=0;
+	
+	private long _requestOutputBufferLength=0;
+	
+	public long requestOutputBufferLength(){
+		return this._requestOutputBufferLength;
+	}
+	
+	public ArrayList<ByteArrayOutputStream> requestOutputBuffer(){
+		return this._requestOutputBuffer;
+	}
+	
+	public void executeRequest(){
+		
+	}
+	
+	public void setRequestUrlResource(String requestUrlResource){
+		this._requestUrlResource=requestUrlResource;
+	}
+	
+	public String requestUrlResource(){
+		return this._requestUrlResource;
+	}
+	
+	public void setRequestUrl(String requestUrl){
+		this._requestUrl=requestUrl;
+	}
+	
+	public String requestUrl(){
+		return this._requestUrl;
+	}
+	
+	public void setRequestCommand(String requestCommand){
+		this._requestCommand=requestCommand;
+	}
+	
+	public String requestCommand(){
+		return this._requestCommand;
+	}
+	
+	public HashMap<String, File> requestParameterFiles(){
+		return _requestParameterFiles;
+	}
+	
+	public void setRequestParameterFile(String paramName,File paramFile){
+		this._requestParameterFiles.put(paramName.toUpperCase(), paramFile);
+	}
+	
+	public HashMap<String, HashMap<String, String>> requestParameterProperties(){
+		return this._requestParameterProperties;
+	}
+	
+	public void setRequestParameterProperty(String paramName,String propName,String propValue){
+		HashMap<String,String> paramProperties=this._requestParameterProperties.get(paramName=paramName.toUpperCase());
+		if(paramProperties==null){
+			this._requestParameterProperties.put(propName, paramProperties=new HashMap<String, String>());
+		}
+		paramProperties.put(propName.toUpperCase(), propValue);
+	}
+	
+	public String requestParameterProperty(String paramName,String propName){
+		HashMap<String,String> paramProperties=this._requestParameterProperties.get(paramName=paramName.toUpperCase());
+		if(paramProperties==null){
+			return "";
+		}
+		String propValue=paramProperties.get(propName.toUpperCase());
+		return (propValue==null?"":propValue);		
+	}
+	
+	public HashMap<String, ArrayList<String>> requestParameters(){
+		return this._requestParams;
+	}
+	
+	public void setRequestParameters(String paramName,String paramValue,boolean clearParameter){
+		ArrayList<String> paramValues=this._requestParams.get(paramName=paramName.toUpperCase());
+		if(paramValues==null){
+			this._requestParams.put(paramName, paramValues=new ArrayList<String>());
+		}
+		if(clearParameter){
+			paramValues.clear();
+		}
+		if(!(paramValue=(paramValue==null?"":paramValue.trim())).equals("")){
+			paramValues.add(paramValue);
+		}
+	}
+	
+	public ArrayList<String> requestParameterArray(String paramName){
+		return this._requestParams.get(paramName.toUpperCase());
+	}
+	
+	private int _paramValCount=0;
+	
+	public String requestParameter(String paramName){
+		return this.requestParameter(paramName, "");
+	}
+	
+	public String requestParameter(String paramName,String valSep){
+		ArrayList<String> paramValues=this.requestParameterArray(paramName);
+		if(paramValues==null){
+			return "";
+		}
+		else{
+			String paramValue="";
+			this._paramValCount=0;
+			while(_paramValCount<paramValues.size()){
+				paramValue=paramValues.get(_paramValCount++)+(_paramValCount<paramValues.size()?valSep:"");
+			}
+			return paramValue;
+		}
+	}
+	
+	public void setRequestHeader(String header,String value){
+		_requestHeaders.put(header.toUpperCase(), value);
+	}
+	
+	public String requestHeader(String header){
+		String headerValue=this._requestHeaders.get(header.toUpperCase());
+		return (headerValue==null?"":headerValue);
+	}
+	
+	public HashMap<String,String> requestHeaders(){
+		return this._requestHeaders;
+	}
+	
+	public void setResponseHeader(String header,String value){
+		_responseHeaders.put(header.toUpperCase(), value);
+	}
+	
+	public String responseHeader(String header){
+		String headerValue=this._responseHeaders.get(header.toUpperCase());
+		return (headerValue==null?"":headerValue);
+	}
+	
+	public HashMap<String,String> responseHeaders(){
+		return this._responseHeaders;
+	}
+	
+	public void respondBytes(byte[]b){
+		if(b!=null){
+			if(b.length>0){
+				this._requestOutputBufferLength+=b.length;
+				for(byte br:b){
+					_requestOutputBufferIndex++;
+					_currentRequestOutputBuffer=(_currentRequestOutputBuffer==null?(_requestOutputBuffer.add(new ByteArrayOutputStream())?_requestOutputBuffer.get(0):null):_currentRequestOutputBuffer);
+					_currentRequestOutputBuffer.write(br);
+					if(_requestOutputBufferIndex==_requestOutputBufferMax&&_requestOutputBufferIndex>0){
+						_currentRequestOutputBuffer=null;
+						_requestOutputBufferIndex=0;
+					}
+				}
+			}
+		}
+	}
+	
+	public void respondString(String s){
+		this.respondBytes(s.getBytes());
+	}
+
+	public void outputEmbeddedResource(String embeddedResourcePath) throws Exception{
+		
+		InputStream embeddedInput=this.getClass().getResourceAsStream(embeddedResourcePath);
+		//"jar:/C:/projects/java/saas/saas.jar!"
+		embeddedInput=(embeddedInput==null?this.getClass().getResourceAsStream(systemRoot()+embeddedResourcePath):embeddedInput);
+		
+		saas.io.IOUtils.readInputStreamToOutputStream(embeddedInput, new OutputStream() {
+			
+			@Override
+			public void write(int b) throws IOException {
+				this.write(new byte[]{(byte)b});
+			}
+			
+			@Override
+			public void write(byte[] b) throws IOException {
+				this.write(b,0,b.length);
+			}
+			
+			@Override
+			public void write(byte[] b, int off, int len) throws IOException {
+				byte[] respBytes=new byte[len];
+				System.arraycopy(b, off, respBytes, 0, len);
+				respondBytes(respBytes);
+				respBytes=null;
+			}
+			
+		});
+	}
+	
+	public static void saasRequestInputOutput(InputStream input,OutputStream output) throws Exception{
+		SaasRequestInputStream saasRequestInputStream=new SaasRequestInputStream(input, output);
+		saasRequestInputStream.readWriteStreams(8192);
+	}
+	
+	public static ByteArrayOutputStream saasRequestInputOutput(InputStream input) throws Exception{
+		ByteArrayOutputStream output=new ByteArrayOutputStream();
+		saasRequestInputOutput(input,output);
+		return output;
+	}
+	
+	public void saasRequestInputOutput(String requestCommand,String requestUri, HashMap<String,String> requestHeaders, InputStream contentInput,OutputStream output) throws Exception{
+		ByteArrayOutputStream requestHeaderOutStream=new ByteArrayOutputStream();
+		
+		ByteArrayInputStream requestHeaderInputStream=new ByteArrayInputStream(requestHeaderOutStream.toByteArray());
+		
+		SaasRequestInputStream saasRequestInputStream=new SaasRequestInputStream(new InputStream() {
+			
+			@Override
+			public int read() throws IOException {
+				return 0;
+			}
+			
+			@Override
+			public int read(byte[] b) throws IOException {
+				return super.read(b);
+			}
+			
+			@Override
+			public int read(byte[] b, int off, int len) throws IOException {
+				return super.read(b, off, len);
+			}
+		}, output);
+		saasRequestInputStream.readWriteStreams(8192);
+	}
+	
+	public static String systemRoot(){
+		return Request.class.getProtectionDomain().getCodeSource().getLocation().getPath().substring(1);
+	}
+
+	public void cleanUp() {
+		this._requestHeaders.clear();
+		this._requestHeaders=null;
+		this._responseHeaders.clear();
+		this._responseHeaders=null;
+		
+		if(!_requestParameterFiles.isEmpty()){
+			while(!_requestParameterFiles.isEmpty()){
+				_requestParameterFiles.remove(_requestParameterFiles.keySet().toArray()[0]).delete();
+			}
+		}
+		while(!_requestParameterFiles.isEmpty()){
+			_requestParameterProperties.remove(_requestParameterProperties.keySet().toArray()[0]).clear();
+		}
+		while(!_requestParams.isEmpty()){
+			_requestParams.remove(_requestParams.keySet().toArray()[0]).clear();
+		}
+	}
+}

@@ -1,0 +1,22 @@
+package baasserver.db.system;
+
+import java.util.HashMap;
+
+import baasserver.web.system.WebSystem;
+
+public class DBSystem extends WebSystem {
+	private HashMap<String, DBManager> _dbmanagers=new HashMap<String,DBManager>();
+	
+	public DBManager registerDBManager(String dbmanagername,String[] dbproperties) throws Exception{
+		DBManager registerDBManager=null;
+		synchronized (_dbmanagers) {
+			if(_dbmanagers.containsKey(dbmanagername=dbmanagername.toUpperCase())){
+				registerDBManager=_dbmanagers.get(dbmanagername);
+			}
+			else{
+				registerDBManager=new DBManager(this, dbproperties);
+			}
+		}
+		return registerDBManager;
+	}
+}

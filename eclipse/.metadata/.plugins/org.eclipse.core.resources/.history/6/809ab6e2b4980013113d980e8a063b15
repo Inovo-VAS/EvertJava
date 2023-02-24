@@ -1,0 +1,19 @@
+package baasserver.io.nio;
+
+public class AdvancedClient {
+
+	private ClientConnectorReadWrite _clientConnectorReadWrite=null;
+	public AdvancedClient(String host,int port) throws Exception{
+		Thread clientConnectorReadWriteThead=new Thread(this._clientConnectorReadWrite=new ClientConnectorReadWrite(host, port));
+		clientConnectorReadWriteThead.setDaemon(true);
+		clientConnectorReadWriteThead.start();
+	}
+	
+	public ClientReadInputStream clientReadInputStream(){
+		return this._clientConnectorReadWrite.clientReadInputStream();
+	}
+	
+	public ClientWriteOutputStream clientWriteOutputStream(){
+		return this._clientConnectorReadWrite.clientWriteOutputStream();
+	}
+}

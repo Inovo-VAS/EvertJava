@@ -1,0 +1,195 @@
+package inovo.automated.work;
+
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import inovo.db.Database;
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+
+public class Configuration extends InovoHTMLPageWidget {
+
+	public Configuration(InovoWebWidget parentWidget, InputStream inStream) {
+		super(parentWidget, inStream);
+	}
+
+	
+	@Override
+	public void pageContent() throws Exception {
+		this.action("ADD WORK", "addwork", "", "", "", "", "", "");
+		this.startElement("div", "id=automatedworks".split("[|]"), true);
+		this.automatedWorks();
+		this.endElement("div", true);
+	}
+	
+	public void automatedWorks() throws Exception{
+		this.startTable(null);
+			this.startRow(null);
+				this.startCell("style=vertical-align:top".split("[|]"));
+					this.startTable(null);
+						Database.executeDBRequest(null, "AUTOMATEDWORK", "SELECT ID, NAME FROM <DBUSER>.AUTOMATION" ,null, this,"readAutomatedWorkListData");
+					this.endTable();
+				this.endCell();
+				this.startCell("id=automatedwork|style=vertical-align:top".split("[|]"));
+				this.endCell();
+			this.endRow();	
+		this.endTable();
+	}
+	
+	public void readAutomatedWorkListData(Integer rowIndex,ArrayList<String> rowData,ArrayList<String> rowColumns) throws Exception{
+		if(rowIndex==0) return;
+		this.startRow(null);
+			this.startCell(null);
+				this.action(rowData.get(1), "selectAutomatedWork", "", "", "automatedwork", "", "", "selectedautomatedid="+rowData.get(0));
+			this.endRow();
+		this.endRow();
+	}
+	
+	public void selectAutomatedWork() throws Exception{
+		String AUTOMATEDID=this.requestParameter("SELECTEDAUTOMATEDID");
+		
+		HashMap<String,String> automatedworkProperties=new HashMap<String, String>();
+		this.setRequestParameter("AUTOMATEDID", AUTOMATEDID=(AUTOMATEDID.equals("")?this.requestParameter("AUTOMATEDID"):AUTOMATEDID), true);
+		
+		automatedworkProperties.put("AUTOMATEDID", AUTOMATEDID);
+		automatedworkProperties.put("AUTOMATEDWORKNAME", "");
+		automatedworkProperties.put("AUTOMATEDWORKDESCRIPTION", "");
+		automatedworkProperties.put("AUTOMATEDWORKSTATUS", "");
+		Database.executeDBRequest(null, "AUTOMATEDWORK", "SELECT NAME AS AUTOMATEDWORKNAME,DESCRIPTION AS AUTOMATEDWORKDESCRIPTION,STATUS AS AUTOMATEDWORKSTATUS FROM <DBUSER>.AUTOMATION WHERE ID=:AUTOMATEDID" , automatedworkProperties,null);
+		
+		this.fieldHidden("AUTOMATEDID",this.requestParameter("AUTOMATEDID"));
+		this.startElement("div", "class=ui-widget-header|style=font-size:1.0em".split("[|]"), true);
+			this.startTable(null);
+				this.startRow(null);
+					this.startCell(null);
+						boolean automatedworkstatus=automatedworkProperties.get("AUTOMATEDWORKSTATUS").equals("E"); 
+						if(automatedworkstatus){
+							this.action("DISABLE","disableautomatedwork", "", "","", "", "","");
+						}
+						else if(!automatedworkstatus){
+							this.action("ENABLE","enableautomatedwork", "", "","", "", "","");
+							this.action("UPDATE","updateautomatedwork", "", "","", "", "","");
+						}
+					this.endCell();
+					this.startCell(null);
+						this.respondString(automatedworkProperties.get("AUTOMATEDWORKDESCRIPTION"));
+					this.endCell();
+				this.endRow();
+			this.endTable();
+		this.endElement("div", true);
+		ArrayList<String[]> automatedworktabssettings=new ArrayList<String[]>();
+		automatedworktabssettings.add("caption=SETTINGS|command=automatedworksettings".split("[|]"));
+		automatedworktabssettings.add("caption=STEPS|command=automatedworksteps".split("[|]"));
+		this.actions_tabs(automatedworktabssettings, "automatedworksection", true);
+	}
+	
+	public void automatedworksettings() throws Exception{
+		
+	}
+	
+	public void automatedworksteps() throws Exception{
+		this.action("ADD STEP", "addautomatedworkstep", "", "", "", "", "", "");
+		this.startElement("div", "id=stepsflow".split("[|]"), true);
+			
+		this.endElement("div", true);
+	}
+	
+	HashMap<String,String> _automatedworksteptypes=new HashMap<String, String>();
+	public void addautomatedworkstep() throws Exception{
+		this.showDialog("", "contentid=addautomatedworkstep|title=ADD STEP".split("[|]"));
+		this.replaceComponentContent("addautomatedworkstep");
+		_automatedworksteptypes.clear();
+		Database.executeDBRequest(null, "AUTOMATEDWORK", "SELECT ID,NAME,DESCRITION FROM <DBUSER>.AUTOMATION_STEP_TYPE", null, this,"readAutomatedStepTypes");
+		
+		
+		
+		
+		this.endReplaceComponentContent();
+	}
+	
+	public void readAutomatedStepTypes(Integer rowIndex,ArrayList<String> rowData,ArrayList<String> rowColumns) throws Exception{
+		if(rowIndex==0){
+			this._automatedworksteptypes.clear();
+		}
+		this._automatedworksteptypes.put(rowData.get(0), rowData.get(1)+" ["+rowData.get(2)+"]");
+	}
+	
+	public void disableautomatedwork() throws Exception{
+		Database.executeDBRequest(null, "AUTOMATEDWORK", "UPDATE <DBUSER>.AUTOMATION SET STATUS='D' WHERE ID="+this.requestParameter("AUTOMATEDID"), null, null);
+		
+		this.replaceComponentContent("automatedwork");
+			this.selectAutomatedWork();
+		this.endReplaceComponentContent();
+	}
+	
+	public void enableautomatedwork() throws Exception{
+		Database.executeDBRequest(null, "AUTOMATEDWORK", "UPDATE <DBUSER>.AUTOMATION SET STATUS='E' WHERE ID="+this.requestParameter("AUTOMATEDID"), null, null);
+		
+		this.replaceComponentContent("automatedwork");
+			this.selectAutomatedWork();
+		this.endReplaceComponentContent();
+	}
+	
+	public void addwork() throws Exception{
+		this.showDialog("", "contentid=addworkdialog|title=ADD WORK|BUTTON:CONFIRM=command=confirmaddwork|BUTTON:CANCEL=".split("[|]"));
+		this.replaceComponentContent("addworkdialog");
+			this.startTable(null);
+				this.startRow(null);
+					this.startColumn("font-size:0.8em");
+						this.respondString("NAME");
+					this.endColumn();
+					this.startCell(null);
+						this.fieldInput("NEWWORKNAME", "", "text", true, null);
+					this.endCell();
+				this.endRow();
+				this.startRow(null);
+					this.startColumn("font-size:0.8em");
+						this.respondString("DESCRIPTION");
+					this.endColumn();
+					this.startCell(null);
+						this.fieldInput("NEWWORKDESCRIPTION", "", "text", true, null);
+					this.endCell();
+				this.endRow();
+			this.endTable();
+		this.endReplaceComponentContent();
+	}
+	
+	public void confirmaddwork() throws Exception{
+		ArrayList<String> addworkerrors=new ArrayList<String>();
+		if(this.requestParameter("NEWWORKNAME").equals("")){
+			addworkerrors.add("NO WORK NAME ENTERED");
+		}
+		if(addworkerrors.isEmpty()){
+			HashMap<String,String> addworkparams=new HashMap<String,String>();
+			addworkparams.put("NEWWORKNAME", this.requestParameter("NEWWORKNAME"));
+			addworkparams.put("NEWWORKDESCRIPTION", this.requestParameter("NEWWORKDESCRIPTION"));
+			addworkparams.put("NEWWORKCOUNT", "0");
+			Database.executeDBRequest(null,"AUTOMATEDWORK","SELECT COUNT(*) AS NEWWORKCOUNT FROM <DBUSER>.AUTOMATION WHERE UPPER(NAME) LIKE UPPER(:NEWWORKNAME)",addworkparams,this);
+			if(!addworkparams.get("NEWWORKCOUNT").equals("0")){
+				addworkerrors.add("WORK NAME ["+this.requestParameter("NEWWORKNAME").toUpperCase()+"] ALREADY USED");
+			}
+			else{
+				if(addworkparams.get("NEWWORKDESCRIPTION").equals("")) addworkparams.put("NEWWORKDESCRIPTION", addworkparams.get("NEWWORKNAME"));
+				Database.executeDBRequest(null,"AUTOMATEDWORK","INSERT INTO <DBUSER>.AUTOMATION (NAME,DESCRIPTION) SELECT UPPER(:NEWWORKNAME), UPPER(:NEWWORKDESCRIPTION) WHERE (SELECT COUNT(*) FROM <DBUSER>.AUTOMATION WHERE UPPER(NAME) LIKE UPPER(:NEWWORKNAME))=0",addworkparams,null);
+				this.replaceComponentContent("automatedworks");
+					this.automatedWorks();
+				this.endReplaceComponentContent();
+			}
+		}
+		if(!addworkerrors.isEmpty()){
+			showDialog("", "contentid=addworkerrorsdialog|title=ADD WORK ERRORS".split("[|]"));
+			this.replaceComponentContent("addworkerrorsdialog");
+				this.startTable(null);
+					while(!addworkerrors.isEmpty()){
+						this.startRow(null);
+							this.startCell(null);
+								this.respondString(addworkerrors.remove(0));
+							this.endCell();
+						this.endRow();
+					}
+				this.endTable();
+			this.endReplaceComponentContent();
+		}
+	}
+}

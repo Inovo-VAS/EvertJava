@@ -1,0 +1,9 @@
+<table>
+	<tr>
+		<td style="font-weight:bold">USERNAME</td><td><Username></Username></td>
+	</tr>
+	<tr>
+		<td style="font-weight:bold">PASSWORD</td><td><Password></Password></td>
+	</tr>
+	<tr><td><AccessSystem caption="LOGIN" action=""></AccessSystem></td></tr>
+</table>

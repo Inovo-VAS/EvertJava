@@ -1,0 +1,13 @@
+package baasserver.db.system;
+
+import java.util.HashMap;
+
+import baasserver.web.system.WebSystem;
+
+public class DBSystem extends WebSystem {
+	private HashMap<String, DBManager> _dbmanagers=new HashMap<String,DBManager>();
+	
+	public static DBManager registerDBManager(String dbmanagername,String dbproperties){
+		
+	}
+}

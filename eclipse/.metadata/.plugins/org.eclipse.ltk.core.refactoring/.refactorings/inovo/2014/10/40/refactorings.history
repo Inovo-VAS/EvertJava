@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Copy element &apos;Base64.java&apos; to &apos;paassaas/src/paassaas.io.encdec&apos;&#x0D;&#x0A;- Original project: &apos;inovo&apos;&#x0D;&#x0A;- Destination element: &apos;paassaas/src/paassaas.io.encdec&apos;&#x0D;&#x0A;- Original element: &apos;inovo.adhoc.Base64.java&apos;" description="Copy compilation unit" destination="=paassaas/src&lt;paassaas.io.encdec" element1="/src&lt;inovo.adhoc{Base64.java" files="0" flags="589830" folders="0" id="org.eclipse.jdt.ui.copy" policy="org.eclipse.jdt.ui.copyResources" stamp="1412319466744" units="1" version="1.0"/>
+</session>

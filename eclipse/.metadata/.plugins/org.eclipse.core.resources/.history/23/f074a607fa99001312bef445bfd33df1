@@ -1,0 +1,252 @@
+package baasserver.io.nio.handlers;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.ContentHandler;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import baasserver.io.handler.IOHandler;
+import baasserver.io.nio.ServerReaderInputStream;
+import baasserver.io.nio.ServerReaderWriter;
+import baasserver.io.nio.ServerWriterOutputStream;
+
+public class RequestHandler extends IOHandler {
+
+	private HashMap<String,ArrayList<String>> _reqParams=new HashMap<String,ArrayList<String>>();
+	private HashMap<String,HashMap<String,String>> _reqParamsProperties=new HashMap<String,HashMap<String,String>>();
+	private HashMap<String,String> _reqRequestHeaders=new HashMap<String,String>();
+	private HashMap<String,String> _reqResponseHeaders=new HashMap<String,String>();
+	private HashMap<String,File> _reqParamFiles=new HashMap<String, File>();
+	
+	private int _reqResponseStatus=200;
+	private String _reqResponseStatusMessage="Ok";
+	
+	private String _reqUrl="";
+	private String _reqCommand="";
+	private String _reqProtocol="";
+	
+	public void readInputStream(InputStream inputStream,int readBufferSize) throws Exception{
+		baasserver.io.IOUtils.inputStreamToIOHandler(inputStream, this,readBufferSize);
+		if(this._requestStageAt==RequestEnum.headerNameRequest){
+			this._requestStageAt=RequestEnum.contentRequest;
+			this.performRequest();
+		}
+	}
+	
+	private RequestContentHandler _requestContentHandler=null;
+	
+	@Override
+	public void performRequest() {
+		
+	}
+
+	private ArrayList<byte[]> _requestBytesOutputList=new ArrayList<byte[]>();
+	
+	private byte[] _currentBytesBeingProcessed=null;
+	private int _currentBytesBeingProcessedIndex=0;
+	
+	@Override
+	public void readFromInputStream(byte[] bytesReadFromStream,
+			InputStream input) throws Exception{
+		this.processBytesRead(bytesReadFromStream);
+	}
+
+	private enum RequestEnum{
+		none,
+	    command,
+		url,
+		protocol,
+		headerNameRequest,
+		headerValueRequest,
+		contentRequest,
+		headerNameResponse,
+		headerValueResponse,
+		contentResponse,
+		statusResponse,
+		statusMessageResponse
+	}
+	
+	private RequestEnum _requestStageAt=RequestEnum.none;
+	
+	private String _reqHeaderName="";
+	private String _reqHeaderValue="";
+	private void processBytesRead(byte[] bytesReadFromStream) throws Exception{
+		int bytesReadFromStreamIndex=((_requestStageAt==RequestEnum.command)?bytesReadFromStream.length:0);
+		for(byte br:bytesReadFromStream){
+			bytesReadFromStreamIndex++;
+			switch (_requestStageAt) {
+			case none:
+				 	switch(br){
+				 	case 32:
+				 		_requestStageAt=RequestEnum.url;
+				 		break;
+				 	default:
+				 		this._reqCommand+=(char)br;
+				 	}
+					break;
+			case url:
+					switch(br){
+				 	case 32:
+				 		if(_reqUrl.indexOf("?")>-1){
+							this.processUrlEncodedParams(this._reqUrl.substring(this._reqUrl.indexOf("?")+1).getBytes());
+							this._reqUrl=this._reqUrl.substring(0,this._reqUrl.indexOf("?"));
+						}
+				 		_requestStageAt=RequestEnum.protocol;
+				 		break;
+				 	default:
+				 		this._reqUrl+=(char)br;
+				 	}
+			    	break;
+			case protocol:
+					switch(br){
+					case 13:
+						continue;
+					case 10:
+						_requestStageAt=RequestEnum.headerNameRequest;
+						break;
+					default:
+						this._reqProtocol+=(char)br;
+				 		
+				 	}
+					break;
+			case headerNameRequest:
+					switch(br){
+					case 13:
+						continue;
+					case 58:
+						this._requestStageAt=RequestEnum.headerValueRequest;
+						break;
+					case 10:
+						if(_reqHeaderName.equals("")){
+							this._requestStageAt=RequestEnum.contentResponse;
+						}
+						break;
+					default:
+						this._reqHeaderName+=(char)br;
+				 	}
+			    	break;
+			case headerValueRequest:
+					switch(br){
+					case 13:
+						continue;
+					case 10:
+						this._reqRequestHeaders.put(_reqHeaderName.trim().toUpperCase(), _reqHeaderValue.trim());
+						this._reqHeaderName="";
+						this._reqHeaderValue="";
+						this._requestStageAt=RequestEnum.headerNameRequest;
+						break;
+					default:
+						this._reqHeaderValue+=(char)br;
+				 	}
+		    	break;
+			case contentRequest:
+					byte[] contentBytes=(bytesReadFromStreamIndex==bytesReadFromStream.length?bytesReadFromStream:new byte[bytesReadFromStream.length-bytesReadFromStreamIndex]);
+					if(bytesReadFromStreamIndex<bytesReadFromStream.length){
+						System.arraycopy(bytesReadFromStream, bytesReadFromStreamIndex, contentBytes, 0, contentBytes.length);
+					}
+					this.processContentBytesReceived(contentBytes);
+			    	break;
+			}
+		}
+	}
+	
+	public void processContentBytesReceived(byte[] contentBytes) throws Exception{
+		if((this._requestContentHandler=(this._requestContentHandler==null?(RequestContentHandler)this.requestContentHandlerClass().getConstructor(RequestHandler.class).newInstance(new Object[]{}):this._requestContentHandler)).processContentBytes(contentBytes)){
+			this.processRequest();
+		}
+	}
+	
+	public void processRequest() throws Exception{
+	}
+
+	public Class<?> requestContentHandlerClass(){
+		if(this.reqRequestHeader("CONTENT-DISPOSITION").indexOf("mulitpart/form-data")>-1){
+			return MultiPartContentHandler.class;
+		}
+		return RequestContentHandler.class;
+	}
+	
+	public String reqRequestHeader(String headerName){
+		String headerValue=this._reqRequestHeaders.get(headerName=headerName.toUpperCase());
+		return (headerValue==null?"":headerValue);
+	}
+	
+	public void setReqRequestHeader(String headerName,String headerValue){
+		this._reqRequestHeaders.put(headerName.toUpperCase(), headerValue);
+	}
+	
+	public String reqResponseHeader(String headerName){
+		String headerValue=this._reqResponseHeaders.get(headerName=headerName.toUpperCase());
+		return (headerValue==null?"":headerValue);
+	}
+	
+	public void setReqResponseHeader(String headerName,String headerValue){
+		this._reqResponseHeaders.put(headerName.toUpperCase(), headerValue);
+	}
+
+	@Override
+	public void reset() {
+		this._reqCommand="";
+		this._reqUrl="";
+		this._reqProtocol="";
+		this._reqHeaderName="";
+		this._reqHeaderValue="";
+		this._requestContentHandler=null;
+		this._currentBytesBeingProcessed=null;
+		this._currentBytesBeingProcessedIndex=0;
+		
+		this._reqResponseStatus=0;
+		this._reqResponseStatusMessage="";
+		this._reqRequestHeaders.clear();
+		this._reqResponseHeaders.clear();
+		synchronized (_requestBytesOutputList) {
+			_requestBytesOutputList.clear();
+		}
+	}
+
+	public void processUrlEncodedParams(byte[] bytesUrlEncoded) {
+		for(byte bc:bytesUrlEncoded){
+			char cu=(char)bc;
+			
+		}
+	}
+	
+	@Override
+	public void write(byte[] bytesToWrite) throws Exception {
+		synchronized (_requestBytesOutputList) {
+			_requestBytesOutputList.add(bytesToWrite);
+		}
+	}
+	
+	public boolean requestBytesOutputAvailable(){
+		return !this._requestBytesOutputList.isEmpty();
+	}
+	
+	public void retrieveRequestBytesOutput(ArrayList<byte[]> destinationBytesOutput){
+		if(destinationBytesOutput!=null){
+			synchronized (destinationBytesOutput) {
+				synchronized (_requestBytesOutputList) {
+					if(!_requestBytesOutputList.isEmpty()){
+						destinationBytesOutput.addAll(_requestBytesOutputList);
+						_requestBytesOutputList.clear();
+					}
+				}
+			}
+		}
+	}
+
+	public void flushRequestBytesIntoOutputStream(
+			OutputStream output) throws IOException {
+		synchronized (_requestBytesOutputList) {
+			while(!_requestBytesOutputList.isEmpty()) output.write(_requestBytesOutputList.remove(0));
+		}
+	}
+
+	public void setReqParameterProperty(String _multiPartParamName,
+			String _multiPartHeaderName, String _multiPartHeaderValue) {
+		
+	}
+}

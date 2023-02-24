@@ -1,0 +1,7 @@
+package inovo.monitoring;
+
+import inovo.web.InovoHTMLPageWidget;
+
+public class Utilities extends InovoHTMLPageWidget {
+
+}

@@ -1,0 +1,11 @@
+package baasserver.server;
+
+import baasserver.io.nio.AdvancedServer;
+
+public class Server extends AdvancedServer {
+
+	public Server(int port) throws Exception {
+		super(port);
+	}
+
+}

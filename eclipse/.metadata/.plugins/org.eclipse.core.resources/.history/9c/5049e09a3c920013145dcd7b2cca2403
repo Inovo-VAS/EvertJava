@@ -1,0 +1,206 @@
+package baasserver;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.ClosedChannelException;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
+import java.nio.channels.spi.SelectorProvider;
+import java.util.ArrayList;
+import java.util.Iterator;
+
+import baasserver.protocols.IORequestHandle;
+import baasserver.protocols.InputOutput;
+
+public class ServerSocketHandle implements Runnable,InputOutput {
+
+	private Server _server=null;
+	private SocketChannel _socketChannel=null;
+	private Selector _selHandle=null;
+	private IORequestHandle _requestHandle=null;
+	
+	private ArrayList<byte[]> _bytesArrayToWrite=new ArrayList<byte[]>();
+	public ServerSocketHandle(Server server, SocketChannel channel) throws IOException {
+		synchronized (server) {
+			server.notify();
+		}
+		this._server=server;
+		
+		this._socketChannel=channel;
+		this._socketChannel.configureBlocking(false);
+		this._selHandle=SelectorProvider.provider().openSelector();
+		this.registerRead();
+	}
+	
+	private void registerRead() throws ClosedChannelException {
+		this._socketChannel.register(_selHandle, SelectionKey.OP_READ);		
+	}
+	
+	private void registerWrite() throws ClosedChannelException {
+		this._socketChannel.register(_selHandle, SelectionKey.OP_WRITE);		
+	}
+	
+	private boolean _done=false;
+	
+	@Override
+	public void run() {
+		try {
+			this._requestHandle=this._server.nextIORequestHandle(this);
+		
+			while(!_done){
+				try {
+					while(this._selHandle.select()>0){
+						Iterator<SelectionKey> selKeys=this._selHandle.selectedKeys().iterator();
+						while(selKeys.hasNext()){
+							SelectionKey selKeyRW=selKeys.next();
+							if(selKeyRW.isValid()){
+								if(selKeyRW.isReadable()){
+									this.readFromKey(selKeyRW);
+									if(this._stillNeedToRead){
+										this._stillNeedToRead=false;
+										this.registerRead();
+									}
+									if(!this._bytesArrayToWrite.isEmpty()){
+										this.registerWrite();
+									}
+								}
+								else if(selKeyRW.isWritable()){
+									this.writeToKey(selKeyRW);
+								}
+								else{
+									selKeyRW.cancel();
+								}
+							}
+							selKeys.remove();
+						}
+						if(this._doneWriting){
+							break;
+						}
+						if(_done){
+							break;
+						}
+					}
+				} catch (IOException e) {
+					this._done=true;
+				}
+			}
+		} catch (Exception e1) {
+			e1.printStackTrace();
+		}	
+		this._requestHandle.cleanupRequest();
+		try {
+			this._socketChannel.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		try {
+			this._selHandle.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		if(this._requestHandle.canShutdownAll()){
+			this._server.shutDownAll();
+			this._server.shutdownServer();
+		}
+		else if(this._requestHandle.canShutdownRequestEnvironment()){
+			this._server.shutdownServer();
+		}
+		this._requestHandle=null;
+	}
+
+	private ByteBuffer _byteBufferWR=null;
+	private void writeToKey(SelectionKey selKeyRW) throws IOException {
+		if(_byteBufferWR==null){
+			if(!_bytesArrayToWrite.isEmpty()){
+				byte[]bytesToFlushToReader=_bytesArrayToWrite.remove(0);
+				_byteBufferWR=ByteBuffer.wrap(bytesToFlushToReader);
+				this.writeToKey(selKeyRW);
+			}
+		}
+		else{
+			_socketChannel.write(_byteBufferWR);
+	        if (_byteBufferWR.remaining() > 0) {
+	        	this.registerWrite();
+	        }
+	        else{
+	        	if(!_bytesArrayToWrite.isEmpty()){
+	        		_byteBufferWR.clear();
+	        		_byteBufferWR=null;
+	        		this.registerWrite();
+	        	}
+	        	else{
+	        		this.doneWriting();
+	        	}
+	        }
+		}		
+	}
+
+	private boolean _doneWriting=false;
+	@Override
+	public void doneWriting() {
+		this._done=this._requestHandle.reqDone();
+		this._doneWriting=_done;
+	}
+
+	ArrayList<byte[]> _bytesReadArray=new ArrayList<byte[]>();
+		
+	private void readFromKey(SelectionKey selKeyRW) throws Exception {
+		int byteBufferReadSize=0;
+		ByteBuffer byteBuffer=ByteBuffer.allocate(8912);
+		while((byteBufferReadSize=this._socketChannel.read(byteBuffer))>-1){
+			if(byteBufferReadSize==0){
+				break;
+			}
+			byteBuffer.flip();
+			int remainingSize=0;
+			while((remainingSize=byteBuffer.remaining())>0){
+				byte[] bytesToRead=new byte[remainingSize];
+				byteBuffer.get(bytesToRead,0,bytesToRead.length);
+				_bytesReadArray.add(bytesToRead);
+				System.out.print(new String(bytesToRead));
+			}
+		}
+		if(!_bytesReadArray.isEmpty()){
+			this.bytesArrayRead(_bytesReadArray);
+		}
+		else if(this._bytesReadArray.isEmpty()&&byteBufferReadSize==-1){
+			this.done();
+		}
+	}
+
+	public void bytesArrayRead(ArrayList<byte[]> readBytesArray) throws Exception {
+		this._requestHandle.readBytesArrays(readBytesArray);
+	}
+
+	@Override
+	public void writeBytes(byte[] bytesToWrite) {
+		_bytesArrayToWrite.add(bytesToWrite);
+	}
+
+	private boolean _canWriteBytes=false;
+	@Override
+	public void canWriteBytes() {
+		this._canWriteBytes=true;
+	}
+
+	@Override
+	public void done() {
+		this._done=true;
+	}
+
+	private boolean _stillNeedToRead=false;
+	@Override
+	public void canReadNextBytes() {
+		_stillNeedToRead=true;
+	}
+
+	@Override
+	public void writeBytesAppendTop(byte[] bytesToWrite) {
+		_bytesArrayToWrite.add(0, bytesToWrite);
+	}
+
+	@Override
+	public void readBytes(byte[] bytesToRead) {		
+	}
+}

@@ -1,0 +1,34 @@
+import javax.servlet.ServletContext;
+
+import lancet.leads.automation.SMSExportQueue;
+import inovo.servlet.InovoCoreEnvironmentManager;
+
+
+public class InovoEnvironmentManager extends InovoCoreEnvironmentManager {
+	
+	private SMSExportQueue _smsExportQueue=null;
+	
+	@Override
+	public String defaultLocalPath(String suggestedlocalpath) {
+		return (_currentLocalpath=super.defaultLocalPath(suggestedlocalpath));
+	}
+	
+	@Override
+	public void initializeServletContext(ServletContext sc) {
+		super.initializeServletContext(sc);
+		
+	}
+	
+	@Override
+	public void loadServletConfig(String defaultconfigfilename,
+			boolean updateProperties) throws Exception {
+		super.loadServletConfig(defaultconfigfilename, updateProperties);
+	}
+
+	@Override
+	public void disposeServletContext(ServletContext sc) {
+		super.disposeServletContext(sc);
+	}
+	
+	
+}

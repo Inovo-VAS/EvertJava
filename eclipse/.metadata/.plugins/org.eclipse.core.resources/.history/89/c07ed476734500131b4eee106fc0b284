@@ -1,0 +1,506 @@
+package baasprotocols;
+
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
+import java.net.URLDecoder;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import javax.xml.crypto.dsig.keyinfo.RetrievalMethod;
+
+public class IOMarkupRequestHandle extends IORequestHandle {
+
+	//private static ExecutorService _readBytesContentService=Executors.newCachedThreadPool();
+	
+	//private Object _handleLockReadContent=new Object();
+	//private Object _handleLockProcessContent=new Object();
+	public IOMarkupRequestHandle(IOutput output) {
+		super(output);
+	}
+	
+	private boolean _readCommandLine=false;
+	
+	private int _cmdLineElemCounter=0;
+	private String _reqCommand="";
+	private String _reqUrl="";
+	private int _reqUrlSectionCount=0;
+	private String _reqProtocol="";
+	
+	private String _reqUrlParamName="";
+	private String _reqUrlParamValue="";
+	
+	private boolean _readHeaderLines=false;
+	private String _reqHeaderName="";
+	private String _reqHeaderValue="";
+	private int _reqHeaderLineCount=0;
+	private long _requestContentLength=0;
+	private long _requiredReadContentLength=0;
+	
+	private boolean _contentIsUrlEncoded=false;
+	private boolean _contentIsMultipartData=false;
+	private boolean _allContentReadProcessed=false;
+	@Override
+	public void readBytesArrays(byte[] bytesToRead) throws Exception{
+		if(_readHeaderLines&&_requestContentLength>0){
+			_requestContentLength-=bytesToRead.length;
+			this.readContentBytes(bytesToRead,(_requestContentLength==0));
+			this.processConentRecieved();
+		}
+		else{
+			int btrindex=0;
+			for(byte btr:bytesToRead){
+				btrindex++;
+				if(_readHeaderLines){
+					if(btrindex<=bytesToRead.length){
+						byte[] bytesToReadRemaining=new byte[bytesToRead.length-btrindex+1];
+						System.arraycopy(bytesToRead, btrindex-1,bytesToReadRemaining, 0, bytesToReadRemaining.length);
+						this.readBytesArrays(bytesToReadRemaining);
+					}
+					break;
+				}
+				else if(!_readCommandLine){
+					if(btr==13) continue;
+					if(btr==10){
+						this._cmdLineElemCounter=0;
+						this._reqUrl=URLDecoder.decode(_reqUrl, "UTF-8");
+						if(_reqUrlSectionCount==1&&!_reqUrlParamName.equals("")){
+							_reqUrlParamValue=_reqUrlParamName.substring(_reqUrlParamName.indexOf("=")+1).trim();
+							if(!_reqUrlParamValue.equals("")){
+								_reqUrlParamValue=URLDecoder.decode(_reqUrlParamValue, "UTF-8");
+							}
+							_reqUrlParamName=URLDecoder.decode(_reqUrlParamName.substring(0,_reqUrlParamName.indexOf("=")).trim(), "UTF-8");
+							
+							this.setReqParameter(_reqUrlParamName, _reqUrlParamValue);
+							_reqUrlParamName="";
+							_reqUrlParamValue="";
+						}
+						this._readCommandLine=true;
+					}
+					else if(btr==' '){
+						_cmdLineElemCounter++;
+					}
+					else{
+						switch(_cmdLineElemCounter){
+						case 0: _reqCommand+=((char)btr+"");break;
+						case 1: 
+							if(_reqUrlSectionCount==0){
+								if((char)btr=='?'){
+									_reqUrlSectionCount++;
+								}
+								else{
+									_reqUrl+=((char)btr+"");
+								}
+							}
+							else if(_reqUrlSectionCount==1){
+								if((char)btr=='&'){
+									if(_reqUrlParamName.indexOf("=")>-1){
+										_reqUrlParamValue=_reqUrlParamName.substring(_reqUrlParamName.indexOf("=")+1).trim();
+										if(!_reqUrlParamValue.equals("")){
+											_reqUrlParamValue=URLDecoder.decode(_reqUrlParamValue, "UTF-8");
+										}
+										_reqUrlParamName=URLDecoder.decode(_reqUrlParamName.substring(0,_reqUrlParamName.indexOf("=")).trim(), "UTF-8");
+										this.setReqParameter(_reqUrlParamName, _reqUrlParamValue);
+										_reqUrlParamName="";
+										_reqUrlParamValue="";
+									}
+								}
+								else{
+									_reqUrlParamName+=(char)btr;
+								}
+							}
+							break;
+						case 2: _reqProtocol+=((char)btr+"");break;
+						}
+					}
+				}
+				else if(!this._readHeaderLines){
+					if(btr==13){
+						continue;
+					}
+					else if(btr==10){
+						if(!(this._readHeaderLines=_reqHeaderName.equals(""))){
+							this._reqHeaderValue=this._reqHeaderName.substring(this._reqHeaderName.indexOf(":")+1).trim();
+							this._reqHeaderName=this._reqHeaderName.substring(0,this._reqHeaderName.indexOf(":")).toUpperCase().trim();
+							this.setRequestHeader(_reqHeaderName, _reqHeaderValue);
+							if(this._reqHeaderName.equals("CONTENT-LENGTH")){
+								this._allContentReadProcessed=((_requiredReadContentLength=(this._requestContentLength=Long.parseLong(_reqHeaderValue)))==0);
+							}
+							this._reqHeaderName="";
+							this._reqHeaderValue="";
+						}
+						else{
+							if(_requiredReadContentLength==0){
+								_allContentReadProcessed=true;
+							}
+							else if(!this._allContentReadProcessed){
+								this._contentIsUrlEncoded=(this.requestHeader("CONTENT-TYPE").indexOf("www-form-urlencoded")>-1);
+								this._contentIsMultipartData=(this.requestHeader("CONTENT-TYPE").indexOf("multipart/form-data")>-1);
+								//_readBytesContentService.execute(this);
+							}	
+							continue;
+						}					
+					}
+					else{
+						this._reqHeaderName+=((char)btr+"");
+					}				
+				}
+			}
+		}
+		if(_requestContentLength==0){
+			if(!_allContentReadProcessed){
+				this.processConentRecieved();
+			}
+			this.performHandle();
+			this.preProcessResponseHeaders();
+		}
+		else{
+			this.readNextBytes();
+		}
+	}
+	
+	private long _totalContentBytesArrayCount=0;
+	private byte[] _currentContentBytesToProcess=null;
+	
+	public void processConentRecieved() throws Exception{
+		ArrayList<byte[]> contentBytesReadArray=new ArrayList<byte[]>();
+		synchronized (_contentBytesReadArray) {
+			while(!_contentBytesReadArray.isEmpty()) contentBytesReadArray.add(_contentBytesReadArray.remove(0));
+		}
+		
+		while(!contentBytesReadArray.isEmpty()){
+			_totalContentBytesArrayCount+=(_currentContentBytesToProcess=contentBytesReadArray.remove(0)).length;
+			this.processContentBytes(_currentContentBytesToProcess,(_totalContentBytesArrayCount==_requiredReadContentLength));
+		}			
+		_allContentReadProcessed=(_totalContentBytesArrayCount==_requiredReadContentLength);
+		
+	}
+
+	private void processContentBytes(byte[] currentContentBytesToProcess,boolean lastBytesToProcess) throws Exception{
+		if(_contentIsMultipartData){
+			this.processMultipartDataContentBytes(currentContentBytesToProcess, lastBytesToProcess);
+		}
+		else if(this._contentIsUrlEncoded){
+			this.processUrlEncodedContentBytes(currentContentBytesToProcess, lastBytesToProcess);
+		}
+		else{
+			this.processCustomContentBytes(currentContentBytesToProcess, lastBytesToProcess);
+		}
+	}
+	
+	public void processCustomContentBytes(byte[] currentContentBytesToProcess,boolean lastBytesToProcess){
+		
+	}
+	
+	public void processUrlEncodedContentBytes(byte[] currentContentBytesToProcess,boolean lastBytesToProcess) throws Exception{
+		for(byte bc:currentContentBytesToProcess){
+			if((char)bc=='&'){
+				if(_reqUrlParamName.indexOf("=")>-1){
+					_reqUrlParamValue=_reqUrlParamName.substring(_reqUrlParamName.indexOf("=")+1).trim();
+					if(!_reqUrlParamValue.equals("")){
+						_reqUrlParamValue=URLDecoder.decode(_reqUrlParamValue, "UTF-8");
+					}
+					_reqUrlParamName=URLDecoder.decode(_reqUrlParamName.substring(0,_reqUrlParamName.indexOf("=")).trim(), "UTF-8");
+					this.setReqParameter(_reqUrlParamName, _reqUrlParamValue);
+					_reqUrlParamName="";
+					_reqUrlParamValue="";
+				}
+			}
+			else{
+				_reqUrlParamName+=(char)bc;
+			}
+		}
+		if(lastBytesToProcess){
+			if(!_reqUrlParamName.equals("")){
+				_reqUrlParamValue=_reqUrlParamName.substring(_reqUrlParamName.indexOf("=")+1).trim();
+				if(!_reqUrlParamValue.equals("")){
+					_reqUrlParamValue=URLDecoder.decode(_reqUrlParamValue, "UTF-8");
+				}
+				_reqUrlParamName=URLDecoder.decode(_reqUrlParamName.substring(0,_reqUrlParamName.indexOf("=")).trim(), "UTF-8");
+				this.setReqParameter(_reqUrlParamName, _reqUrlParamValue);
+				_reqUrlParamName="";
+				_reqUrlParamValue="";
+			}
+		}
+	}
+	
+	private byte[] _multiPartBoundary=new byte[0];
+	private int _multiPartBoundaryIndex=0;
+	private boolean _readMPartBoundary=false;
+	private boolean _foundMPartBoundary=false;
+	
+	private boolean _readMPartHeaders=false;
+	private String _mPartHeaderLine="";
+	private boolean _readMPartContent=false;
+	private byte[] _contentBufferBytes=new byte[8912];
+	private int _contentBufferIndex=0;
+	private int _countMPartEnd=0;
+	private int _nLineCount=0;
+	
+	private HashMap<String,String> _mMartHeaderProperties=new HashMap<String,String>();
+	
+	public void processMultipartDataContentBytes(byte[] currentContentBytesToProcess,boolean lastBytesToProcess){
+		if(!_readMPartBoundary){
+			int contentBytesCount=0;
+			for(byte bc:currentContentBytesToProcess){
+				if(bc==13){contentBytesCount++; continue;}
+				if(bc==10){
+					contentBytesCount++;
+					_nLineCount++;
+					if(_contentBufferIndex>0){
+						byte[] mPartBoundary=new byte[_contentBufferIndex+2];
+						mPartBoundary[0]=(byte)13;
+						mPartBoundary[1]=(byte)10;
+						System.arraycopy(_contentBufferBytes, 0, mPartBoundary, 2, _contentBufferIndex);
+						_multiPartBoundary=null;
+						_multiPartBoundary=new byte[mPartBoundary.length];
+						System.arraycopy(mPartBoundary, 0, _multiPartBoundary, 0, _multiPartBoundary.length);
+						_contentBufferIndex=0;
+					}
+				
+					_readMPartBoundary=true;
+					_readMPartHeaders=true;
+					_nLineCount=0;
+					if(contentBytesCount<currentContentBytesToProcess.length){
+						byte[] nextcurrentContentBytesToProcess=new byte[currentContentBytesToProcess.length-contentBytesCount];
+						System.arraycopy(currentContentBytesToProcess, contentBytesCount, nextcurrentContentBytesToProcess, 0, nextcurrentContentBytesToProcess.length);
+						this.processMultipartDataContentBytes(nextcurrentContentBytesToProcess, lastBytesToProcess);
+						break;
+					}
+				}
+				else{
+					contentBytesCount++;
+					_contentBufferBytes[_contentBufferIndex++]=bc;
+				}
+			}
+		}
+		else if(_foundMPartBoundary){
+			this.setReqParameter(this._mMartHeaderProperties.get("NAME"), "");
+			this._mMartHeaderProperties.clear();
+			_foundMPartBoundary=false;
+			_readMPartContent=false;
+			_readMPartHeaders=true;
+			
+			int contentBytesCount=0;
+			for(byte bc:currentContentBytesToProcess){
+				contentBytesCount++;
+				if(bc==13) continue;
+				if(bc==10){
+					if(contentBytesCount<currentContentBytesToProcess.length){
+						byte[] nextcurrentContentBytesToProcess=new byte[currentContentBytesToProcess.length-contentBytesCount];
+						System.arraycopy(currentContentBytesToProcess, contentBytesCount, nextcurrentContentBytesToProcess, 0, nextcurrentContentBytesToProcess.length);
+						this.processMultipartDataContentBytes(nextcurrentContentBytesToProcess, lastBytesToProcess);
+						break;
+					}
+				}
+				else if(bc==45){
+					_countMPartEnd++;
+					if(_countMPartEnd==2){
+						_allContentReadProcessed=true;
+						break;
+					}
+				}
+			}
+		}
+		else if(_readMPartBoundary){
+			if(!_foundMPartBoundary){
+				if(_readMPartContent){
+					int contentBytesCount=0;
+					for(byte bc:currentContentBytesToProcess){
+						contentBytesCount++;
+						if(bc==_multiPartBoundary[_multiPartBoundaryIndex]){
+							_multiPartBoundaryIndex++;
+							if((_multiPartBoundaryIndex)==_multiPartBoundary.length){
+								if(_contentBufferIndex>0){
+									
+									//
+									_contentBufferIndex=0;
+								}
+								
+								_multiPartBoundaryIndex=0;
+								_foundMPartBoundary=true;
+								if(contentBytesCount<currentContentBytesToProcess.length){
+									byte[] nextcurrentContentBytesToProcess=new byte[currentContentBytesToProcess.length-contentBytesCount];
+									System.arraycopy(currentContentBytesToProcess, contentBytesCount, nextcurrentContentBytesToProcess, 0, nextcurrentContentBytesToProcess.length);
+									this.processMultipartDataContentBytes(nextcurrentContentBytesToProcess, lastBytesToProcess);
+									break;
+								}
+							}
+							continue;
+						}
+						
+						if(_multiPartBoundaryIndex>0){
+							int mPartBounderyIndex=0;
+							while(mPartBounderyIndex<_multiPartBoundaryIndex){
+								_contentBufferBytes[_contentBufferIndex++]=_multiPartBoundary[mPartBounderyIndex++];
+								if(_contentBufferIndex==8912){
+									//
+									_contentBufferIndex=0;
+								}
+							}
+							_multiPartBoundaryIndex=0;
+						}
+						_contentBufferBytes[_contentBufferIndex++]=bc;
+						if(_contentBufferIndex==8912){
+							//
+							_contentBufferIndex=0;
+						}
+					
+						
+					}
+					contentBytesCount=0;
+				}
+				else if(_readMPartHeaders){
+					int contentBytesCount=0;
+					for(byte bc:currentContentBytesToProcess){
+						if(bc==13){
+							contentBytesCount++;
+							continue;
+						}
+						else if(bc==10){
+							contentBytesCount++;
+							if(!this._mPartHeaderLine.equals("")){
+								String mPartHName="";
+								String mPartHValue="";
+								if(this._mPartHeaderLine.indexOf(":")>-1){
+									mPartHName=this._mPartHeaderLine.substring(0,this._mPartHeaderLine.indexOf(":")).trim().toUpperCase();
+									mPartHValue=this._mPartHeaderLine.substring(this._mPartHeaderLine.indexOf(":")+1).trim();
+									if(mPartHName.equals("CONTENT-DISPOSITION")){
+										for(String mPartHNameSection:mPartHValue.split(";")){
+											if(mPartHNameSection.equals("form-data")) continue;
+											mPartHName=mPartHNameSection.substring(0,mPartHNameSection.indexOf("=")).trim().toUpperCase();
+											mPartHValue=mPartHNameSection.substring(mPartHNameSection.indexOf("=")+1).trim();
+											while(mPartHValue.startsWith("\"")&&mPartHValue.endsWith("\"")){
+												mPartHValue=mPartHValue.substring(1,mPartHValue.length()-1);
+											}
+											this._mMartHeaderProperties.put(mPartHName, (mPartHName.equals("NAME")? mPartHValue.toUpperCase():mPartHValue));
+										}
+									}
+									else{
+										this._mMartHeaderProperties.put(mPartHName,mPartHValue);
+									}
+								}
+							}
+							else{
+								this._readMPartContent=true;
+								if(contentBytesCount<currentContentBytesToProcess.length){
+									byte[] nextcurrentContentBytesToProcess=new byte[currentContentBytesToProcess.length-contentBytesCount];
+									System.arraycopy(currentContentBytesToProcess, contentBytesCount, nextcurrentContentBytesToProcess, 0, nextcurrentContentBytesToProcess.length);
+									this.processMultipartDataContentBytes(nextcurrentContentBytesToProcess, lastBytesToProcess);
+									break;
+								}
+							}
+							this._mPartHeaderLine="";
+						}
+						else{
+							contentBytesCount++;
+							this._mPartHeaderLine+=((char)bc+"");
+						}
+					}
+				}
+			}
+		}
+	}
+	
+
+	@Override
+	public void performHandle() throws Exception{
+		this.setMarkupRequestContentTypeResponse(this._reqUrl);
+		if(this._reqUrl.lastIndexOf(".")>-1){
+			InputStream bytesIn=(InputStream) this.getClass().getResourceAsStream(this._reqUrl);
+			if(bytesIn!=null){				
+				int bytesAvailable=0;
+				byte[] bytesOutRead=new byte[8912];
+				
+				while((bytesAvailable=bytesIn.read(bytesOutRead))>-1){
+					if(bytesAvailable>0){
+						byte[] bytesToWrite=new byte[bytesAvailable];
+						System.arraycopy(bytesOutRead, 0, bytesToWrite, 0, bytesAvailable);
+						this.writeBytes(bytesToWrite);
+					}
+				}
+			}
+		}
+		else{
+			super.performHandle();
+		}
+	}
+	
+	private void setMarkupRequestContentTypeResponse(String reqUrl) {
+		if(reqUrl.toLowerCase().endsWith(".js")){
+			this.setResponseHeader("CONTENT-TYPE", "text/javascript");
+		}
+		else if(reqUrl.toLowerCase().endsWith(".htm")||reqUrl.toLowerCase().endsWith(".html")){
+			this.setResponseHeader("CONTENT-TYPE", "text/html");
+		}
+		else if(reqUrl.toLowerCase().endsWith(".xml")){
+			this.setResponseHeader("CONTENT-TYPE", "text/xml");
+		}
+		else if(reqUrl.toLowerCase().endsWith(".gif")){
+			this.setResponseHeader("CONTENT-TYPE", "image/GIF");
+		}
+		else if(reqUrl.toLowerCase().endsWith(".png")){
+			this.setResponseHeader("CONTENT-TYPE", "image/PNG");
+		}
+		else if(reqUrl.toLowerCase().endsWith(".jpg")||reqUrl.endsWith(".jpeg")){
+			this.setResponseHeader("CONTENT-TYPE", "image/JPEG");
+		}
+		else{
+			this.setResponseHeader("CONTENT-TYPE", "text/plain");
+		}
+	}
+
+	public void preProcessResponseHeaders() {
+		if(this.responseHeader("CONTENT-TYPE").equals("")){
+			this.setResponseHeader("CONTENT-TYPE","text/plain");
+		}
+		this.setResponseHeader("CONTENT-LENGTH", String.valueOf(this._responseContentLength));
+		this.writeBytes("\r\n".getBytes(), true);
+		super.preProcessResponseHeaders();
+	}
+	
+	private long _responseContentLength=0;
+	public void writeBytes(byte[] bytesToWrite, boolean preAppend) {
+		_responseContentLength+=bytesToWrite.length;
+		super.writeBytes(bytesToWrite, preAppend);
+	}
+
+	ArrayList<byte[]> _contentBytesReadArray=new ArrayList<byte[]>();
+	private long _contentBytesReadArrayCount=0;
+	public void readContentBytes(byte[] bytesToRead,boolean lastBytesRead) {
+		synchronized (_contentBytesReadArray) {
+			_contentBytesReadArray.add(bytesToRead);
+			_contentBytesReadArrayCount++;
+		}
+		if(_contentBytesReadArrayCount%1024==0){
+			_contentBytesReadArrayCount=0;
+			try {
+				Thread.sleep(100);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+	}
+
+	@Override
+	public String reqCommand() {
+		return this._reqCommand;
+	}
+	
+	@Override
+	public String reqURL() {
+		return this._reqUrl;
+	}
+	
+	@Override
+	public String reqProtocol() {
+		return this._reqProtocol;
+	}
+	
+	@Override
+	public boolean reqDone() {
+		return true;
+	}
+}

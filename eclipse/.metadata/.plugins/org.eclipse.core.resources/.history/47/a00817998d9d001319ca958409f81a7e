@@ -1,0 +1,311 @@
+package baasserver.reflection;
+
+import java.io.File;
+import java.io.FilenameFilter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+
+public class REFUtils {
+	
+	private static JarFileLoader _jarFilesLoader=new JarFileLoader();
+	
+	public static HashMap<String,ArrayList<String>> _jarPackagePathRoots=new HashMap<String,ArrayList<String>>();
+	
+	public static HashMap<String,ArrayList<String>> _rootPackagePathRoots=new HashMap<String,ArrayList<String>>();
+	
+	public static void loadJarPackagesIntoRootPaths(File jarFileToLoad) throws Exception{
+		String jarFilePath=jarFileToLoad.getAbsolutePath().replaceAll("[\\\\]", "/");
+		_jarFilesLoader.addFile(jarFilePath);
+		
+		JarFile jarFile=new JarFile(jarFilePath);
+		
+		boolean isBaasServerJar=jarFilePath.contains("baasserver.jar");
+		boolean canAddJarEntry=false;
+		debug("loadJarPackagesIntoRootPaths("+jarFileToLoad.getName()+")");
+		
+		Enumeration<JarEntry> jarFileEntries= jarFile.entries();
+		while(jarFileEntries.hasMoreElements()){
+			JarEntry jarEntry=jarFileEntries.nextElement();
+			if(jarEntry.getName().equals(".project")||jarEntry.getName().endsWith("/MANIFEST.MF")||jarEntry.getName().equals(".classpath")) continue;
+			String jarEntryName=jarEntry.getName();
+			String jarEntryPath="/"+(jarEntryName.indexOf("/")==-1?"":jarEntryName.substring(0,jarEntryName.lastIndexOf("/")));
+			jarEntryName=(jarEntryName.indexOf("/")==-1?jarEntryName:jarEntryName.substring(jarEntryName.lastIndexOf("/")+1));
+			
+			if(isBaasServerJar){
+				canAddJarEntry=jarEntryPath.contains("baasserver");
+			}
+			else{
+				canAddJarEntry=true;
+			}
+			
+			if(canAddJarEntry){
+				ArrayList<String> jarEntryPathMap=_jarPackagePathRoots.get(jarEntryPath);
+				debug("("+jarEntryPath+")");
+				if(jarEntryPathMap==null){
+					_jarPackagePathRoots.put(jarEntryPath, (jarEntryPathMap=new ArrayList<String>()));
+				}
+				if(jarEntryPathMap.indexOf(jarEntryName)==-1){
+					jarEntryPathMap.add(jarEntryName);
+					debug("["+jarEntryName+"]");
+				}
+			}
+			jarEntryName="";
+		}
+		jarFile.close();
+		debug("loadJarPackagesIntoRootPaths("+jarFileToLoad.getName()+")[COMPLETED]");
+	}
+	
+	public static void loadJarPackagesFromPath(String pathToLoad) throws Exception{
+		while(pathToLoad.startsWith("/")) pathToLoad=pathToLoad.substring(1);
+		File pathLoading=new File(pathToLoad);
+		if(pathLoading.isDirectory()){
+			File[] jarFilesFound=pathLoading.listFiles(new FilenameFilter(){
+				@Override
+				public boolean accept(File dir, String name) {
+					return (name.endsWith(".jar")&&!name.contains("baasserver"));
+				}
+			});
+			if(jarFilesFound!=null){
+				for(File jarFile:jarFilesFound){
+					baasserver.reflection.REFUtils.loadJarPackagesIntoRootPaths(jarFile);
+				}
+			}
+		}
+	}
+	
+	public static void loadJarPackagesFromPaths(String[] pathsToLoad) throws Exception{
+		if(pathsToLoad!=null){
+			for(String pathToLoad:pathsToLoad){
+				loadJarPackagesFromPath(pathToLoad);
+			}
+		}
+	}
+	
+	public static InputStream getResourceAsStream(String resourcePath){
+		ArrayList<String> possibleClassesList=new ArrayList<String>();
+		ArrayList<String> listedElements=resourceList((resourcePath.indexOf("/")>-1?resourcePath.substring(0,resourcePath.lastIndexOf("/")):resourcePath),possibleClassesList,false);
+		if(!listedElements.isEmpty()){
+			if(possibleClassesList.indexOf(resourcePath.substring(resourcePath.lastIndexOf("/")+1).toLowerCase())>-1){
+				resourcePath=resourcePath.substring(0,resourcePath.lastIndexOf("/"))+"/"+listedElements.get(possibleClassesList.indexOf(resourcePath.substring(resourcePath.lastIndexOf("/")+1).toLowerCase()));
+			}
+			else if(possibleClassesList.indexOf("root://"+resourcePath.substring(resourcePath.lastIndexOf("/")+1).toLowerCase())>-1){
+				resourcePath=resourcePath.substring(0,resourcePath.lastIndexOf("/"))+"/"+listedElements.get(possibleClassesList.indexOf(resourcePath.substring(resourcePath.lastIndexOf("/")+1).toLowerCase()));
+			}
+		}
+		while(resourcePath.startsWith("/")) resourcePath=resourcePath.substring(1);
+		if(!resourcePath.equals("")) while(!resourcePath.startsWith("/")) resourcePath="/"+resourcePath;
+		debug("getResourceAsStream(resourcePath="+resourcePath+")");
+		InputStream resourceStream=REFUtils.class.getResourceAsStream(resourcePath);
+		if(resourceStream==null){
+			synchronized (_jarFilesLoader) {
+				resourceStream=_jarFilesLoader.getResourceAsStream(resourcePath.substring(1));
+			}
+			if(resourceStream!=null) debug("getResourceAsStream(resourcePath="+resourcePath+") : JAR RESOURCE :- "+resourcePath);
+		}
+		debug("getResourceAsStream(resourcePath="+resourcePath+") : "+(resourceStream==null?"EMPTY RESOURCE":"FOUND RESOURCE"));
+		return resourceStream;
+	}
+	
+	public static Class<?> findClass(String classPath,boolean caseSensitive) throws Exception{
+		debug("findClass(className="+classPath+")");
+		
+		String className=(classPath.indexOf(".")>-1?classPath.substring(classPath.lastIndexOf(".")+1):classPath);
+		
+		classPath=(classPath.indexOf(".")>-1?classPath.substring(0,classPath.lastIndexOf(".")):"");
+		
+		
+		return findClass(classPath, className, caseSensitive);
+	}
+	
+	public static Class<?> findClass(String classPath,String className,boolean caseSensitive) throws Exception{
+
+		if(classPath.indexOf(".")>-1){
+			classPath=(classPath.equals("")?"":classPath.replaceAll("[.]", "/"));
+		}
+		
+		while(classPath.startsWith("/")) classPath=classPath.substring(1);
+		classPath="/"+classPath;
+		debug("findClass(classPath="+classPath+",className="+className+")");
+		
+		Class<?> classFound=null;
+		
+		ArrayList<String> possibleClassesList=new ArrayList<String>();
+		ArrayList<String> listedElements=resourceList(classPath,possibleClassesList,caseSensitive);
+		boolean lookupInjars=_jarPackagePathRoots.containsKey(classPath);
+		boolean lookupInRoots=_rootPackagePathRoots.containsKey("root://"+classPath);
+		
+		if(possibleClassesList.indexOf((caseSensitive?className:className.toLowerCase())+".class")>-1){
+			className=listedElements.get(possibleClassesList.indexOf((caseSensitive?className: className.toLowerCase())+".class"));
+			className=className.substring(0,className.indexOf("."));
+			classPath=classPath.replaceAll("[//]", ".");
+			classPath=(classPath.startsWith(".")?classPath.substring(1):classPath.equals("")?"":classPath);
+			if(lookupInjars){
+				classFound=_jarFilesLoader.loadClass((classPath.equals("")?"":classPath+"."+className));
+			}
+			else{
+				classFound=Class.forName((classPath.equals("")?"":classPath+".")+className);
+			}
+		}
+		possibleClassesList.clear();
+		possibleClassesList=null;
+		debug("findClass(classPath="+classPath+",className="+className+") - "+(classFound==null?"NO CLASS FOUND":"FOUND CLASS"));
+		return classFound;
+	}
+	
+	public static ArrayList<String> resourceList(String resourcesLookupPath,ArrayList<String> universalResourceList,boolean caseSensitive){
+		resourcesLookupPath=resourcesLookupPath.replaceAll("[.]", "/");
+		resourcesLookupPath=(resourcesLookupPath.startsWith("/")?resourcesLookupPath:resourcesLookupPath.equals("")?"":"/"+resourcesLookupPath);
+		
+		debug("resourceList(resourcesLookupPath="+resourcesLookupPath+")");
+		
+		ArrayList<String> resourcesesList=new ArrayList<String>();
+		debug("TRY FINDING IN CURRENT ["+resourcesLookupPath+"]");
+		InputStream resourceInputStream=null;
+		//synchronized (_jarFilesLoader) {
+		//	resourceInputStream = _jarFilesLoader.getClass().getResourceAsStream(resourcesLookupPath);
+		//}
+		if(resourceInputStream==null){
+			debug("TRY FINDING IN JARs ["+resourcesLookupPath+"]");
+			 try {
+				if(_jarPackagePathRoots.containsKey(resourcesLookupPath)){
+					for(String resourcesesString:_jarPackagePathRoots.get(resourcesLookupPath)){
+						resourcesesList.add(resourcesesString);
+						if(universalResourceList!=null) universalResourceList.add((caseSensitive?resourcesesString:resourcesesString.toLowerCase()));
+					}
+					if(!resourcesesList.isEmpty()) debug("FOUND IN JARs ["+resourcesLookupPath+"]");
+				}
+				else{
+					if(resourceInputStream==null){
+						debug("TRY FINDING IN ROOTs ["+resourcesLookupPath+"]");
+						 try {
+							if(_rootPackagePathRoots.containsKey("root://"+resourcesLookupPath)){
+								for(String resourcesesString:_rootPackagePathRoots.get("root://"+resourcesLookupPath)){
+									resourcesesList.add(resourcesesString);
+									if(universalResourceList!=null) universalResourceList.add((caseSensitive?resourcesesString:resourcesesString.toLowerCase()));
+								}
+								if(!universalResourceList.isEmpty())	debug("FOUND IN ROOTs ["+resourcesLookupPath+"]");
+							}
+							else{
+								resourceInputStream=_jarFilesLoader.getClass().getResourceAsStream(resourcesLookupPath.startsWith("/")?resourcesLookupPath.substring(1):resourcesLookupPath);
+							}
+						} catch (Exception e) {
+							debug("<ERROR>"+e.getMessage());
+							e.printStackTrace();
+						}
+					}
+				}
+			} catch (Exception e) {
+				debug("<ERROR>"+e.getMessage());
+				e.printStackTrace();
+			}
+		}
+		
+		
+		
+		if(resourceInputStream!=null){
+			String resourcesesString="";
+			byte[] bytesResourceOut=new byte[8912];
+			
+			int bytesResourceCount=0;
+			try {
+				while((bytesResourceCount=resourceInputStream.read(bytesResourceOut,0,bytesResourceOut.length))>-1){
+					if(bytesResourceCount>0){
+						int bytesResourceIndex=0;
+						
+						while(bytesResourceIndex<bytesResourceCount){
+							byte bnext=bytesResourceOut[bytesResourceIndex++];
+							if(bnext==13) continue;
+							if(bnext==10){
+								resourcesesList.add(resourcesesString);
+								if(universalResourceList!=null) universalResourceList.add((caseSensitive?resourcesesString:resourcesesString.toLowerCase()));
+								resourcesesString="";
+							}
+							else{
+								resourcesesString+=((char)bnext);
+							}
+						}
+					}
+				}
+			} catch (IOException e) {
+				debug("<ERROR>"+e.getMessage());
+				e.printStackTrace();
+			}
+		}
+		else if(resourceInputStream==null&&resourcesesList.isEmpty()){
+			debug("WARNING ["+resourcesLookupPath+"] - NO RESOURCES FOUND");
+		}
+		else if(!resourcesesList.isEmpty()){
+			debug("FOUND RESOURCES ["+resourcesLookupPath+"]");
+		}
+		return resourcesesList;
+	}
+
+	public static Method findMethod(String methodName, Class<?> classOwner, Class<?>[] paramTypes,boolean igNoreParamTypesTest) {
+		paramTypes=(paramTypes==null?new Class<?>[0]:paramTypes);
+		methodName=methodName.toLowerCase();
+		Method methods[]=classOwner.getMethods();
+		Method methodFound=null;
+		for(Method methodToCheck:methods){
+			String methodNameToCheck=methodToCheck.getName();
+			if(methodNameToCheck.toLowerCase().equals(methodName)){
+				if(igNoreParamTypesTest){
+					methodFound=methodToCheck;
+					break;
+				}
+				else{
+					Class<?>[] methodParamTypes=methodToCheck.getParameterTypes();
+					boolean validParamType=(methodParamTypes.length==paramTypes.length);
+					if(validParamType){
+						int paramTypeLength=methodParamTypes.length;
+						while(paramTypeLength>0){
+							paramTypeLength--;
+							if(!(validParamType=(methodParamTypes[paramTypeLength]==paramTypes[paramTypeLength]))){
+								if(methodNameToCheck.equals("equals")){
+									if(!(validParamType=(methodParamTypes[paramTypeLength]==Object.class))){
+										break;
+									}
+								}
+								else{
+									break;
+								}
+							}
+						}
+						if(validParamType){
+							methodFound=methodToCheck;
+							break;
+						}
+					}
+				}
+			}
+		}
+		return methodFound;
+	}
+	
+	public static Class<?>[] methodParameterTypes(Method method){
+		return method.getParameterTypes();
+	}
+
+	public static String formatClassName(String classname) {
+		return (classname.indexOf("@")>-1?classname.substring(0,classname.indexOf("@")):classname);
+	}
+	
+	public static void debug(String debugMessage){
+		baasserver.io.Logger.debug(baasserver.reflection.REFUtils.formatClassName(REFUtils.class.getName())+":"+debugMessage);
+	}
+
+	public static void loadRootResourceEntryPath(String rootresourcepathentry) {
+		String rootresourcepath="/"+(rootresourcepathentry.indexOf("/")>-1?rootresourcepathentry.substring(0,rootresourcepathentry.lastIndexOf("/")):""); //com/mchange/v1/util/WrapperUIterator.class
+		String rootresource=rootresourcepathentry.indexOf("/")>-1?rootresourcepathentry.substring(rootresourcepathentry.lastIndexOf("/")+1):rootresourcepathentry;
+		ArrayList<String> rootResourcePathEntries=_rootPackagePathRoots.get("root://"+rootresourcepath);
+		if(rootResourcePathEntries==null){
+			_rootPackagePathRoots.put("root://"+rootresourcepath, (rootResourcePathEntries=new ArrayList<String>()));
+		}
+		rootResourcePathEntries.add(rootresource);				
+	}
+}

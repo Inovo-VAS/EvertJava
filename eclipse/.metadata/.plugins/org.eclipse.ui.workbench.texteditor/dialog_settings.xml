@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<section name="Workbench">
+	<section name="org.eclipse.ui.texteditor.FindReplaceDialog">
+		<item key="isRegEx" value="false"/>
+		<item key="selection" value="importLockUnlockFile("/>
+		<item key="casesensitive" value="true"/>
+		<item key="incremental" value="true"/>
+		<item key="wrap" value="true"/>
+		<item key="wholeword" value="false"/>
+		<list key="findhistory">
+			<item value="importLockUnlockFile("/>
+			<item value="FileLockUnlock("/>
+			<item value="FileLockUnlock"/>
+			<item value="sep"/>
+			<item value="&quot;sep&quot;"/>
+			<item value="accountst"/>
+			<item value="listeningPath"/>
+			<item value="rowOutputMethod"/>
+			<item value=",REMOTEHOST"/>
+			<item value="QA_GROUP_ID"/>
+			<item value="url"/>
+			<item value="dialog"/>
+			<item value="COLLECTIONS.POPUPSETTINGS"/>
+			<item value="LOCK/UNLOCK "/>
+			<item value="LOCK/UNLOCK ACC"/>
+		</list>
+		<list key="replacehistory">
+			<item value="&quot;REMOTE-HOST&quot;"/>
+			<item value="()"/>
+			<item value="(&quot;&quot;);"/>
+			<item value="0.8em"/>
+			<item value="construct_new_filter_dataset_fields_conditions_data"/>
+			<item value="&lt;DBUSER&gt;"/>
+			<item value="sheet.createRow(sheetRowCount++);"/>
+			<item value="_base64"/>
+		</list>
+	</section>
+	<section name="org.eclipse.ui.texteditor.FindReplaceDialog_dialogBounds">
+		<item key="DIALOG_WIDTH" value="257"/>
+		<item key="DIALOG_FONT_NAME" value="1|Segoe UI|9.0|0|WINDOWS|1|-12|0|0|0|400|0|0|0|1|0|0|0|0|Segoe UI"/>
+		<item key="DIALOG_HEIGHT" value="381"/>
+		<item key="DIALOG_Y_ORIGIN" value="395"/>
+		<item key="DIALOG_X_ORIGIN" value="741"/>
+	</section>
+</section>

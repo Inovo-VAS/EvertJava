@@ -1,0 +1,32 @@
+package baasserver.web.system;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class ActionElement extends Element {
+
+	public ActionElement(IOWidgetHandle parentWidget,
+			IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+
+	public String type() {
+		return "button";
+	}
+	
+	public String action(){
+		return this.widgetClassName();
+	}
+	
+	public String event(String event){
+		return event;
+	}
+	
+	public String callbackUrl(){
+		return "";
+	}
+	
+	public IOWidgetHandle form(){
+		return this.parentWidget();
+	}
+}

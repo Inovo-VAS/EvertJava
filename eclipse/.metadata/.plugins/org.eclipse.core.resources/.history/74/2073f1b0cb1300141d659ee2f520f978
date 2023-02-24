@@ -1,0 +1,545 @@
+package inovo.message.gateway;
+
+import inovo.db.Database;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.TreeMap;
+
+public class MessagingQueue {
+	private static MessagingQueue _messagingQueue = null;
+
+	//private static ArrayList<byte[]> _messagesToProcess = new ArrayList<byte[]>();
+	//private static ArrayList<byte[]> _messagesBeingProcessed = new ArrayList<byte[]>();
+	private static ArrayList<HashMap<String,String>> _messagesToProcess = new ArrayList<HashMap<String,String>>();
+	private static ArrayList<HashMap<String,String>> _messagesBeingProcessed = new ArrayList<HashMap<String,String>>();
+	
+	private Thread _addingThread = null;
+	private Thread _processingThread = null;
+	private Thread _messageQueueingThread = null;
+	private boolean _shutdownQueue = false;
+	
+	private String _currentMessageProcessed = "";
+	//private HashMap<String, String> _messageParams = new HashMap<String,String>();
+	
+	private MessagingQueue()
+	{
+		this._processingThread = new Thread(){
+			@Override
+			public void run() {
+				processMessages();
+			}
+		};		
+		this._processingThread.start();
+		
+		this._addingThread = new Thread(){
+			@Override
+			public void run() {
+				addingMessages();
+			}
+		};
+		this._addingThread.start();
+		
+		this._messageQueueingThread = new Thread(){
+			@Override
+			public void run() {
+				while(!_shutdownQueue){
+					try {
+						matchGatewayPhrases();	
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+					try {
+						this.sleep(1024*10);
+					} catch (Exception e) {
+					}
+				}
+			}
+		};		
+		this._messageQueueingThread.start();
+		
+	}
+	
+	public static MessagingQueue messagingQueue() {
+	    /*try{
+			  TreeMap<Integer,ArrayList<String>> messagingQueueSet=Database.executeDBRequest("MESSAGEGATEWAY","SELECT TOP 1 FROM <DBUSER>.[MESSAGE_GATEWAY_QUEUE]",null);
+			  int maxColSize=0;
+			  int currentColSize=0;
+			  for(String colName:messagingQueueSet.get((Integer)0)){
+				  if(colName.startsWith("PARAM")&&colName.endsWith("NAME")){
+					  colName=colName.substring("PARAM".length());
+					  colName=colName.substring(0,colName.length()-"NAME".length());
+					  currentColSize=Integer.parseInt(colName);
+					  if(maxColSize<=currentColSize) maxColSize=currentColSize;
+				  }
+			  }
+			  
+			  _paramFieldCount=maxColSize;
+		  }
+		  catch (Exception e){
+			  e.printStackTrace();
+		  }*/
+	    
+	    if(_messagingQueue==null) _messagingQueue=new MessagingQueue();
+	    return _messagingQueue;
+	  }
+
+	  
+	  /*public boolean addNextMessageBytes(byte[] nextMessageBytes) {
+	    if (this._shutdownQueue) return false;
+
+	    _messagesToProcess.add(nextMessageBytes);
+
+	    return true;
+	  }*/
+	
+	
+	public static int _paramFieldCount=50;
+	
+	public boolean addNextMessageParams(HashMap<String,String> messageParams) throws Exception{
+	    if (this._shutdownQueue) return false;
+
+	    //_messagesToProcess.add(messageParams);
+	    this.processMessageParams(messageParams);
+	    return true;
+	  }
+
+	  /*private void processMessageBytes(byte[] messagebytes)
+	  {
+	    this._currentMessageProcessed = new String(messagebytes);
+	    this._messageParams.clear();
+
+	    for (String messageItem : this._currentMessageProcessed.split("\r\n")) {
+	      if (messageItem.indexOf("=") > -1) {
+	        String paramName = messageItem.substring(0, messageItem.indexOf("=")).trim().toUpperCase();
+	        String paramValue = messageItem.substring(messageItem.indexOf("=") + 1).trim();
+	        this._messageParams.put(paramName, paramValue);
+	      }
+	    }
+	    try
+	    {
+	      Database.executeDBRequest("MESSAGEGATEWAY", "INSERT INTO <DBUSER>.[MESSAGE_GATEWAY_QUEUE] ([KEYPHRASE],[PHONENR],[EMAIL],[NAME],[IDNUMBER],[POSTALCODE],[SOURCE],[RECEIVEDDATETIME]) VALUES(:KEYPHRASE,:PHONENR,:EMAIL,:NAME,:IDNUMBER,:POSTALCODE,:SOURCE,:RECEIVEDDATETIME)", 
+	        this._messageParams);
+	    }
+	    catch (Exception e) {
+	      e.printStackTrace();
+	    }
+	  }*/
+	  
+	  private void processMessageParams(HashMap<String,String> messageparams) throws Exception
+	  {
+	    //this._currentMessageProcessed = new String(messagebytes);
+		 HashMap<String,String> messageParamsProcessing=new HashMap<String,String>();
+	    //this._messageParams.clear();
+
+	    /*for (String messageItem : this._currentMessageProcessed.split("\r\n")) {
+	      if (messageItem.indexOf("=") > -1) {
+	        String paramName = messageItem.substring(0, messageItem.indexOf("=")).trim().toUpperCase();
+	        String paramValue = messageItem.substring(messageItem.indexOf("=") + 1).trim();
+	        this._messageParams.put(paramName, paramValue);
+	      }
+	    }*/
+	    
+	    int paramindex=0;
+	    
+	    for(String paramName:messageparams.keySet()){
+	    	if("RECEIVEDDATETIME,KEYPHRASE,NAME,PHONENR,IDNUMBER,POSTALCODE,EMAIL,SOURCE,".indexOf(paramName.toUpperCase())>-1){
+	    		//this._messageParams.put(paramName.toUpperCase(), messageparams.get(paramName));
+	    		messageParamsProcessing.put(paramName.toUpperCase(), messageparams.get(paramName));
+	    	}
+	    	else{
+	    		if(paramindex<_paramFieldCount){
+	    			if(paramName.toLowerCase().startsWith("PHONENR")){
+	    				continue;
+	    			}
+		    		paramindex++;
+		    		//this._messageParams.put("PARAM"+String.valueOf(paramindex)+"NAME", paramName.toUpperCase());
+		    		//this._messageParams.put("PARAM"+String.valueOf(paramindex)+"VALUE", messageparams.get(paramName));
+		    		
+		    		messageParamsProcessing.put("PARAM"+String.valueOf(paramindex)+"NAME", paramName.toUpperCase());
+		    		messageParamsProcessing.put("PARAM"+String.valueOf(paramindex)+"VALUE", messageparams.get(paramName));
+	    		}
+	    	}
+	    }
+	    
+	    while(paramindex<_paramFieldCount){
+	    	paramindex++;
+	    	//this._messageParams.put("PARAM"+String.valueOf(paramindex)+"NAME", "");
+    		//this._messageParams.put("PARAM"+String.valueOf(paramindex)+"VALUE", "");
+	    	messageParamsProcessing.put("PARAM"+String.valueOf(paramindex)+"NAME", "");
+	    	messageParamsProcessing.put("PARAM"+String.valueOf(paramindex)+"VALUE", "");
+	    }
+	    Exception ex=null;
+	    try
+	    {
+	    	paramindex=1;
+	    	
+	    	String paramInsertFields="";
+	    	String paramInsertValues="";
+	    	for(paramindex=1;paramindex<=_paramFieldCount;paramindex++){
+	    		paramInsertFields+=",[PARAM"+String.valueOf(paramindex)+"NAME],[PARAM"+String.valueOf(paramindex)+"VALUE]";
+	    		paramInsertValues+=",:PARAM"+String.valueOf(paramindex)+"NAME,:PARAM"+String.valueOf(paramindex)+"VALUE";
+	    	}
+	    	
+	    	String paramInsertStatement="INSERT INTO <DBUSER>.[MESSAGE_GATEWAY_QUEUE] ([KEYPHRASE],[PHONENR],[EMAIL],[NAME],[IDNUMBER],[POSTALCODE],[SOURCE],[RECEIVEDDATETIME]"+paramInsertFields+") VALUES(:KEYPHRASE,:PHONENR,:EMAIL,:NAME,:IDNUMBER,:POSTALCODE,:SOURCE,:RECEIVEDDATETIME"+paramInsertValues+")";
+	      Database.executeDBRequest(null,"MESSAGEGATEWAY",paramInsertStatement,// "INSERT INTO <DBUSER>.[MESSAGE_GATEWAY_QUEUE] ([KEYPHRASE],[PHONENR],[EMAIL],[NAME],[IDNUMBER],[POSTALCODE],[SOURCE],[RECEIVEDDATETIME]"+paramInsertStatement+")", 
+	    		  messageParamsProcessing,null);
+	    		  //  this._messageParams);
+	    }
+	    catch (Exception e) {
+	      e.printStackTrace();
+	      ex=e;
+	    }
+	    messageParamsProcessing.clear();
+	    if(ex!=null) throw ex;
+	  }
+
+	  public boolean shuttingDown() {
+	    return this._shutdownQueue;
+	  }
+
+	  public void addingMessages() {
+	    while (!this._shutdownQueue) {
+	      int totalmessagesToProcess = 0;
+	      if ((totalmessagesToProcess = _messagesToProcess.size()) > 0) {
+	        //ArrayList<byte[]> messagesToProcess = new ArrayList<byte[]>();
+	        ArrayList<HashMap<String,String>> messagesToProcess = new ArrayList<HashMap<String,String>>();
+	        synchronized (_messagesToProcess) {
+	          while (totalmessagesToProcess-- > 0) {
+	            //messagesToProcess.add((byte[])_messagesToProcess.remove(0));
+	            messagesToProcess.add(_messagesToProcess.remove(0));
+	          }
+	        }
+	        synchronized (_messagesBeingProcessed) {
+	          while (!messagesToProcess.isEmpty())
+	            _messagesBeingProcessed.add(messagesToProcess.remove(0));
+	        }
+	      }
+	      try
+	      {
+	        Thread.sleep(10);
+	      } catch (InterruptedException e) {
+	        e.printStackTrace();
+	      }
+	    }
+	    int totalmessagesToProcess = 0;
+	    if ((totalmessagesToProcess = _messagesToProcess.size()) > 0) {
+	      //ArrayList<byte[]> messagesToProcess = new ArrayList<byte[]>();
+	      ArrayList<HashMap<String,String>> messagesToProcess = new ArrayList<HashMap<String,String>>();
+	      synchronized (_messagesToProcess) {
+	        while (totalmessagesToProcess-- > 0) {
+	          messagesToProcess.add(_messagesToProcess.remove(0));
+	        }
+	      }
+	      synchronized (_messagesToProcess) {
+	        while (!messagesToProcess.isEmpty())
+	          _messagesBeingProcessed.add(messagesToProcess.remove(0));
+	      }
+	    }
+	  }
+
+	  public void processMessages()
+	  {
+	    while (!this._shutdownQueue) {
+	      int totalmessagesToProcess = 0;
+	      if ((totalmessagesToProcess = _messagesBeingProcessed.size()) > 0) {
+	        ArrayList<HashMap<String,String>> messagesBeingProcessed = new ArrayList<HashMap<String,String>>();
+	        synchronized (_messagesBeingProcessed) {
+	          while (totalmessagesToProcess-- > 0) {
+	            messagesBeingProcessed.add(_messagesBeingProcessed.remove(0));
+	          }
+	        }
+	        while (!messagesBeingProcessed.isEmpty())
+	          try {
+	            //processMessageBytes((byte[])messagesBeingProcessed.remove(0));
+	        	  processMessageParams(messagesBeingProcessed.remove(0));
+	          }
+	          catch (Exception e) {
+	            e.printStackTrace();
+	          }
+	      }
+	      try
+	      {
+	        Thread.sleep(10);
+	      } catch (InterruptedException e) {
+	        e.printStackTrace();
+	      }
+	    }
+	    int totalmessagesToProcess = 0;
+	    if ((totalmessagesToProcess = _messagesBeingProcessed.size()) > 0) {
+	      ArrayList<HashMap<String,String>> messagesBeingProcessed = new ArrayList<HashMap<String,String>>();
+	      synchronized (_messagesBeingProcessed) {
+	        while (totalmessagesToProcess-- > 0) {
+	          messagesBeingProcessed.add(_messagesBeingProcessed.remove(0));
+	        }
+	      }
+	      while (!messagesBeingProcessed.isEmpty())
+	        try {
+	          //processMessageBytes(messagesBeingProcessed.remove(0));
+	        	processMessageParams(messagesBeingProcessed.remove(0));
+	        }
+	        catch (Exception e) {
+	          e.printStackTrace();
+	        }
+	    }
+	  }
+
+	  private void logKeyPhraseQueueRequest(String servicecallstatement, String defpriority, String defserviceid, String defloadid, HashMap<String, String> keyphraseidmap, HashMap<String, HashMap<String, String>> keyphrasesettingsmap, HashMap<String, String> loggedmessageentry)
+	  {
+		  inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("logKeyPhraseQueueRequest():start");
+	    String testPhrase = ((String)loggedmessageentry.get("KEYPHRASE")).toUpperCase().trim();
+
+	    int matchkeylength = 0;
+	    int smallestmatchlength = 0;
+	    String currentmatchkey = "";
+	    String parentmatchkeyid = "0";
+	    if (!testPhrase.equals("")) {
+	      for (String matchkey : keyphrasesettingsmap.keySet()) {
+	        matchkey = matchkey.toUpperCase();
+	        if ((matchkey.equals(testPhrase)) && (matchkey.length() > matchkeylength)) {
+	          matchkeylength = matchkey.length();
+	          currentmatchkey = matchkey;
+	          parentmatchkeyid = (String)((HashMap)keyphrasesettingsmap.get(matchkey)).get("ID");
+	        }
+	        else if ((testPhrase.contains(matchkey)) && (matchkey.length() > matchkeylength)) {
+	          matchkeylength = matchkey.length();
+	          currentmatchkey = matchkey;
+	          parentmatchkeyid = (String)((HashMap)keyphrasesettingsmap.get(matchkey)).get("ID");
+	        }
+	      }
+	    }
+
+	    loggedmessageentry.put("REQUESTKEYPHRASESELECTED", currentmatchkey.equals("") ? testPhrase : currentmatchkey);
+	    
+	    if(!currentmatchkey.equals("")){
+	    	if(keyphrasesettingsmap.get(currentmatchkey).containsKey("SERVICECALLSTATEMENT")){
+	    		servicecallstatement=keyphrasesettingsmap.get(currentmatchkey).get("SERVICECALLSTATEMENT");
+	    	}
+	    }
+	    
+	    String serviceid = currentmatchkey.equals("") ? defserviceid : defserviceid.equals("") ? "0" : testPhrase.equals("") ? "0" : (String)((HashMap)keyphrasesettingsmap.get(currentmatchkey)).get("SERVICEID");
+	    String priority = currentmatchkey.equals("") ? defpriority : defpriority.equals("") ? "100" : testPhrase.equals("") ? "0" : (String)((HashMap)keyphrasesettingsmap.get(currentmatchkey)).get("PRIORITY");
+	    if ((defserviceid.equals(serviceid)) && (currentmatchkey.equals(""))) loggedmessageentry.put("REQUESTKEYPHRASESELECTED", "DEFAULT");
+	    String loadid = currentmatchkey.equals("") ? defloadid : defloadid.equals("") ? "0" : testPhrase.equals("") ? "0" : (String)((HashMap)keyphrasesettingsmap.get(currentmatchkey)).get("LOADID");
+	    String sourceid = "0";
+	    String requesthandleflag = "3";
+	    String requestcreatestatus = (serviceid.equals(loadid)) && (serviceid.equals("0")) ? "5" : testPhrase.equals("") ? "6" : "1";
+	    String requestcreatestatusoutcome = (serviceid.equals(loadid)) && (serviceid.equals("0")) ? "ERROR:NO DEFAULT SERVICEID AND LOADID FOUND" : testPhrase.equals("") ? "ERROR:EMPTY KEYPHRASE RECEIVED" : "SUCCESS";
+
+	    loggedmessageentry.put("REQUESTCALLPRIORITY", priority);
+	    loggedmessageentry.put("REQUESTSERVICEID", serviceid);
+	    loggedmessageentry.put("REQUESTLOADID", loadid);
+	    loggedmessageentry.put("REQUESTSOURCEID", sourceid);
+	    loggedmessageentry.put("REQUESTHANDLEFLAG", requesthandleflag);
+	    loggedmessageentry.put("REQUESTCREATESTATUS", requestcreatestatus);
+	    loggedmessageentry.put("REQUESTCREATESTATUSOUTCOME", requestcreatestatusoutcome);
+	    String sqlloggedmessagequeueupdate = "UPDATE <DBUSER>.[MESSAGE_GATEWAY_QUEUE] SET REQUESTSERVICEID=:REQUESTSERVICEID, REQUESTLOADID=:REQUESTLOADID, REQUESTSOURCEID=:REQUESTSOURCEID, REQUESTHANDLEFLAG=:REQUESTHANDLEFLAG, REQUESTCREATEDDATETIME=GETDATE(), REQUESTKEYPHRASESELECTED=:REQUESTKEYPHRASESELECTED, REQUESTCREATESTATUS=:REQUESTCREATESTATUS, REQUESTCREATESTATUSOUTCOME=:REQUESTCREATESTATUSOUTCOME,REQUESTCALLPRIORITY=:REQUESTCALLPRIORITY WHERE [ID]=:ID";
+
+	    HashMap<String,String> messageParams=new HashMap<String,String>();
+      	 String customParams="";
+      	 String customparamsdeclare="";
+      	 ArrayList<Integer> msgParamIndexes=new ArrayList<Integer>();
+      	 while(msgParamIndexes.size()<_paramFieldCount) msgParamIndexes.add((Integer)msgParamIndexes.size()+1);
+      	 for(int msgParamIndex:msgParamIndexes){
+      		 String paramName=loggedmessageentry.remove("PARAM"+String.valueOf(msgParamIndex)+"NAME");
+      		 loggedmessageentry.keySet().remove("PARAM"+String.valueOf(msgParamIndex)+"NAME");
+      		 String paramValue=loggedmessageentry.remove("PARAM"+String.valueOf(msgParamIndex)+"VALUE");
+      		loggedmessageentry.keySet().remove("PARAM"+String.valueOf(msgParamIndex)+"VALUE");
+      		if(!paramName.equals("")){
+      			//customparamsdeclare+=" DECLARE @"+paramName.toUpperCase()+" VARCHAR(1000)=:"+paramName.toUpperCase()+" ";
+      			customParams+=",@"+paramName.toUpperCase()+"=:"+paramName.toUpperCase()+" ";
+      			loggedmessageentry.put(paramName.toUpperCase(), paramValue);
+      		}
+      	 }
+      	 inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("CUSTOM-PARAMS:"+customParams);
+      	 loggedmessageentry.put("CUSTOMPARAMS", customParams);
+      	loggedmessageentry.put("CUSTOMPARAMSDECLARE", customparamsdeclare);
+      	
+      	boolean noPhoneNrEntered=false;
+      	int countEnteredPhoneNrs=0;
+      	int countEnteredPhoneNrsInvalid=0;
+      	boolean noValidPhoneNumberEntered=false;
+      	boolean inValidPhoneNumbers=false;
+      	
+      	for(int phonenr=1;phonenr<=10;phonenr++){
+			String cellnumbervalue="";
+			String phoneFieldName="PHONENR"+(phonenr==1?"":String.valueOf(phonenr));
+			String cellFieldName="CELLNUMBER"+(phonenr==1?"":String.valueOf(phonenr));
+			if(!loggedmessageentry.containsKey(phoneFieldName)){
+				cellnumbervalue=(loggedmessageentry.containsKey(cellFieldName)?loggedmessageentry.get(cellFieldName):"");
+				if(!cellnumbervalue.equals("")){
+					if((cellnumbervalue=formattedNumber(cellnumbervalue.toCharArray())).equals("")){
+						countEnteredPhoneNrsInvalid++;
+					}
+				}
+				if(!cellnumbervalue.equals("")){
+					loggedmessageentry.put(phoneFieldName, cellnumbervalue=cellnumbervalue.trim());
+				}
+				else{
+					loggedmessageentry.put(phoneFieldName, cellnumbervalue.trim());
+				}
+			}
+			else{
+				cellnumbervalue = loggedmessageentry.get(phoneFieldName);
+				cellnumbervalue=(cellnumbervalue==null?"":cellnumbervalue.trim());
+				if(!cellnumbervalue.equals("")){
+					if((cellnumbervalue=formattedNumber(cellnumbervalue.toCharArray())).equals("")){
+						countEnteredPhoneNrsInvalid++;
+					}
+				}
+			}
+		
+			if(!cellnumbervalue.equals("")){
+				countEnteredPhoneNrs++;
+			}
+		}
+			
+      	inValidPhoneNumbers=(countEnteredPhoneNrsInvalid>0);
+      	noPhoneNrEntered=(countEnteredPhoneNrs==0);
+      	
+	    //if(loggedmessageentry.containsKey("PHONENR")){
+	    //	if(loggedmessageentry.get("PHONENR").equals("")){
+	    //		noPhoneNrEntered=true;
+	    //	}
+	    //}
+	    
+	    
+	    inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("TOTAL ENTERED PHONE NRS:"+String.valueOf(countEnteredPhoneNrs));
+	    inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("TOTAL INVALID PHONE NRS:"+String.valueOf(countEnteredPhoneNrsInvalid));
+	    
+	    if(!noPhoneNrEntered&&!inValidPhoneNumbers){
+		    if (!servicecallstatement.equals(""))
+		    	servicecallstatement=(loggedmessageentry.containsKey("CUSTOMPARAMS")?servicecallstatement.replace("<CUSTOMPARAMS>", loggedmessageentry.get("CUSTOMPARAMS")):servicecallstatement);
+		    	servicecallstatement=(loggedmessageentry.containsKey("CUSTOMPARAMSDECLARE")?servicecallstatement.replace("<CUSTOMPARAMSDECLARE>", loggedmessageentry.get("CUSTOMPARAMSDECLARE")):servicecallstatement);
+		      sqlloggedmessagequeueupdate = servicecallstatement  + " " + sqlloggedmessagequeueupdate.replace(":REQUESTSOURCEID", "@CALLSOURCEID");
+		    try
+		    {
+		    	System.out.println(sqlloggedmessagequeueupdate);
+		    	Database.executeDBRequest(null,"MESSAGEGATEWAY", sqlloggedmessagequeueupdate, loggedmessageentry,null);
+		      
+		    	Database.executeDBRequest(null,"MESSAGEGATEWAY", "SELECT [REQUESTSOURCEID],[REQUESTCALLPRIORITY] FROM <DBUSER>.[MESSAGE_GATEWAY_QUEUE] WHERE [ID]=:ID", loggedmessageentry,null);
+		      if ((!((String)loggedmessageentry.get("REQUESTSOURCEID")).equals("0")) && (!((String)loggedmessageentry.get("REQUESTSOURCEID")).equals("")))
+		        try {
+		          loggedmessageentry.put("CALLERNAME", ((String)loggedmessageentry.get("NAME")).length() > 40 ? ((String)loggedmessageentry.get("NAME")).substring(0, 40) : (String)loggedmessageentry.get("NAME"));
+		          loggedmessageentry.put("COMMENTS", ((String)loggedmessageentry.get("NAME")).length() > 40 ? ((String)loggedmessageentry.get("NAME")).substring(0, 100) : (String)loggedmessageentry.get("NAME"));
+		          
+		          Database.executeDBRequest(null,"MESSAGEGATEWAY", "INSERT INTO <DBUSER>.[DYNAMICCALLERLIST] ([ID],[SERVICEID],[LOADID],[CALLERNAME],[PHONE1],[PHONE2],[PHONE3],[PHONE4],[PHONE5],[PHONE6],[PHONE7],[PHONE8],[PHONE9],[PHONE10],[COMMENTS],[PRIORITY],[RECORDHANDLEFLAG],[LOADREQUESTTYPE]) VALUES (:REQUESTSOURCEID,:REQUESTSERVICEID,:REQUESTLOADID,:CALLERNAME,:PHONENR,:PHONENR2,:PHONENR3,:PHONENR4,:PHONENR5,:PHONENR6,:PHONENR7,:PHONENR8,:PHONENR9,:PHONENR10,:COMMENTS,:REQUESTCALLPRIORITY,1,1)", loggedmessageentry,null);
+		        }
+		        catch (Exception diallerlistexception) {
+		          loggedmessageentry.put("REQUESTCREATESTATUS", "4");
+		          loggedmessageentry.put("REQUESTHANDLEFLAG", "4");
+		          loggedmessageentry.put("REQUESTCREATESTATUSOUTCOME", "ERROR:DIALLER:" + diallerlistexception.getMessage());
+		          diallerlistexception.printStackTrace();
+		          Database.executeDBRequest(null,"MESSAGEGATEWAY", "UPDATE <DBUSER>.[MESSAGE_GATEWAY_QUEUE] SET REQUESTHANDLEFLAG=:REQUESTHANDLEFLAG, REQUESTCREATESTATUS=:REQUESTCREATESTATUS, REQUESTCREATESTATUSOUTCOME=:REQUESTCREATESTATUSOUTCOME WHERE [ID]=:ID", 
+		            loggedmessageentry,null);
+		        }
+		    } catch (Exception e) {
+		      loggedmessageentry.put("REQUESTCREATESTATUS", "4");
+		      loggedmessageentry.put("REQUESTHANDLEFLAG", "4");
+		      loggedmessageentry.put("REQUESTCREATESTATUSOUTCOME", "ERROR:" + e.getMessage());
+		      e.printStackTrace();
+		      try {
+					Database.executeDBRequest(null,"MESSAGEGATEWAY", "UPDATE <DBUSER>.[MESSAGE_GATEWAY_QUEUE] SET REQUESTHANDLEFLAG=:REQUESTHANDLEFLAG, REQUESTCREATESTATUS=:REQUESTCREATESTATUS, REQUESTCREATESTATUSOUTCOME=:REQUESTCREATESTATUSOUTCOME WHERE [ID]=:ID",loggedmessageentry,null);
+				} catch (Exception er) {
+					er.printStackTrace();
+				}
+		    }
+	  	}
+	    else{
+	    	loggedmessageentry.put("REQUESTCREATESTATUS", "4");
+	          loggedmessageentry.put("REQUESTHANDLEFLAG", "4");
+	          if(noPhoneNrEntered){
+	        	  loggedmessageentry.put("REQUESTCREATESTATUSOUTCOME", "ERROR:DIALLER:MINIMUM PARAMETERS NOT PROVIDED");
+	          }
+	          if(inValidPhoneNumbers){
+        		  loggedmessageentry.put("REQUESTCREATESTATUSOUTCOME", "ERROR:DIALLER:VALID PHONE NUMBERS NOT PROVIDED");
+        	  }
+	          try {
+				Database.executeDBRequest(null,"MESSAGEGATEWAY", "UPDATE <DBUSER>.[MESSAGE_GATEWAY_QUEUE] SET REQUESTHANDLEFLAG=:REQUESTHANDLEFLAG, REQUESTCREATESTATUS=:REQUESTCREATESTATUS, REQUESTCREATESTATUSOUTCOME=:REQUESTCREATESTATUSOUTCOME WHERE [ID]=:ID",loggedmessageentry,null);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+	    }
+	    inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("logKeyPhraseQueueRequest():end");
+	  }
+	  
+	  private String formattedNumber(char[] stringToNumber){
+			String numberToReturn="";
+			for(char cn:stringToNumber){
+				if("0123456789".indexOf((cn+""))>-1){
+					numberToReturn+=(cn+"");
+				}
+			}
+			return numberToReturn;
+		}
+
+	  private void matchGatewayPhrases() throws Exception {
+	    try {
+	      Database.executeDBRequest(null,"MESSAGEGATEWAY", "UPDATE <DBUSER>.[MESSAGE_GATEWAY_QUEUE] SET [REQUESTHANDLEFLAG]=2 WHERE ISNULL([REQUESTHANDLEFLAG],1)<2", null,null);
+	    } catch (Exception e) {
+	      e.printStackTrace();
+	      return;
+	    }
+	    String selectloggetMessagescustomcolumns="";
+	    
+	    for(int colindex=1;colindex<=_paramFieldCount;colindex++){
+	    	selectloggetMessagescustomcolumns+=",[PARAM"+String.valueOf(colindex)+"NAME],[PARAM"+String.valueOf(colindex)+"VALUE]";
+	    }
+	    
+	    TreeMap<Integer,ArrayList<String>> loggedmessagesset =new TreeMap<Integer, ArrayList<String>>();
+	    Database.executeDBRequest(loggedmessagesset,"MESSAGEGATEWAY", "SELECT TOP 1000 [ID],[KEYPHRASE],[PHONENR],[EMAIL],[NAME],[IDNUMBER],[POSTALCODE],[SOURCE],[RECEIVEDDATETIME]"+selectloggetMessagescustomcolumns+" FROM <DBUSER>.[MESSAGE_GATEWAY_QUEUE] WHERE [REQUESTHANDLEFLAG]=2 ORDER BY [RECEIVEDDATETIME] ASC", null,null);
+	    if (loggedmessagesset == null) return;
+	    if (loggedmessagesset.isEmpty()) return;
+	    if (loggedmessagesset.size() > 1)
+	    {
+	      TreeMap<Integer,ArrayList<String>> keyphraseset =new TreeMap<Integer, ArrayList<String>>();
+	      Database.executeDBRequest(keyphraseset, "MESSAGEGATEWAY", "SELECT [ID],UPPER([KEYPHRASE]) AS KEYPHRASE,[CREATEDATETIME],[MESSAGE_GATEWAY_KEYPHRASE_MAP].[SERVICEID] AS SERVICEID,[LOADID],[PARENTKEYPHRASEID],[PRIORITY],ISNULL(([ALTERNATEQUEUECALLSTATEMENT]),'') AS SERVICECALLSTATEMENT FROM <DBUSER>.[MESSAGE_GATEWAY_KEYPHRASE_MAP] LEFT JOIN <DBUSER>.[MESSAGE_GATEWAY_SERVICE_CALL_STMNT] ON [MESSAGE_GATEWAY_KEYPHRASE_MAP].[SERVICEID]=[MESSAGE_GATEWAY_SERVICE_CALL_STMNT].[SERVICEID] WHERE [MESSAGE_GATEWAY_KEYPHRASE_MAP].[ENABLEKEYPHRASE]='TRUE'", null,null);
+	      HashMap keyphrasesettingsmap = new HashMap();
+	      HashMap defaultServiceLoadmap = new HashMap();
+	      HashMap keyphraseidmap = new HashMap();
+	      String defserviceid = "";
+	      String defloadid = "";
+	      String serviceids = "";
+	      String defpriority = "100";
+
+	      String servicecallstatement = "";
+	      for (int rowindex:keyphraseset.keySet()){
+	        if (rowindex != 0) {
+	          String keyphrase = Database.rowField(keyphraseset, rowindex, "KEYPHRASE").toUpperCase();
+	          HashMap keyphrasedata = Database.rowData(keyphraseset, rowindex);
+	          if (keyphrase.equals("")) {
+	            defserviceid = Database.rowField(keyphraseset, rowindex, "SERVICEID");
+	            defloadid = Database.rowField(keyphraseset, rowindex, "LOADID");
+	            defpriority = Database.rowField(keyphraseset, rowindex, "PRIORITY");
+	            servicecallstatement = (String)keyphrasedata.get("SERVICECALLSTATEMENT");
+	          }
+	          else {
+	            if (((String)keyphrasedata.get("PARENTKEYPHRASEID")).equals("0")) {
+	              keyphraseidmap.put((String)keyphrasedata.get("ID"), keyphrase);
+	            }
+	            keyphrasedata.put("PRIORITY", (String)keyphrasedata.get("PRIORITY"));
+	            keyphrasedata.put("SERVICECALLSTATEMENT", (String)keyphrasedata.get("SERVICECALLSTATEMENT"));
+	            keyphrasesettingsmap.put(keyphrase, keyphrasedata);
+	          }
+	        }
+	      }
+	      Database.cleanupDataset(keyphraseset);
+	      keyphraseset=null;
+	      for (int rowindex:loggedmessagesset.keySet()) { 
+	        if (rowindex == 0) continue;
+	        	 	        	 
+	             logKeyPhraseQueueRequest(servicecallstatement, defpriority, defserviceid, defloadid, keyphraseidmap, keyphrasesettingsmap, Database.rowData(loggedmessagesset, rowindex));
+	             
+	      }
+	    }
+	    Database.cleanupDataset(loggedmessagesset);
+	    loggedmessagesset=null;
+	  }
+
+	  public void shutdownQueue() throws Exception
+	  {
+	    this._shutdownQueue = true;
+	    for (; (!_messagesBeingProcessed.isEmpty()) && (!_messagesToProcess.isEmpty()); 
+	      Thread.sleep(1024L)) Thread.currentThread();
+	  }
+}

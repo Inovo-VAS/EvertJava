@@ -1,0 +1,23 @@
+import inovo.file.down.loader.FileDownLoaderQueueManager;
+import inovo.servlet.InovoCoreEnvironmentManager;
+import javax.servlet.ServletContext;
+
+public class InovoEnvironmentManager extends InovoCoreEnvironmentManager
+{
+  public void initializeServletContext(ServletContext sc)
+  {
+    super.initializeServletContext(sc);
+    FileDownLoaderQueueManager.fileDownLoaderQueueManager(this.configProperty("DOWNLOADFOLDER"),this.configProperty("SOURCEFILEPREFIXES").split("|")).initiateFileDownLoaderQueue();
+  }
+
+  public String defaultLocalPath(String suggestedlocalpah)
+  {
+    return super.defaultLocalPath(suggestedlocalpah);
+  }
+
+  public void disposeServletContext(ServletContext sc)
+  {
+	FileDownLoaderQueueManager.fileDownLoaderQueueManager(this.configProperty("DOWNLOADFOLDER"),this.configProperty("SOURCEFILEPREFIXES").split("|")).shutdownImportQueue();
+    super.disposeServletContext(sc);
+  }
+}

@@ -1,0 +1,80 @@
+import java.io.BufferedOutputStream;
+import java.io.BufferedWriter;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+
+import baasserver.Client;
+import baasserver.Server;
+import baasserver.protocols.IORequestHandle;
+import baasserver.protocols.markup.IOMarkupRequestHandle;
+
+public class BaasServerMain {
+
+	/**
+	 * @param args
+	 */
+	public static void main(String[] args) {	
+		String rootpath=BaasServerMain.class.getProtectionDomain().getCodeSource().getLocation().getPath().substring(1);
+		if(rootpath.indexOf(".jar")>-1){
+			rootpath=new File(rootpath).getParent().replaceAll("[\\\\]", "/");
+			rootpath=(rootpath.endsWith("/")?rootpath:rootpath+"/");
+		}
+		baasserver.io.Logger.setLogFilePath(rootpath+"log.log");
+		
+		baasserver.io.Logger.debug(Thread.currentThread().getContextClassLoader().getResource("").getPath().substring(1)+"log.log");
+		baasserver.io.Logger.debug("EnvironmentStarted");
+		try {
+			baasserver.reflection.REFUtils.loadJarPackagesFromPath(Thread.currentThread().getContextClassLoader().getResource("").getPath());
+		} catch (Exception e) {
+			
+		}
+		Server.initServer(2222,IOMarkupRequestHandle.class);
+		Server.initServer(2223,IOMarkupRequestHandle.class);
+		
+		try {
+			
+			InputStream bin=new ByteArrayInputStream(new byte[1024]);
+			OutputStream bout=null;
+			
+			Client client = Client.requestInOutStream("", "127.0.0.1", 2222,IORequestHandle.class);
+			
+			InputStreamReader preader=new InputStreamReader(client.inputStream());
+			OutputStreamWriter pwriter=new OutputStreamWriter(client.outputStream());
+			
+			pwriter.write("GET /pce/accountants/login.html HTTP/1.1");
+			pwriter.flush();
+			pwriter.write("\r\n");
+			pwriter.flush();
+			
+			while(client.inputStream().clientSocketHandle()==null){
+				Thread.sleep(2);
+			}
+			
+			while(!client.inputStream().clientSocketHandle().isDone()){
+				Thread.sleep(2);
+			}
+			
+			int readLength=0;
+			char[] bytesReadOut=new char[1024];
+			System.out.println();
+			while((readLength=preader.read(bytesReadOut))>-1){
+				System.out.print(bytesReadOut);
+			}
+			System.out.println();
+			
+		} catch (Exception e) {
+		}
+		
+		
+	}
+
+	
+}

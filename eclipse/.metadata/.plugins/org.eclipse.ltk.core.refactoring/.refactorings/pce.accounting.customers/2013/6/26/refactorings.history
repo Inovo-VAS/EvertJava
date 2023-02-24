@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Rename resource &apos;pce.accounting.customers/src/pce/accounting/web/images/saipa logo.png&apos; to &apos;saipa_logo.png&apos;" description="Rename resource &apos;saipa logo.png&apos;" flags="7" id="org.eclipse.ltk.core.refactoring.rename.resource" input="src/pce/accounting/web/images/saipa logo.png" name="saipa_logo.png" stamp="1372257142193" updateReferences="true"/>
+</session>

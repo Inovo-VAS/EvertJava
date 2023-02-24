@@ -1,0 +1,47 @@
+package baasserver;
+
+import java.io.IOException;
+import java.nio.channels.SocketChannel;
+
+public class ClientSocketHandle extends InputOutputHandle{
+	
+	private ClientInputStream _input=null;
+	private ClientOutputStream _output=null;
+	
+	public ClientSocketHandle(Client client,SocketChannel channel,ClientInputStream input,ClientOutputStream output) throws IOException{
+		super(client, channel);
+		this._input=input;
+		this._output=output;
+	}
+	
+	@Override
+	public void writeBytes(byte[] bytesToWrite) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void writeBytesAppendTop(byte[] bytesToWrite) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void run() {
+		this.bytesArrayToWrite().addAll(this._output.readBytesWritten());
+		super.run();
+	}
+	
+	public Client client(){
+		return (Client)this.inputOutputHandleOwner();
+	}
+	
+	public void shutdownAll() {
+		Client.shutDownAll();
+		this.client().shutdownClient();
+	}
+	
+	public void shutdownRequestEnvironment() {
+		this.client().shutdownClient();
+	}
+}

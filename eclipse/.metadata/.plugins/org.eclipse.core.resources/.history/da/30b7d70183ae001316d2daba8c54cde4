@@ -1,0 +1,99 @@
+package baasserver.db.web.system;
+
+import java.lang.reflect.Method;
+import java.util.HashMap;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+import baasserver.system.BaseSystem;
+
+public class RegisterDbSystem extends IOWidgetHandle {
+
+	public RegisterDbSystem(IOWidgetHandle parentWidget,
+			IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+	
+	public void registerDBSystem() throws Exception{
+		String dbsystemclasspath=this.property("DBSYSTEMNAMESPACE");
+		
+		Class<?> dbsystemclass=null;
+		
+		if(BaseSystem.system(dbsystemclasspath)==null){
+			dbsystemclass=baasserver.reflection.REFUtils.findClass(dbsystemclasspath, false);
+		}
+		else{
+			this.setProperty("DBSYSTEMNAMESPACE", dbsystemclasspath);
+		}
+		if(dbsystemclass==null){
+			String dbsystemclasspathAlternate=dbsystemclasspath+".DBSystem";
+			if(BaseSystem.system(dbsystemclasspathAlternate)==null){
+				if((dbsystemclass=baasserver.reflection.REFUtils.findClass(dbsystemclasspathAlternate, false))!=null){
+					dbsystemclasspath=dbsystemclasspathAlternate;
+				}
+				if(dbsystemclass==null){
+					dbsystemclass=baasserver.reflection.REFUtils.findClass("baasserver.db.system.DBSystem", false);
+				}
+			}
+			else{
+				this.setProperty("DBSYSTEMNAMESPACE", dbsystemclasspathAlternate);
+			}
+		}
+		if(dbsystemclass!=null){
+			if(dbsystemclass.getName().toUpperCase().equals(dbsystemclasspath.toUpperCase())){
+				Method registerWebSystem=baasserver.reflection.REFUtils.findMethod("registerWebSystem", dbsystemclass, new Class<?>[]{}, false);
+				registerWebSystem.invoke(dbsystemclass,null);
+			}
+			else{
+				Method registerWebSystem=baasserver.reflection.REFUtils.findMethod("registerWebSystem", dbsystemclass, new Class<?>[]{String.class}, false);
+				registerWebSystem.invoke(dbsystemclass, new Object[]{dbsystemclasspath});
+			}
+		}
+	}
+	
+	public void registerDBManager(){
+		HashMap<String,Object> dbproperties=new HashMap<String,Object>();
+		this.exportProperties(dbproperties,null);
+		
+		String dbmanagerclasspath=this.property("DBSYSTEMNAMESPACE");
+		
+		if(dbproperties.containsKey("DBMANAGERNAMESPACE")){
+			
+		}
+		
+		String dbsystemclasspath=this.property("DBSYSTEMNAMESPACE");
+		
+		Class<?> dbsystemclass=null;
+		
+		if(BaseSystem.system(dbsystemclasspath)==null){
+			dbsystemclass=baasserver.reflection.REFUtils.findClass(dbsystemclasspath, false);
+		}
+		else{
+			this.setProperty("DBSYSTEMNAMESPACE", dbsystemclasspath);
+		}
+		if(dbsystemclass==null){
+			String dbsystemclasspathAlternate=dbsystemclasspath+".DBSystem";
+			if(BaseSystem.system(dbsystemclasspathAlternate)==null){
+				if((dbsystemclass=baasserver.reflection.REFUtils.findClass(dbsystemclasspathAlternate, false))!=null){
+					dbsystemclasspath=dbsystemclasspathAlternate;
+				}
+				if(dbsystemclass==null){
+					dbsystemclass=baasserver.reflection.REFUtils.findClass("baasserver.db.system.DBSystem", false);
+				}
+			}
+			else{
+				this.setProperty("DBSYSTEMNAMESPACE", dbsystemclasspathAlternate);
+			}
+		}
+		if(dbsystemclass!=null){
+			if(dbsystemclass.getName().toUpperCase().equals(dbsystemclasspath.toUpperCase())){
+				Method registerWebSystem=baasserver.reflection.REFUtils.findMethod("registerWebSystem", dbsystemclass, new Class<?>[]{}, false);
+				registerWebSystem.invoke(dbsystemclass,null);
+			}
+			else{
+				Method registerWebSystem=baasserver.reflection.REFUtils.findMethod("registerWebSystem", dbsystemclass, new Class<?>[]{String.class}, false);
+				registerWebSystem.invoke(dbsystemclass, new Object[]{dbsystemclasspath});
+			}
+		}
+	}
+}

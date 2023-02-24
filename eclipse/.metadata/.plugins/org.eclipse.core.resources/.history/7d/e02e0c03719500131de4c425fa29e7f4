@@ -1,0 +1,91 @@
+package baasserver.db.protocols;
+
+import java.util.ArrayList;
+import java.util.TreeMap;
+
+import baasserver.db.system.DBManager;
+import baasserver.db.system.DBSystem;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IORequestHandle;
+import baasserver.protocols.markup.IOMarkupProcessorHandle;
+
+public class DBProcessorHandle extends IOMarkupProcessorHandle {
+
+	public DBProcessorHandle(IOProcessorHandle mainProcessorHandle,Class<?> widgetHandleclass,
+			IORequestHandle requestHandle) throws Exception{
+		super(mainProcessorHandle, widgetHandleclass, requestHandle);
+	}
+
+	public DBRequestHandle dbRequestHandle(){
+		return (DBRequestHandle)super.requestHandle();
+	}
+	
+	public DBWidgetHandle dbWidgetHandle(){
+		return (DBWidgetHandle)super.widgetHandle();
+	}
+	
+	private String _dbUrl="";
+	
+	private DBSystem _dbSystem=null;
+	private DBManager _dbManager=null;
+	
+	@Override
+	public void loadedWidgetHandleProperties() throws Exception{
+		if(this.widgetHandle() instanceof DBWidgetHandle){
+			String dbUrl=this.widgetHandle().property("DBURL");
+			this._dbUrl=dbUrl;
+			if(dbUrl.equals("")){
+				return;
+			}
+			if(dbUrl.startsWith("//")){
+				dbUrl=dbUrl.substring(2);
+				String dbsystem=dbUrl.substring(0,dbUrl.indexOf("/"));
+				this._dbSystem=baasserver.db.system.DBSystem.registerWebSystem(dbsystem);
+				dbUrl=dbUrl.substring(dbUrl.indexOf("/")+1);
+				String dbmanager=dbUrl;
+				this._dbManager=this._dbSystem.registerDBManager(dbmanager, null);
+			}
+		}
+	}
+	
+	@Override
+	public void process() throws Exception {
+		super.process();
+		if(!this._dbUrl.equals("")){
+			this.dbWidgetHandle().setDBSystem(this._dbSystem);
+			this.dbWidgetHandle().setDBManager(this._dbManager);
+			TreeMap<Integer, ArrayList<Object>> resultSetObtained=this.dbWidgetHandle().executeDBUrlRequest(this.dbRequestHandle()._sqlCommandBytesReceived.toString());
+			this.dbRequestHandle().doneCapturingSQLCommand();
+			
+			if(resultSetObtained!=null){
+				/*this.requestHandle().setResponseHeader("CONTENT-TYPE", "text/xml");
+				this.writeBytes("<dataSet>".getBytes());
+				for(Integer rowindex:resultSetObtained.keySet()){
+					if(rowindex==-1){
+						this.writeBytes("<columnTypes>".getBytes());
+						for(Object objColType:resultSetObtained.get((Integer)rowindex)){
+							this.writeBytes(("<type>"+((Class<?>)objColType).getName()+"</type>").getBytes());
+						}
+						this.writeBytes("</columnTypes>".getBytes());
+					}
+					else if(rowindex==0){
+						this.writeBytes("<columnNames>".getBytes());
+						for(Object objColName:resultSetObtained.get((Integer)rowindex)){
+							this.writeBytes(("<name>"+((String)objColName)+"</name>").getBytes());
+						}
+						this.writeBytes("</columnNames>".getBytes());
+					}
+					else{
+						this.writeBytes("<row>".getBytes());
+						for(Object objColValue:resultSetObtained.get((Integer)rowindex)){
+							this.writeBytes(("<data>"+(objColValue)+"</data>").getBytes());
+						}
+						this.writeBytes("</row>".getBytes());
+					}
+				}
+				this.writeBytes("</dataSet>".getBytes());*/
+				this.requestHandle().streamObject(resultSetObtained);
+			}
+		}
+	}
+}

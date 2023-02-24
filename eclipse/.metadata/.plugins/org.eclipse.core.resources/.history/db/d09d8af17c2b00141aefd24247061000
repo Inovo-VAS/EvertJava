@@ -1,0 +1,296 @@
+package saas.workflow;
+
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.TreeMap;
+
+public class Process extends ArrayList<Process>{
+	
+	private static final long serialVersionUID = 1L;
+	private ArrayList<Process> _processes=new ArrayList<Process>();
+	private Process _process=null;
+	private Process _nextSiblingProcess=null;
+	
+	public void setNextSiblingProcess(Process nextSiblingProcess){
+		this._nextSiblingProcess=nextSiblingProcess;
+	}
+	
+	private TreeMap<Integer,Process> _linkedParentProcesses=new TreeMap<Integer, Process>();
+	
+	public void linkProcess(Process nextProcess){
+		this.linkProcess((Integer)this._linkedParentProcesses.size(), nextProcess);
+	}
+	
+	public TreeMap<Integer, Process> linkedProcesses(){
+		return this._linkedParentProcesses;
+	}
+	
+	public void linkProcess(Integer linkIndex, Process nextProcess){
+		this._linkedParentProcesses.put(linkIndex, nextProcess);
+	}
+	
+	public Process nextParentSiblingProcess(){
+		return null;
+	}
+	
+	private HashMap<String,Object> _processProperties=new HashMap<String, Object>();
+	
+	public void setProperty(String propName,Object propValue){
+		this._processProperties.put(propName.toUpperCase(), propValue);
+	}
+	
+	public Object property(String propName){
+		return this._processProperties.get(propName.toUpperCase());
+	}
+
+	private boolean _doneExecuting=false;
+	private class ProcessWorker extends Thread {
+		private ProcessWorker(){
+			super();
+			this.setDaemon(true);
+		}
+		Process _pr=null;
+        public void run() {
+        	while(!_process._doneExecuting){
+	             synchronized(_processes) {
+	                while (_processes.isEmpty()) {
+	                    try
+	                    {
+	                    	_processes.wait();
+	                    }
+	                    catch (InterruptedException ignored)
+	                    {
+	                    }
+	                }
+	                this._pr = (Process) _processes.remove(0);
+	            }
+	            try {
+	                this._pr.execute();
+	            }
+	            catch (Exception e) {
+	            }
+        	}
+        }
+    }
+	
+	ProcessWorker _pw=null;
+	public void execute(Process processToExecute) {
+		if(_pw==null){
+			_pw=new ProcessWorker();
+			_pw.start();
+		}
+        synchronized(this._processes) {
+            this._processes.add(processToExecute);
+            this._processes.notify();
+        }
+    }
+	
+	public void execute(){
+		this.execute(true);
+		if(this._parentProcess!=null){
+			if(this.processIsDone()){
+				this._parentProcess.processDone(this);
+			}
+		}
+		if(this.processIsDone()&&this._topProcess.equals(this)){
+			this.cleanUpProcess();
+		}
+	}
+	
+	public void cleanUpProcess() {
+		while(!this.isEmpty()){
+			Process processToCleanUp=this.remove(0);
+			processToCleanUp.cleanUpProcess();
+			processToCleanUp=null;
+		}
+	}
+
+	public boolean processIsDone() {
+		return true;
+	}
+
+	public void processDone(Process doneProcess) {
+		synchronized (_process) {
+			this.remove(doneProcess);
+		}
+		Process nextProcessToExecute=doneProcess.nextParentSiblingProcess();
+		if(nextProcessToExecute!=null){
+			if(nextProcessToExecute._parentProcess==null){
+				synchronized (_process) {
+					if(!_process.contains(nextProcessToExecute)){
+						_process.add(nextProcessToExecute);
+					}
+				}
+			}
+			else{
+				synchronized (nextProcessToExecute._parentProcess._process) {
+					if(!nextProcessToExecute._parentProcess._process.contains(nextProcessToExecute)){
+						nextProcessToExecute._parentProcess._process.add(nextProcessToExecute);
+					}
+				}
+			}
+			this.execute(nextProcessToExecute);
+		}
+		else{
+			_doneExecuting=true;
+			if(_pw!=null){
+				_pw.notify();
+			}
+		}
+	}
+
+	private long _lastExecutionDurationMilliseconds=0;
+	public void execute(boolean waitTillDone) {
+		long processExecutionStart=Calendar.getInstance().getTimeInMillis();
+		System.out.println("["+new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date())+":"+this._executionKey+"]"+this.getClass().getName());
+		if(!this.isEmpty()){
+			this.execute(this.get(0));
+			if(waitTillDone){
+				while(!this.isEmpty()&&!_doneExecuting){
+					try {
+						Thread.sleep(1);
+					} catch (InterruptedException e) {
+					}
+				}
+			}
+		}
+		else{
+			_doneExecuting=true;
+		}
+		_lastExecutionDurationMilliseconds=Calendar.getInstance().getTimeInMillis()-processExecutionStart;
+		System.out.println("["+new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date())+":"+this._executionKey+"] executionduration (milliseconds) "+String.valueOf(_lastExecutionDurationMilliseconds));
+	}
+
+	private Process _parentProcess=null;
+	private Process _topProcess=null;
+	
+	public Process(){
+		this(null);
+	}
+	
+	private String _executionKey="";
+	
+	private static Calendar _executionKeyMasterStampRef=Calendar.getInstance();		
+	
+	private static long _executionKeyMasterCount=0;
+	private static String executionKeyGenerator(String prefix,String postfix){
+		String executionKeyGenerator="";
+		Calendar nowStampRef=Calendar.getInstance();
+		nowStampRef.set(Calendar.HOUR_OF_DAY, 0);
+		nowStampRef.set(Calendar.MINUTE, 0);
+		nowStampRef.set(Calendar.SECOND, 0);
+		nowStampRef.set(Calendar.MILLISECOND,0);
+		
+		synchronized (_executionKeyMasterStampRef) {
+			if(_executionKeyMasterStampRef.getTimeInMillis()<nowStampRef.getTimeInMillis()){
+				_executionKeyMasterStampRef.setTimeInMillis(nowStampRef.getTimeInMillis());
+				_executionKeyMasterStampRef.set(Calendar.HOUR_OF_DAY, 23);
+				_executionKeyMasterStampRef.set(Calendar.MINUTE, 59);
+				_executionKeyMasterStampRef.set(Calendar.SECOND, 59);
+				_executionKeyMasterStampRef.set(Calendar.MILLISECOND,999);
+				_executionKeyMasterCount=0;
+			}
+			 _executionKeyMasterCount++;
+			 executionKeyGenerator=new SimpleDateFormat("yyyyMMddHHmmssSSS").format(_executionKeyMasterStampRef.getTime())+"_"+String.valueOf(_executionKeyMasterCount);
+		}
+		nowStampRef=null;
+		return prefix+executionKeyGenerator+postfix;
+	}
+	public Process(Process parentProcess){
+		this._executionKey=executionKeyGenerator(this.executionKeyPrefix(),this.executionKeyPostfix());
+		this._process=this;
+		this._parentProcess=parentProcess;
+		this._topProcess=(this._parentProcess==null?this._process:this._parentProcess.topProcess());
+		this.defineProcessLayout();
+	}
+	
+	public Process parentProcess(){
+		return this._parentProcess;
+	}
+	
+	public Process topProcess(){
+		return this._topProcess;
+	}
+	
+	public String executionKeyPostfix() {
+		return "";
+	}
+
+	public String executionKeyPrefix() {
+		return this.getClass().getName();
+	}
+
+	public void defineProcessLayout(){	
+	}
+	
+	private int _parentSiblingIndex=0;
+	
+	public int parentSiblingIndex(){
+		return this._parentSiblingIndex;
+	}
+	
+	@Override
+	public void add(int index, Process process) {
+		process.setParentProcess(this);
+		synchronized (this._process) {
+			super.add(index, process);
+			process.attachedToParentProcess(this);
+		}
+	}
+	
+	public void attachedToParentProcess(Process parentProcess) {	
+	}
+
+	public Process addProcess(Class<?> processClass) throws Exception{
+		return this.addProcess((Process)processClass.getConstructor(Process.class).newInstance(new Object[]{this}));
+	}
+	
+	public Process addProcess(Process process){
+		this.add(process);
+		return process;
+	}
+	
+	@Override
+	public boolean add(Process process) {
+		boolean addedProcess=false;
+		process.setParentProcess(this);
+		synchronized (this._process) {
+			if(addedProcess=super.add(process)){
+				process.attachedToParentProcess(this);
+			}
+		}
+		return addedProcess;
+	}
+	
+	@Override
+	public Process get(int index) {
+		return super.get(index);
+	}
+	
+	@Override
+	public Process remove(int index) {
+		Process processBeingRemoved=super.remove(index);
+		if(processBeingRemoved!=null){
+			processBeingRemoved._parentProcess=null;
+		}
+		return processBeingRemoved;
+	}
+	
+	@Override
+	public boolean remove(Object process) {
+		boolean removedProcess=false;
+		synchronized (this._process) {
+			if(removedProcess=super.remove(process)){
+				((Process)process)._parentProcess=null;
+			}
+		}
+		return removedProcess;
+	}
+
+	private void setParentProcess(Process parentProcess) {
+		this._parentProcess=parentProcess;
+	}
+}

@@ -1,0 +1,11 @@
+package lancet.leads.automation;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class AccountsLeadsExportQueue{
+	private ExecutorService _exportAccounts=Executors.newCachedThreadPool();
+	private boolean _killExportQueue;
+	
+	
+}

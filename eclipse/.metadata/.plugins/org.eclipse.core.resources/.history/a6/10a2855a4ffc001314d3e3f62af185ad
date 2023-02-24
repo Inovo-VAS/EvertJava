@@ -1,0 +1,11 @@
+package inovo.monitoring.monitors;
+
+public class MonitorRequest implements Runnable{
+
+	@Override
+	public void run() {
+		
+	}
+	
+	
+}

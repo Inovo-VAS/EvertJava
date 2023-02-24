@@ -1,0 +1,7 @@
+package baasserver.db.server.widgets;
+
+import baasserver.protocols.IOWidgetHandle;
+
+public class RegisterDbSystem extends IOWidgetHandle {
+
+}

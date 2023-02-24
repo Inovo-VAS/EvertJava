@@ -1,0 +1,7 @@
+package inovo.automated.work.steps;
+
+import inovo.automated.work.AutomatedWorkerStep;
+
+public class ImportFileStep extends AutomatedWorkerStep {
+
+}

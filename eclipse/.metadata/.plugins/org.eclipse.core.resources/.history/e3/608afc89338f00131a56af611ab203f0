@@ -1,0 +1,63 @@
+package baasserver;
+
+import java.nio.channels.ClosedChannelException;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
+
+import baasserver.protocols.IORequestHandle;
+import baasserver.protocols.IOutput;
+
+public class InputOutputHandle implements Runnable,IOutput {
+	
+	private SocketChannel _socketChannel=null;
+	private Selector _selHandle=null;
+	private IORequestHandle _requestHandle=null;
+	private Object _inputOutputHandleOwner=null;
+	
+	public InputOutputHandle(Object inputOutputHandleOwner,SocketChannel channel){
+		this._socketChannel=channel;
+		this._inputOutputHandleOwner=inputOutputHandleOwner;
+	}
+
+	@Override
+	public void writeBytes(byte[] bytesToWrite) {
+	}
+
+	@Override
+	public void writeBytesAppendTop(byte[] bytesToWrite) {
+	}
+
+	private boolean _canWriteBytes=false;
+	@Override
+	public void canWriteBytes() {
+		this._canWriteBytes=true;
+	}
+
+	private boolean _done=false;
+	@Override
+	public void done() {
+		this._done=true;
+	}
+
+	private boolean _stillNeedToRead=false;
+	@Override
+	public void canReadNextBytes() {
+		_stillNeedToRead=true;
+	}
+
+	private boolean _doneWriting=false;
+	@Override
+	public void doneWriting() {
+		this._done=this._requestHandle.reqDone();
+		this._doneWriting=_done;
+		try {
+			this.registerRead();
+		} catch (ClosedChannelException e) {
+		}
+	}
+
+	@Override
+	public void run() {
+	}
+
+}

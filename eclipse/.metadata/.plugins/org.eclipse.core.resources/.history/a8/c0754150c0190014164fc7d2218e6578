@@ -1,0 +1,50 @@
+package pce.accountants;
+
+import java.util.HashMap;
+
+import saas.protocol.Request;
+import saas.protocol.Widget;
+import saas.protocol.widget.controls.Button;
+import saas.protocol.widget.controls.fields.InputField;
+
+public class Login extends Module {
+
+	public Login(Request request, Widget parentWidget) {
+		super(request, parentWidget);
+	}
+	
+	@Override
+	public void executeModule() throws Exception {
+		this.startComplexElement("table", null);
+			this.startComplexElement("tr", null);
+				this.startComplexElement("td", "style=border:solid 1px rgb(200,200,200);background-color:rgb(240,240,240);font-weight:bold;font-size:0.6em".split("[|]"));
+					this.respondString("USERNAME");
+				this.endComplexElement("td");
+				this.startComplexElement("td",null);
+					initiateWidgetAndExecute(InputField.class, new Object[]{this.request(),this},"name=USERNAME|style=font-size:0.6em".split("[|]"));
+				this.endComplexElement("td");
+			this.endComplexElement("tr");
+			this.startComplexElement("tr", null);
+				this.startComplexElement("td", "style=border:solid 1px rgb(200,200,200);background-color:rgb(240,240,240);font-weight:bold;font-size:0.6em".split("[|]"));
+					this.respondString("PASSWORD");
+				this.endComplexElement("td");
+				this.startComplexElement("td",null);
+					initiateWidgetAndExecute(InputField.class, new Object[]{this.request(),this},"name=PASSWORD|style=font-size:0.6em|type=password".split("[|]"));
+				this.endComplexElement("td");
+			this.endComplexElement("tr");
+			this.startComplexElement("tr", null);
+				this.startComplexElement("td", "cols=2".split("[|]"));
+					initiateWidgetAndExecute(Button.class, new Object[]{this.request(),this},("caption=LOGIN|form="+Index.class.getName().replaceAll("[.]", "_")+"_form"+"|actiontarget="+Index.class.getName().replaceAll("[.]", "_")+"_form|actionurl=/"+Login.class.getName().replaceAll("[.]", "/")+".html|actioncommand=validateLogin").split("[|]"));
+				this.endComplexElement("td");
+			this.endComplexElement("tr");
+		this.endComplexElement("table");
+	}
+	
+	public void validateLogin() throws Exception{
+		HashMap<String,String> logindetails=new HashMap<String, String>();
+		logindetails.put("USERNAME", this.request().requestParameter("USERNAME"));
+		logindetails.put("PASSWORD", this.request().requestParameter("PASSWORD"));
+		
+		initiateWidgetAndExecute(Modules.class, new Object[]{this.request(),null},(String[])null);
+	}
+}

@@ -1,0 +1,11 @@
+package baasserver.protocols;
+
+public interface InputOutput {
+	public void writeBytes(byte[]bytesToWrite);
+	public void writeBytesAppendTop(byte[]bytesToWrite);
+	public void canWriteBytes();
+	public void done();
+	public void canReadNextBytes();
+	public void doneWriting();
+	public void readBytes(byte[] bytesToRead);
+}

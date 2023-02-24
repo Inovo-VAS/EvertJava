@@ -1,0 +1,177 @@
+package paas.protocol.request;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+public class RequestHandleScriptEngine extends MarkupScriptEngine{
+
+	private RequestHandle _requestHandle=null;
+	public RequestHandleScriptEngine(RequestHandle requestHandle) {
+		super(requestHandle);
+		this._requestHandle=requestHandle;
+	}
+	
+	@Override
+	public String[] elementRootPathsToTest() {
+		String requestHandleClassPath="/"+this._requestHandle.getClass().getName().replaceAll("[.]", "/");
+		return new String[]{"/paas/protocol/request/web/",requestHandleClassPath.substring(0,requestHandleClassPath.lastIndexOf("/")+1)};
+	}
+	
+	@Override
+	public Class<?>[] elementSuperClasses() {
+		return new Class<?>[]{RequestHandle.class};
+	}
+	
+	@Override
+	public void performActiveScript() throws Exception {
+		if(this._requestHandle!=null){
+			this.outputStream().write((this.startScriptBraseChar()+this._requestHandle.getClass().getName()+"/"+this.endScriptBraseChar()).getBytes());
+		}
+		else{
+			super.performActiveScript();
+		}
+	}
+	
+	private HashMap<Integer,ArrayList<ByteArrayOutputStream>> _elementLevelMarkupContentGenerated=new HashMap<Integer, ArrayList<ByteArrayOutputStream>>();
+	private HashMap<Integer,ArrayList<InputStream>> _elementLevelMarkupContent=new HashMap<Integer, ArrayList<InputStream>>();
+	
+	private ArrayList<ByteArrayOutputStream> _elementMarkupContentGenerated=null;
+	private ByteArrayOutputStream _elementMarkupContent=null;
+	private int _elementMarkupContentIndex=0;
+	
+	@Override
+	public ByteArrayOutputStream currentMarkupGenerated() {
+		return _elementMarkupContent;
+	}
+	
+	@Override
+	public ArrayList<ByteArrayOutputStream> markupContentGegerated() {
+		return super.markupContentGegerated();
+	}
+	
+	@Override
+	public void initiateElementClassMarkupMimeResourceTemplatePaths(
+			Class<?> elementClass, String mimeType, boolean oneByOne)
+			throws Exception {
+		super.initiateElementClassMarkupMimeResourceTemplatePaths(elementClass,
+				mimeType, false);
+	}
+	
+	private int _elementTagLevels=0;
+	private String _lastNonWidgetTag="";
+	@Override
+	public void startValidElementTag(String tagToTest,
+			HashMap<String, String> validElementProperties) throws Exception {
+		if(tagToTest.equals("widget")){
+			if(!this._elementLevelMarkupContent.get((Integer)_elementTagLevels).isEmpty()){
+				paas.io.IOUtils.readInputStreamToOutputStream(this._elementLevelMarkupContent.get((Integer)_elementTagLevels).remove(0), this.outputStream());
+			}
+			else{
+				if(!this._elementLevelMarkupContent.isEmpty()){
+					int currentElementTagLevel=this._elementTagLevels;
+					while(currentElementTagLevel>0){
+						currentElementTagLevel--;
+						if(!this._elementLevelMarkupContent.get((Integer)currentElementTagLevel).isEmpty()){
+							paas.io.IOUtils.readInputStreamToOutputStream(this._elementLevelMarkupContent.get((Integer)currentElementTagLevel).remove(0), this.outputStream());
+							break;
+						}
+					}
+				}
+			}
+		}
+		else{
+			_elementTagLevels++;
+			_lastNonWidgetTag=tagToTest;
+			
+			this._elementLevelMarkupContentGenerated.put((Integer)_elementTagLevels, _elementMarkupContentGenerated=new ArrayList<ByteArrayOutputStream>());
+			this._elementMarkupContent=null;
+			this._elementMarkupContentIndex=0;
+			
+			super.startValidElementTag(tagToTest, validElementProperties);
+			this.initiateElementClassMarkupMimeResourceTemplatePaths(null, this._requestHandle.contextHandle().requestResourcePathExtension(), true);
+			if(!this._elementLevelMarkupContent.get((Integer)_elementTagLevels).isEmpty()){
+				paas.io.IOUtils.readInputStreamToOutputStream(this._elementLevelMarkupContent.get((Integer)_elementTagLevels).remove(0), this.outputStream());
+			}
+		}
+	}
+	
+	@Override
+	public void loadElementClassMarkupMimeResourceTemplatePath(
+			Class<?> elementClass, String mimeType,
+			String mimeResourceTemplatePath, boolean firstPath, boolean lastPath)
+			throws Exception {
+		
+		ArrayList<InputStream> elementLevelMarkupContentStreams=_elementLevelMarkupContent.get((Integer)_elementTagLevels);
+		if(elementLevelMarkupContentStreams==null){
+			_elementLevelMarkupContent.put((Integer)_elementTagLevels,elementLevelMarkupContentStreams=new ArrayList<InputStream>());
+		}
+		
+		InputStream elemClassResourceStream=elementClass.getResourceAsStream(mimeResourceTemplatePath);
+		if(elemClassResourceStream!=null){
+			elementLevelMarkupContentStreams.add(elemClassResourceStream);
+		}
+	}
+	
+	@Override
+	public boolean writeMarkupContent(char[] markupcontent) {
+		if(this._elementMarkupContent==null){
+			this._elementMarkupContentGenerated.add(_elementMarkupContent=new ByteArrayOutputStream());
+		}
+		for(char mc:markupcontent){
+			this._elementMarkupContent.write((byte)mc);
+			this._elementMarkupContentIndex++;
+			if(this._elementMarkupContentIndex==Integer.MAX_VALUE){
+				this._elementMarkupContentGenerated.add(_elementMarkupContent=new ByteArrayOutputStream());
+			}
+		}
+		return true;
+	}
+	
+	@Override
+	public HashMap<String, ArrayList<String>> markupMimeResourceTemplatePaths(
+			Class<?> elementClass) {
+		HashMap<String, ArrayList<String>> markupMimeResourceTemplatePaths=paas.reflection.ReflectUtils.classResourceTemplatePathsMap("masks", elementClass, RequestHandle.class,this.validResourcePathExtensions());
+		
+		return markupMimeResourceTemplatePaths;
+	}
+	
+	public ArrayList<String> validResourcePathExtensions() {
+		ArrayList<String> validResourcePathExtensions=new ArrayList<String>();
+		validResourcePathExtensions.add(this._requestHandle.contextHandle().requestResourcePathExtension());
+		return validResourcePathExtensions;
+	}
+	
+	HashMap<Integer,Integer> _lastElementMarkuplevelWidgetLine=new HashMap<Integer, Integer>();
+
+	@Override
+	public void endValidElementTag(String tagToTest) throws Exception {
+		if(!tagToTest.equals("widget")){
+			if(!this._elementLevelMarkupContent.get((Integer)_elementTagLevels).isEmpty()){
+				paas.io.IOUtils.readInputStreamToOutputStream(this._elementLevelMarkupContent.get((Integer)_elementTagLevels).remove(0), this.outputStream());
+				this.outputStream().write((this.startScriptBraseChar()+"/"+tagToTest+this.endScriptBraseChar()).getBytes());
+			}
+			else if(this._elementLevelMarkupContent.get((Integer)_elementTagLevels).isEmpty()){
+				
+				this._elementLevelMarkupContent.remove((Integer)_elementTagLevels).clear();
+				
+				this._elementLevelMarkupContentGenerated.remove((Integer)_elementTagLevels);
+				this._elementTagLevels--;
+				ArrayList<ByteArrayOutputStream> nextElementMarkupContentGenerated=this._elementLevelMarkupContentGenerated.get((Integer)_elementTagLevels);
+				
+				this._elementMarkupContent=null;
+				this._elementMarkupContentIndex=0;
+			}
+		}
+	}
+	
+	@Override
+	public boolean validTag(String tagToTest) throws Exception {
+		if(tagToTest.equals("widget")){
+			return true;
+		}
+		return super.validTag(tagToTest);
+	}
+}

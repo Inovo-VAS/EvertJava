@@ -1,0 +1,58 @@
+package baasserver.reflection;
+
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.net.MalformedURLException;
+
+public class JarFileLoader extends URLClassLoader
+{
+	public JarFileLoader ()
+    {
+        this (new URL[]{});
+    }
+	
+    public JarFileLoader (URL[] urls)
+    {
+        super (urls,ClassLoader.getSystemClassLoader());
+    }
+
+    public void addFile (String path) throws MalformedURLException
+    {
+    	
+    	while(path.indexOf("\\")>-1) path=path.substring(0, path.indexOf("\\"))+"/"+path.substring(path.indexOf("\\")+1);
+    	baasserver.io.Logger.debug("JAR FILE LOADING<"+ path+">");
+        String urlPath = "jar:file:/" + path + "!/";
+        
+        addURL (new URL (urlPath));
+        baasserver.io.Logger.debug("LOADED JAR<"+ urlPath+">");
+    }
+
+    /*public static void main (String args [])
+    {
+        try
+        {
+            System.out.println ("First attempt...");
+            Class.forName ("org.gjt.mm.mysql.Driver");
+        }
+        catch (Exception ex)
+        {
+            System.out.println ("Failed.");
+        }
+
+        try
+        {
+            URL urls [] = {};
+
+            JarFileLoader cl = new JarFileLoader (urls);
+            cl.addFile ("/opt/mysql-connector-java-5.0.4/mysql-connector-java-5.0.4-bin.jar");
+            System.out.println ("Second attempt...");
+            cl.loadClass ("org.gjt.mm.mysql.Driver");
+            System.out.println ("Success!");
+        }
+        catch (Exception ex)
+        {
+            System.out.println ("Failed.");
+            ex.printStackTrace ();
+        }
+    }*/
+}

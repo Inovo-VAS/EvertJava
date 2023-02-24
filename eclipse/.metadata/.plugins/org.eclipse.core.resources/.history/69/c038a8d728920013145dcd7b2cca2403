@@ -1,0 +1,12 @@
+package baasserver.db.protocols;
+
+import baasserver.protocols.InputOutput;
+import baasserver.protocols.markup.IOMarkupRequestHandle;
+
+public class DBRequestHandle extends IOMarkupRequestHandle {
+
+	public DBRequestHandle(InputOutput output) {
+		super(output);
+	}
+
+}

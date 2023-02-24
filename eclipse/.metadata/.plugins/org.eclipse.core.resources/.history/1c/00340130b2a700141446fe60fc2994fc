@@ -1,0 +1,34 @@
+package inovo.automated.work.steps;
+
+import java.io.File;
+import java.util.HashMap;
+
+import inovo.automated.work.AutomatedWorker;
+import inovo.automated.work.AutomatedWorkerStep;
+import inovo.db.Database;
+
+public class ImportFileStep extends AutomatedWorkerStep {
+
+	public ImportFileStep(AutomatedWorker automatedWorker,
+			HashMap<String, String> stepProperties) {
+		super(automatedWorker, stepProperties);
+	}
+
+	private File _fileDir=null;
+	
+	@Override
+	public void performAutomationStep() {
+		this.stepProperties().put("INLINESQLCOMMAND", "");
+		this.stepProperties().put("COMADELIM", "");
+		this.stepProperties().put("SOURCEPATH", "");
+		this.stepProperties().put("CURRENTFILEFIELDS", "");
+		this.stepProperties().put("FILELOOKUPMASK", "");
+		
+		Database.executeDBRequest(null, "AUTOMATEDWORK", "", this.stepProperties(), null);
+		
+		_fileDir=new File(this.stepProperties().get(""));
+		if(_fileDir.isDirectory()){
+			
+		}
+	}
+}

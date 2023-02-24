@@ -1,0 +1,42 @@
+package lancet.leads.automation;
+
+import inovo.db.Database;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class AccountsLeadsExportQueue{
+	private ExecutorService _exportAccounts=Executors.newCachedThreadPool();
+	private boolean _killExportQueue;
+	private Object _exportCheckLock=new Object();
+	public AccountsLeadsExportQueue(){
+		this._exportAccounts.execute(new Runnable() {
+			public void run() {
+				while(!_killExportQueue){
+					synchronized (_exportCheckLock) {
+						try {
+							_exportCheckLock.wait(1024);
+						} catch (InterruptedException e) {
+						}
+					}
+					checkExportFilesExists();
+				}
+			}
+		});
+	}
+	
+	public void checkExportFilesExists() throws Exception{
+		Database.executeDBRequest(null, "LANCETLEADSAUTOMATION", "UPDATE <DBUSER>.UNLOAD_ACCOUNTFILE SET REQUESTHANDLEFLAG=2 WHERE REQUESTHANDLEFLAG=1", null, null);
+	}
+	
+	public void killExportQueue(){
+		this._killExportQueue=true;
+		this._exportAccounts.shutdown();
+		while(!this._exportAccounts.isShutdown()){
+			try {
+				_exportCheckLock.wait(100);
+			} catch (InterruptedException e) {
+			}
+		}
+	}
+}

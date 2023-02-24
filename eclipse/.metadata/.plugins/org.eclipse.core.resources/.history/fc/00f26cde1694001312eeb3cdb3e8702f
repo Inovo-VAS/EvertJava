@@ -1,0 +1,71 @@
+import java.io.File;
+
+import baasserver.Client;
+import baasserver.Server;
+import baasserver.db.system.DBSystem;
+import baasserver.protocols.markup.IOMarkupRequestHandle;
+
+public class BaasServerMain {
+
+	/**
+	 * @param args
+	 */
+	
+	public static void main(String[] args) {	
+		String rootpath=BaasServerMain.class.getProtectionDomain().getCodeSource().getLocation().getPath().substring(1);
+		if(rootpath.indexOf(".jar")>-1){
+			rootpath=new File(rootpath).getParent().replaceAll("[\\\\]", "/");
+			rootpath=(rootpath.endsWith("/")?rootpath:rootpath+"/");
+		}
+		baasserver.io.Logger.setLogFilePath(rootpath+"log.log");
+		
+		baasserver.io.Logger.debug(Thread.currentThread().getContextClassLoader().getResource("").getPath().substring(1)+"log.log");
+		baasserver.io.Logger.debug("EnvironmentStarted");
+		try {
+			baasserver.reflection.REFUtils.loadJarPackagesFromPath(Thread.currentThread().getContextClassLoader().getResource("").getPath());
+		} catch (Exception e) {
+			
+		}
+		try {
+			baasserver.reflection.REFUtils.loadJarPackagesFromPath(Thread.currentThread().getContextClassLoader().getResource("").getPath()+"jdbc/");
+		} catch (Exception e) {
+			
+		}
+		
+		try {
+			DBSystem.registerWebSystem("baasserver.db.system").registerDBManager("INOVO", "dbtype=sqlserver|dbhost=NEMUS|dbinstance=|dbname=SQLPR1|dbuser=PTOOLS|dbpw=PTOOLS|dbschema=PTOOLS".split("[|]")).nextConnection();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		
+		Server.initServer(2222,IOMarkupRequestHandle.class);
+		Server.initServer(2223,IOMarkupRequestHandle.class);
+		
+		try {
+			Client client=new Client("127.0.0.1",2222);
+			//for(int r=0;r<10;r++){
+				client.clientOutputStream().writeln("GET /jquery/jquery-all.js HTTP/1.1");
+				client.clientOutputStream().flush();
+				while(!client.clientSocketHandle().isDoneWriting()){
+					synchronized (client) {
+						client.wait(5);
+					}
+				}
+				int bytesReadCount=0;
+				byte[] recieved=new byte[1024];
+				while((bytesReadCount=client.clientInputStream().read(recieved))>-1){
+					if(bytesReadCount>0){
+						System.out.print(new String(recieved).substring(0,bytesReadCount));
+					}
+				}
+			//}
+			
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		
+		
+	}
+
+	
+}

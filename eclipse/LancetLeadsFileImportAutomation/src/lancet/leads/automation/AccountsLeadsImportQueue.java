@@ -1,0 +1,334 @@
+package lancet.leads.automation;
+
+import inovo.db.Database;
+
+import java.io.File;
+import java.io.FileFilter;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FilenameFilter;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.TreeMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+
+public class AccountsLeadsImportQueue implements Runnable{
+
+	//private static Executor _exeImportQueue=Executors.newSingleThreadExecutor();
+	
+	private ArrayList<File> _accFilesToImport=new ArrayList<File>();
+	private static AccountsLeadsImportQueue _accountsLeadsImportQueue=null;
+	
+	private static boolean _shutdown=false;
+	private String _pickupPath="";
+	
+	private Object _accountsLeadsImportQueueLock=new Object();
+	
+	private AccountsLeadsImportQueue(String pickupPath) throws Exception{
+		if(pickupPath.indexOf("\\")>-1){
+			pickupPath=pickupPath.replaceAll("[\\]", "/");
+		}
+		while(!pickupPath.endsWith("/")) pickupPath+="/";
+		this._pickupPath=pickupPath;
+		if(!new File(this._pickupPath).isDirectory()){
+			throw new Exception("No valid folder path specified");
+		}
+	}
+	
+	@Override
+	public void run() {
+		try {
+			//synchronized (_accountsLeadsImportQueueLock) {
+			//	_accountsLeadsImportQueueLock.wait(2000);
+			//}
+			Thread.sleep(2000);
+			
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+		while(!this._shutdown){
+			this.importAccountFiles(this._pickupPath);
+			try {
+				//synchronized (_accountsLeadsImportQueueLock) {
+				//	_accountsLeadsImportQueueLock.wait(100);
+				//}
+				Thread.sleep(1000);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+	}
+
+	public void shutdown(){
+		this._shutdown=true;
+		_accountsLeadsImportQueueLock.notifyAll();
+	}
+
+	private void importAccountFiles(String pickupPath) {
+		File[] pickedUpFiles=new File(this._pickupPath).listFiles();
+		for(int findex=0;findex<pickedUpFiles.length;findex++){
+			if(findex<pickedUpFiles.length-1){
+				File ffirst=pickedUpFiles[findex];
+				File fsecond=pickedUpFiles[findex+1];
+				if(ffirst.lastModified()>fsecond.lastModified()){
+					File fswap=ffirst;
+					pickedUpFiles[findex]=fsecond;
+					pickedUpFiles[findex+1]=fswap;
+				}
+			}	
+		}
+		boolean importAccountsIntoPresence=false;
+		if(pickedUpFiles!=null){
+			for(File accFile:pickedUpFiles){
+				if(accFile.renameTo(accFile)){
+					this._accFilesToImport.add(accFile);
+				}
+			}
+			importAccountsIntoPresence=!this._accFilesToImport.isEmpty();
+			while(!this._accFilesToImport.isEmpty()){
+				try {
+					this.importAccountFiles(this._accFilesToImport.remove(0));
+					this.loadAccountsIntoPresence(importAccountsIntoPresence);
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+			}
+		}
+		this.loadAccountsIntoPresence(importAccountsIntoPresence);
+		
+	}
+	
+	
+	private HashMap<String,String> recStillHandling=new HashMap<String,String>();
+	
+	public  void loadAccountsIntoPresence(boolean requireUpdatingOfAccounts) {
+		try {
+			Thread.sleep(10*1024);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+		try{
+			recStillHandling.clear();
+			
+			Database.executeDBRequest(null,"LANCETLEADSAUTOMATION", "EXECUTE <DBUSER>.INITIATE_LANCET_CALLSLOADED", null,null);
+			
+			recStillHandling.put("RECHANDLINGCOUNT", "0");
+			
+			Database.executeDBRequest(null,"LANCETLEADSAUTOMATION", "SELECT COUNT(*) AS RECHANDLINGCOUNT FROM <DBUSER>.LANCET_ACCOUNTS WHERE RECORDHANDLEFLAG=1", recStillHandling,null);
+			
+			if(requireUpdatingOfAccounts||!recStillHandling.get("RECHANDLINGCOUNT").equals("0")){
+				Database.executeDBRequest(null,"LANCETLEADSAUTOMATION", "UPDATE <DBUSER>.LANCET_ACCOUNTS SET RECORDHANDLEFLAG=2 WHERE RECORDHANDLEFLAG=1", null,null);
+			}
+			
+			recStillHandling.put("RECHANDLINGCOUNT", "0");
+			Database.executeDBRequest(null,"LANCETLEADSAUTOMATION", "SELECT COUNT(*) AS RECHANDLINGCOUNT FROM <DBUSER>.LANCET_ACCOUNTS WHERE RECORDHANDLEFLAG=2", recStillHandling,null);
+			if(!recStillHandling.get("RECHANDLINGCOUNT").equals("0")){
+				Database.executeDBRequest(null,"LANCETLEADSAUTOMATION", "EXECUTE <DBUSER>.IMPORT_LANCET_ACCOUNTS_INTO_PRESENCE", null,null);
+			}
+			Database.executeDBRequest(null,"LANCETLEADSAUTOMATION", "EXECUTE <DBUSER>.GENERATE_PTP_REQUESTS", null,null);
+		}catch(Exception e){
+			e.printStackTrace();
+		}
+	}
+	
+	public void readRowData(int rowindex,ArrayList<String> rowData,ArrayList<String> columnData) {
+		HashMap<String,String> accRowInfo=Database.rowData(columnData, rowData);
+		try{
+			if(accRowInfo.get("INTERREST_")!=null) accRowInfo.put("INTERREST", accRowInfo.get("INTERREST_"));
+			//|"Policy Number"|"Contract Date"|"Contract Due Date"|"Contract Amount"
+			if(accRowInfo.containsKey("POLICY NUMBER")){
+				accRowInfo.put("MEM_NUM", accRowInfo.get("POLICY NUMBER"));
+			}
+			if(accRowInfo.containsKey("CONTRACT DATE")){
+				if(accRowInfo.get("CONTRACT DATE").equals("")){
+					accRowInfo.put("CONTRACT_DATE", accRowInfo.get("CONTRACT DATE"));
+				}
+				else{
+					accRowInfo.put("CONTRACT_DATE",new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new SimpleDateFormat("dd-MM-yyyy").parse(accRowInfo.get("CONTRACT DATE"))));
+				}
+			}
+			else{
+				accRowInfo.put("CONTRACT_DATE", "");
+			}
+			
+			if(accRowInfo.containsKey("CONTRACT DUE DATE")){
+				if(accRowInfo.get("CONTRACT DUE DATE").equals("")){
+					accRowInfo.put("CONTRACT_DUE_DATE", accRowInfo.get("CONTRACT DUE DATE"));
+				}
+				else{
+					accRowInfo.put("CONTRACT_DUE_DATE",new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new SimpleDateFormat("dd-MM-yyyy").parse(accRowInfo.get("CONTRACT DUE DATE"))));
+				}
+			}
+			else{
+				accRowInfo.put("CONTRACT_DUE_DATE", "");
+			}
+			
+			if(accRowInfo.containsKey("CONTRACT AMOUNT")){
+				if(accRowInfo.get("CONTRACT AMOUNT").equals("")){
+					accRowInfo.put("CONTRACT_AMOUNT", "0");
+				}
+				else{
+					accRowInfo.put("CONTRACT_AMOUNT", accRowInfo.get("CONTRACT AMOUNT"));
+				}
+			}
+			else{
+				accRowInfo.put("CONTRACT_AMOUNT", "0");
+			}
+			
+			if(accRowInfo.containsKey("PATIENT BUSINESS PHO")){
+				accRowInfo.put("PATIENT_BUSINESS_PHO", accRowInfo.get("PATIENT BUSINESS PHO"));
+			}
+			
+			if(accRowInfo.containsKey("PATIENT HOME PHONE")){
+				accRowInfo.put("PATIENT_HOME_PHONE", accRowInfo.get("PATIENT HOME PHONE"));
+			}
+			
+			if(accRowInfo.containsKey("PATIENT OTHER PHONE")){
+				accRowInfo.put("PATIENT_OTHER_PHONE", accRowInfo.get("PATIENT OTHER PHONE"));
+			}
+			
+			if(accRowInfo.get("START_DATE").equals("")){
+				accRowInfo.put("START_DATE",new SimpleDateFormat("yyyy-MM-dd").format(new Date())+" 00:00:00");
+			}
+			else{
+				accRowInfo.put("START_DATE",new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new SimpleDateFormat("dd-MM-yyyy").parse(accRowInfo.get("START_DATE"))));
+			}
+			try{
+				if(accRowInfo.get("SOURCE_ID").equals("")){
+					inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("ACCOUNT DATA ERROR:[EMPTY SOURCE_ID]"+accRowInfo.toString());
+					//dataSetAccountsToImportErrorLines.put(dataSetAccountsToImportErrorLines.size(),dataSetAccountsToImportData);
+				}
+				else{
+					accRowInfo.put("PROJECT_NAME", _projectFileName.toUpperCase().trim());
+					
+					Database.executeDBRequest(null,"LANCETLEADSAUTOMATION","DECLARE @RC int EXECUTE @RC = <DBUSER>.[UPDATE_LANCET_ACCOUNTS_LEADS] :SOURCE_ID ,:COMMENT ,:ACCOUNT_NO ,:MEDICAL_AID ,:GUAR_NAME ,:GUAR_INITI ,:GUAR_TITLE ,:PATIENT_NAME ,:ACC_TYPE ,:DOCTOR ,:LOCATION ,:ADDRESS_LINE_1 ,:ADDRESS_LINE_2 ,:ADDRESS_LINE_3 ,:POSTAL_COD ,:GUAR_CELL ,:GUAR_HOME ,:GUAR_BUSSINESS ,:PAT_ID_NUM ,:GUAR_ID ,:LANGUAGE ,:BALANCE ,:START_DATE ,:INTERREST ,:PATIENT_ST ,:INS_COLLEC ,:AGENCY ,:REJECTION_CODE ,:GUAR_EMAIL ,:AGE ,:S ,:DOB ,:PROJECT_NAME ,:FACILITY ,:DR_MNEN ,:UCRN, :MEM_NUM ,:CONTRACT_DATE ,:CONTRACT_DUE_DATE ,:CONTRACT_AMOUNT,:PATIENT_HOME_PHONE,:PATIENT_BUSINESS_PHO,:PATIENT_OTHER_PHONE", accRowInfo,null);
+				}
+			}catch(Exception e){
+				e.printStackTrace();
+				inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("ACCOUNT DATA ERROR:[DB]"+e.getMessage());
+				inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("ACCOUNT DATA ERROR:[DB-PARAMS]"+accRowInfo.toString());
+				//dataSetAccountsToImportErrorLines.put(dataSetAccountsToImportErrorLines.size(),dataSetAccountsToImportData);
+			}
+		}
+		catch(Exception ex){
+			inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("ACCOUNT DATA ERROR:[DATEFORMAT]"+ex.getMessage());
+			inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("ACCOUNT DATA ERROR:[DB-PARAMS]"+accRowInfo.toString());
+		}
+		accRowInfo.clear();
+		accRowInfo=null;
+	}
+
+	private String _projectFileName="";
+	private void importAccountFiles(File accFileToImport) throws Exception {
+		TreeMap<Integer, ArrayList<String>> dataSetAccountsToImport=new TreeMap<Integer, ArrayList<String>>();
+		TreeMap<Integer, ArrayList<String>> dataSetAccountsToImportErrorLines=new TreeMap<Integer, ArrayList<String>>();
+		long millisecondStart=Calendar.getInstance().getTimeInMillis();
+		
+		inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("importAccountFiles():IMPORTING FILE["+accFileToImport.getName()+"] INTO DATASET");
+		FileInputStream accFileIn=new FileInputStream(accFileToImport);
+		_projectFileName=accFileToImport.getName();
+		if(_projectFileName.indexOf("\\")>-1){
+			_projectFileName=_projectFileName.substring(_projectFileName.lastIndexOf("\\")+1);
+		}
+		if(_projectFileName.indexOf("/")>-1){
+			_projectFileName=_projectFileName.substring(_projectFileName.lastIndexOf("/")+1);
+		}
+		if(_projectFileName.lastIndexOf(".")>-1){
+			_projectFileName=_projectFileName.substring(0,_projectFileName.lastIndexOf("."));
+		}
+		try{
+			Database.populateDatasetFromFlatFileStream(dataSetAccountsToImport, "CSV", accFileIn, null,'|',this);
+		}catch(Exception e){
+			e.printStackTrace();
+		}
+		accFileIn.close();
+		millisecondStart=(Calendar.getInstance().getTimeInMillis()-millisecondStart);
+		inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("importAccountFiles()[duration - "+String.valueOf(millisecondStart)+"]:FINISHED IMPORT INTO DATASET");
+			
+		/*for(int rowindex:dataSetAccountsToImport.keySet()){
+			if(rowindex==0) continue;
+			HashMap<String,String> accRowInfo=Database.rowData(dataSetAccountsToImport, rowindex);
+			if(accRowInfo.get("INTERREST_")!=null) accRowInfo.put("INTERREST", accRowInfo.get("INTERREST_"));
+			//|"Policy Number"|"Contract Date"|"Contract Due Date"|"Contract Amount"
+			if(accRowInfo.containsKey("POLICY NUMBER")){
+				accRowInfo.put("MEM_NUM", accRowInfo.get("POLICY NUMBER"));
+			}
+			if(accRowInfo.containsKey("CONTRACT DATE")){
+				if(accRowInfo.get("CONTRACT DATE").equals("")){
+					accRowInfo.put("CONTRACT_DATE", accRowInfo.get("CONTRACT DATE"));
+				}
+				else{
+					accRowInfo.put("CONTRACT_DATE",new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new SimpleDateFormat("dd-MM-yyyy").parse(accRowInfo.get("CONTRACT DATE"))));
+				}
+			}
+			else{
+				accRowInfo.put("CONTRACT_DATE", "");
+			}
+			
+			if(accRowInfo.containsKey("CONTRACT DUE DATE")){
+				if(accRowInfo.get("CONTRACT DUE DATE").equals("")){
+					accRowInfo.put("CONTRACT_DUE_DATE", accRowInfo.get("CONTRACT DUE DATE"));
+				}
+				else{
+					accRowInfo.put("CONTRACT_DUE_DATE",new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new SimpleDateFormat("dd-MM-yyyy").parse(accRowInfo.get("CONTRACT DUE DATE"))));
+				}
+			}
+			else{
+				accRowInfo.put("CONTRACT_DUE_DATE", "");
+			}
+			
+			if(accRowInfo.containsKey("CONTRACT AMOUNT")){
+				if(accRowInfo.get("CONTRACT AMOUNT").equals("")){
+					accRowInfo.put("CONTRACT_AMOUNT", "0");
+				}
+				else{
+					accRowInfo.put("CONTRACT_AMOUNT", accRowInfo.get("CONTRACT AMOUNT"));
+				}
+			}
+			else{
+				accRowInfo.put("CONTRACT_AMOUNT", "0");
+			}
+			
+			if(accRowInfo.get("START_DATE").equals("")){
+				accRowInfo.put("START_DATE",new SimpleDateFormat("yyyy-MM-dd").format(new Date())+" 00:00:00");
+			}
+			else{
+				accRowInfo.put("START_DATE",new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new SimpleDateFormat("dd-MM-yyyy").parse(accRowInfo.get("START_DATE"))));
+			}
+			try{
+				if(accRowInfo.get("SOURCE_ID").equals("")){
+					dataSetAccountsToImportErrorLines.put(dataSetAccountsToImportErrorLines.size(),dataSetAccountsToImport.get(rowindex));
+				}
+				else{
+					accRowInfo.put("PROJECT_NAME", projectFileName.toUpperCase().trim());
+					Database.executeDBRequest(null,"LANCETLEADSAUTOMATION","DECLARE @RC int EXECUTE @RC = <DBUSER>.[UPDATE_LANCET_ACCOUNTS_LEADS] :SOURCE_ID ,:COMMENT ,:ACCOUNT_NO ,:MEDICAL_AID ,:GUAR_NAME ,:GUAR_INITI ,:GUAR_TITLE ,:PATIENT_NAME ,:ACC_TYPE ,:DOCTOR ,:LOCATION ,:ADDRESS_LINE_1 ,:ADDRESS_LINE_2 ,:ADDRESS_LINE_3 ,:POSTAL_COD ,:GUAR_CELL ,:GUAR_HOME ,:GUAR_BUSSINESS ,:PAT_ID_NUM ,:GUAR_ID ,:LANGUAGE ,:BALANCE ,:START_DATE ,:INTERREST ,:PATIENT_ST ,:INS_COLLEC ,:AGENCY ,:REJECTION_CODE ,:GUAR_EMAIL ,:AGE ,:S ,:DOB ,:PROJECT_NAME ,:FACILITY ,:DR_MNEN ,:UCRN, :MEM_NUM ,:CONTRACT_DATE ,:CONTRACT_DUE_DATE ,:CONTRACT_AMOUNT", accRowInfo,null);
+				}
+				accRowInfo.clear();
+				accRowInfo=null;
+			}catch(Exception e){
+				accRowInfo.clear();
+				accRowInfo=null;
+				e.printStackTrace();
+				dataSetAccountsToImportErrorLines.put(dataSetAccountsToImportErrorLines.size(),dataSetAccountsToImport.get(rowindex));
+			}
+		}*/
+		accFileToImport.delete();
+		inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("importAccountFiles():FINISEHD PROCESSING DATASET");
+		Database.cleanupDataset(dataSetAccountsToImportErrorLines);
+		dataSetAccountsToImportErrorLines=null;
+		Database.cleanupDataset(dataSetAccountsToImport);
+		dataSetAccountsToImport=null;
+	}
+
+	public static AccountsLeadsImportQueue accountsLeadsImportQueue(String pickupPath) throws Exception{
+		if(_accountsLeadsImportQueue==null){
+			new Thread((_accountsLeadsImportQueue=new AccountsLeadsImportQueue(pickupPath))).start(); 
+		}
+		return _accountsLeadsImportQueue;
+	}
+
+}

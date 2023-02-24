@@ -1,0 +1,41 @@
+package inovo.automation.scheduledsqljobs;
+
+import inovo.db.Database;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class ScheduledSqlJobsQueue implements Runnable{
+	
+	private static ScheduledSqlJobsQueue _scheduledSqlJobsQueue=null;
+	
+	private boolean _shutdownQueue=false;
+	
+	private ExecutorService _sheduledJobsService=Executors.newCachedThreadPool();
+	
+	public ScheduledSqlJobsQueue(){
+		_sheduledJobsService.execute(this);
+	}
+	
+	private void logDebug(String message){
+		inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug(message);
+	}
+
+	@Override
+	public void run() {
+		this.logDebug("STARTED ScheduledSqlJobsQueue");
+		while(!_shutdownQueue){
+			try {
+				Database.executeDBRequest(null, "SCHEDULEDSQLJOBS", "SELECT * FROM <DBUSER>.SCHEDULEDSQLJOBS WHERE ACTIVE='E'", null, this);
+			} catch (Exception e1) {
+				
+			}
+			try {
+				Thread.sleep(30*1024);
+			} catch (InterruptedException e) {
+			}
+		}
+		
+		this.logDebug("STOPPED ScheduledSqlJobsQueue");
+	}
+}

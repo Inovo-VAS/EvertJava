@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Rename package &apos;pce.accountants.db.web.system.customers&apos; to &apos;pce.accountants.db.web.system.clients&apos;&#x0D;&#x0A;- Original project: &apos;pce.accountants&apos;&#x0D;&#x0A;- Original element: &apos;pce.accountants/src/pce.accountants.db.web.system.customers&apos;&#x0D;&#x0A;- Renamed element: &apos;pce.accountants/src/pce.accountants.db.web.system.clients&apos;&#x0D;&#x0A;- Update references to refactored element&#x0D;&#x0A;- Update textual occurrences in comments and strings" description="Rename package &apos;pce.accountants.db.web.system.customers&apos;" flags="589830" hierarchical="false" id="org.eclipse.jdt.ui.rename.package" input="/src&lt;pce.accountants.db.web.system.customers" name="pce.accountants.db.web.system.clients" qualified="false" references="true" stamp="1393659368201" textual="false" version="1.0"/>
+</session>

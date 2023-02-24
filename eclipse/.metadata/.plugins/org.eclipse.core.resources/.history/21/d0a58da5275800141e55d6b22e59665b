@@ -1,0 +1,101 @@
+package inovo.ftp.file.downloader;
+
+import inovo.db.Database;
+
+import java.io.File;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.TreeMap;
+
+import ftp4j.FTPClient;
+import ftp4j.FTPFile;
+
+public class FTPDownloader {
+	private static FTPDownloader _ftpDownloader=new FTPDownloader();
+	
+	private boolean _shutdownftp=false;
+	HashMap<String,String> _ftpsettingsfound=new HashMap<String,String>();
+	private FTPDownloader(){
+	}
+	
+	public static FTPDownloader ftpdownloader(){
+		return _ftpDownloader;
+	}
+	
+	public void initiateFTP(String ftpsettings){
+		
+		for(String ftpsetting:ftpsettings.split(";")){
+			if(ftpsetting.indexOf("=")>-1){
+				_ftpsettingsfound.put(ftpsetting.substring(0,ftpsetting.indexOf("=")).trim().toUpperCase(), ftpsetting.substring(ftpsetting.indexOf("=")+1).trim());
+			}
+		}
+		new Thread(){
+			public void run() {
+				while(!_shutdownftp){
+					downloadFiles();
+					try {
+						this.sleep(20*1024);
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					}
+				};
+			}
+		}.start();
+	}
+	
+	protected void downloadFiles(){
+		TreeMap<Integer, ArrayList<String>> activefilealliases=new TreeMap<Integer, ArrayList<String>>();
+		ArrayList<String> listedAlliasses=new ArrayList<String>();
+		try{
+			activefilealliases=Database.executeDBRequest("FLATFILELEADSIMPORTER","SELECT [ALLIAS] FROM <DBUSER>.[LEADSDATAFILEALLIAS] WHERE UPPER([ENABLEALLIAS])='TRUE'", null);
+			for(int rowindex:activefilealliases.keySet()){
+				if(rowindex==0) continue;
+				listedAlliasses.add(activefilealliases.get(rowindex).get(0).toUpperCase());
+			}
+		}
+		catch(Exception e){
+		}
+		try{
+			
+			File flocaldir=new File(_ftpsettingsfound.get("LOCALFOLDER"));
+			if(flocaldir.exists()){
+				
+				String ftplocaldir=flocaldir.getPath();
+				String ftpprocessedfolder=_ftpsettingsfound.get("PROCESSEDFOLDER");
+				while(!ftplocaldir.endsWith(File.separator)){ftplocaldir+=File.separator;}
+				FTPClient ftpcn=new FTPClient();
+				ftpcn.connect(_ftpsettingsfound.get("HOST"),21);
+				ftpcn.login(_ftpsettingsfound.get("USERNAME"), _ftpsettingsfound.get("PASSWORD"));
+								
+				FTPFile[]listedfiles=ftpcn.list();
+				String flocalSessionPrefix=new SimpleDateFormat("yyyyMMddHHmmssSSS").format(new Date());
+				
+				for(FTPFile ftpf:listedfiles){
+					if(ftpf.getType()==FTPFile.TYPE_FILE){
+						String ftpfname=ftpf.getName();
+						String maxFAllias="";
+						for(String fallias:listedAlliasses){
+							if(ftpfname.toUpperCase().startsWith(fallias)){
+								maxFAllias=fallias;
+							}
+						}
+						if(maxFAllias.equals("")) continue;
+						
+						String ftpflname=ftplocaldir+flocalSessionPrefix+ftpfname;
+						File fidown=new File(ftpflname);
+						ftpcn.download(ftpfname, fidown);
+						fidown.renameTo(new File(ftplocaldir+ftpfname));
+						ftpcn.rename(ftpfname, ftpprocessedfolder+ftpfname);
+					}
+				}
+				
+				ftpcn.disconnect(true);
+			}
+		}
+		catch(Exception ftpe){
+			
+		}
+	}
+}

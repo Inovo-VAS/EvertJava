@@ -1,0 +1,96 @@
+package inovo.queues;
+
+public class Request implements Runnable {
+	private boolean _completed=false;
+	private Queue _queue=null;
+	private Object _requestLock=new Object();
+	private Exception _reqException=null;
+	@Override
+	public void run() {
+		while(!_queue._killAllQueues&&!_queue._killRequests&&!_killRequest&&this.canContinue()){
+			if(this.canExecute()){
+				try{
+					this._reqException=null;
+					this.executeRequest();
+				}catch(Exception re){
+					this._reqException=re;
+					if(this.onExecuteRequestError(re)){
+						break;
+					}
+				}
+			}
+			try {
+				synchronized (_requestLock) {
+					_requestLock.wait(this.requestDelay());
+				}
+			} catch (InterruptedException e) {
+				break;
+			}
+		}
+		synchronized (this) {
+			this.notify();
+		}
+		this._completed=true;
+		this._queue.detachRequest(this);
+	}
+	
+	public boolean onExecuteRequestError(Exception exception) {
+		return false;
+	}
+
+	public Queue queue(){
+		return this._queue;
+	}
+	
+	private boolean _killRequest=false;
+	public void kill(){
+		this._killRequest=true;
+		this.notifyRequestLock();
+	}
+	
+	public void notifyRequestLock(){
+		synchronized (_requestLock) {
+			this._requestLock.notify();
+		}
+	}
+	
+	public boolean canContinue() {
+		return true;
+	}
+
+	protected void attachQueue(Queue queue){
+		this._queue=queue;
+	}
+	
+	public boolean completed(){
+		return this._completed;
+	}
+	
+	public void executeRequest() throws Exception{
+	}
+	
+	public boolean canExecute(){
+		return true;
+	}
+
+	private long _requestDelay=2;
+	
+	public void setRequestDelay(long requestDelay){
+		_requestDelay=(requestDelay<2?2:requestDelay);
+	}
+	
+	public long requestDelay(){
+		return _requestDelay;
+	}
+
+	private String _requestAllias="";
+	
+	public String requestAllias(){
+		return this._requestAllias;
+	}
+	
+	public void setRequestAllias(String requestAllias) {
+		this._requestAllias=requestAllias;
+	}
+
+}

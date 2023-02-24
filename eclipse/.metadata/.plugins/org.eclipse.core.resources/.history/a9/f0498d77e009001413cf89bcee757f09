@@ -1,0 +1,5 @@
+package lancet.leads.automation;
+
+public class AccountsLeadsExportQueue {
+
+}

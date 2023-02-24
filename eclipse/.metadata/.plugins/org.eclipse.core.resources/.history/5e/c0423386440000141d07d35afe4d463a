@@ -1,0 +1,33 @@
+package inovo.monitoring;
+
+import java.io.InputStream;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.HashMap;
+
+import inovo.db.Database;
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+
+public class Utilities extends InovoHTMLPageWidget {
+
+	public Utilities(InovoWebWidget parentWidget, InputStream inStream) {
+		super(parentWidget, inStream);
+	}
+
+	public void testecho() throws Exception{
+		this.respondString("Hello "+new SimpleDateFormat("yyyy-MM-dd HH:mm.ss.SSS").format(new Date()));
+		//System.out.println("Hello "+new SimpleDateFormat("yyyy-MM-dd HH:mm.ss.SSS").format(new Date()));
+		//SELECT * FROM v$session WHERE type='USER' AND PROGRAM like'pco%'
+	}
+	
+	public void retrieveDBSettings(){
+		try{
+			HashMap<String,String> dbsettings=Database.dballias("").dbsettings();
+			
+		}
+		catch(Exception e){
+			
+		}
+	}
+}

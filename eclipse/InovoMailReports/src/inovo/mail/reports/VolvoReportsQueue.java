@@ -1,0 +1,506 @@
+package inovo.mail.reports;
+
+import inovo.db.Database;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Properties;
+import java.util.TreeMap;
+
+import javax.activation.DataHandler;
+import javax.activation.FileDataSource;
+import javax.mail.BodyPart;
+import javax.mail.Message;
+import javax.mail.MessagingException;
+import javax.mail.Multipart;
+import javax.mail.PasswordAuthentication;
+import javax.mail.Session;
+import javax.mail.Transport;
+import javax.mail.internet.AddressException;
+import javax.mail.internet.InternetAddress;
+import javax.mail.internet.MimeBodyPart;
+import javax.mail.internet.MimeMessage;
+import javax.mail.internet.MimeMultipart;
+import javax.mail.util.ByteArrayDataSource;
+
+import org.apache.poi.hssf.usermodel.HSSFCell;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.DateUtil;
+import org.apache.poi.ss.usermodel.Font;
+import org.apache.poi.ss.usermodel.IndexedColors;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.xssf.usermodel.XSSFSheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+
+public class VolvoReportsQueue {
+
+	
+	public static boolean _shutdownQueue=false;
+	
+	public static void sendMail(String subject,String from,String to,String bodyoutput,String smtphost,String port,final String useracc,final String password,String reportName,String suggestedDate) throws Exception{
+		Properties mailServerProperties=new Properties();
+		//mailServerProperties = System.getProperties();
+		mailServerProperties.put("mail.smtp.starttls.enable", "true");
+		mailServerProperties.put("mail.smtp.port",Integer.parseInt(port));
+		mailServerProperties.put("mail.smtp.host", smtphost);
+		mailServerProperties.put("mail.smtp.auth", "true");
+		inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("email-props:"+mailServerProperties.toString());
+		Session getMailSession = Session.getInstance(mailServerProperties,
+			      new javax.mail.Authenticator() {
+	         protected PasswordAuthentication getPasswordAuthentication() {
+	        	 inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("email-acc:"+useracc+"->"+password);
+	            return new PasswordAuthentication(useracc, password);
+	         }
+	      });
+		MimeMessage generateMailMessage = new MimeMessage(getMailSession);
+		
+		boolean didSetTo=false;
+		for(String tos:to.split("[;]")){
+			if(!didSetTo){
+				didSetTo=true;
+				generateMailMessage.addRecipient(Message.RecipientType.TO, new InternetAddress(tos));
+			}
+			else{
+				generateMailMessage.addRecipient(Message.RecipientType.CC, new InternetAddress(tos));
+			}
+		}
+		
+		generateMailMessage.setFrom(from);
+		generateMailMessage.setSubject(subject);
+		String emailBody = bodyoutput;
+		
+		BodyPart messageBodyPart = new MimeBodyPart();
+		
+		messageBodyPart.setText(bodyoutput);
+		
+		Multipart multipart = new MimeMultipart();
+		
+		multipart.addBodyPart(messageBodyPart);
+		
+		
+		try {
+			BodyPart messageAttachmentPart = new MimeBodyPart();
+			messageAttachmentPart.setDataHandler(new DataHandler(new ByteArrayDataSource(generateReport(reportName,suggestedDate), "application/vnd.ms-excel")));
+			messageAttachmentPart.setFileName(reportName.toLowerCase()+".xlsx");
+			multipart.addBodyPart(messageAttachmentPart);
+			
+		} catch (IOException e) {
+		}
+		
+		generateMailMessage.setContent(multipart);
+		Transport.send(generateMailMessage);
+		
+	}
+	
+	public static InputStream generateReport(String reportName,String suggestedDate) throws Exception{
+		reportName=(reportName==null?"":reportName.toUpperCase());
+		
+		XSSFWorkbook workbook = new XSSFWorkbook();
+        XSSFSheet sheet = workbook.createSheet(reportName.replaceAll("[_]", " "));
+        
+        Object[][] bookData=null;
+        suggestedDate=(suggestedDate==null?"GETDATE()-1":(suggestedDate.equals("")?"GETDATE()-1":("GETDATE()-DATEDIFF(DAY,'"+suggestedDate+"',GETDATE())")));
+        if(reportName.equals("AGENT_SERVICELEVEL_BREAKDOWN")){
+	        int sheetRowCount=0;
+	        TreeMap<Integer, ArrayList<String>> reportDbMap=new TreeMap<Integer, ArrayList<String>>();
+	        
+			try {
+				Database.executeDBRequest(reportDbMap, "REPORTING", "SELECT * FROM <DBUSER>.AGENT_SERVICELEVEL_INBOUNDBREAKDOWN("+suggestedDate+")  ORDER BY DATE,TIME", null,null);
+				
+			} catch (Exception e1) {
+				e1.printStackTrace();
+			}
+			
+			ArrayList<String> rowDataSumTotals=new ArrayList<String>();
+			ArrayList<String> rowDataAverageTotals=new ArrayList<String>();
+			ArrayList<String> datasetColumns=null;
+			
+			ArrayList<String> validFormulaIndexes=new ArrayList<String>();
+			HashMap<String, String> cellDataFormats=new HashMap<String, String>();
+			int rowCount=0;
+			
+			Integer sumTotalsIndex=0;
+			Integer avgTotalsIndex=0;
+			
+			if(!reportDbMap.isEmpty()){
+				datasetColumns=reportDbMap.get(reportDbMap.firstKey());
+				
+				Long callsMade=reportDbMap.lastKey().longValue();
+				Long callsHandled=((Integer)0).longValue();
+				Long callsHandledOutside=((Integer)0).longValue();
+				Long callsAbandoned=((Integer)0).longValue();
+				
+				
+				String timeFormat="[h]:mm:ss;@";
+				String persentageFormat="0.0%";
+				cellDataFormats.put("TIME", timeFormat);
+				cellDataFormats.put("TIME_TO_ANSWER_OR_WAIT_TIME", timeFormat);
+				cellDataFormats.put("START_TIME", timeFormat);
+				cellDataFormats.put("END_TIME", timeFormat);
+				cellDataFormats.put("TALK_TIME", timeFormat);
+				cellDataFormats.put("ACW_TIME", timeFormat);
+				cellDataFormats.put("HANDLE_TIME", timeFormat);
+				
+				validFormulaIndexes.add("TIME_TO_ANSWER_OR_WAIT_TIME");
+				validFormulaIndexes.add("TALK_TIME");
+				validFormulaIndexes.add("ACW_TIME");
+				validFormulaIndexes.add("HANDLE_TIME");
+				validFormulaIndexes.add("HANDLED_WITHIN_30SEC");
+				validFormulaIndexes.add("HANDLED_OUTSIDE_30SEC");
+				validFormulaIndexes.add("ABANDONED_WITHIN_30SEC");
+				validFormulaIndexes.add("ABANDONED_OUTSIDE_30SEC");
+				validFormulaIndexes.add("AGENTS_LOGGED_IN_AT_THE_TIME");
+				
+				for(int i=0;i<reportDbMap.firstEntry().getValue().size();i++){
+					if(validFormulaIndexes.contains(datasetColumns.get((Integer)i))){
+						if(datasetColumns.get((Integer)i).equals("AGENTS_LOGGED_IN_AT_THE_TIME")){
+							rowDataAverageTotals.add("=ROUND(AVERAGE("+(char)(i+65)+"2:"+(char)(i+65)+String.valueOf(reportDbMap.size())+"),5)");
+							rowDataSumTotals.add("=MAX("+(char)(i+65)+"2:"+(char)(i+65)+String.valueOf(reportDbMap.size())+")");
+						}
+						else{
+							if(i>=14&&i<=17){
+								rowDataAverageTotals.add("=ROUND(AVERAGE("+(char)(i+65)+"2:"+(char)(i+65)+String.valueOf(reportDbMap.size())+"),5)");
+							}
+							else{
+								rowDataAverageTotals.add("=AVERAGE("+(char)(i+65)+"2:"+(char)(i+65)+String.valueOf(reportDbMap.size())+")");
+							}
+							rowDataSumTotals.add("=SUM("+(char)(i+65)+"2:"+(char)(i+65)+String.valueOf(reportDbMap.size())+")");
+						}
+					}
+					else{
+						rowDataAverageTotals.add("");
+						rowDataSumTotals.add("");
+					}
+				}
+				
+				rowDataSumTotals.set(0, "SUM TOTALS:");
+				rowDataAverageTotals.set(0, "AVERAGE TOTALS:");
+				
+				sumTotalsIndex=0;
+				avgTotalsIndex=0;
+				
+				reportDbMap.put((Integer)(sumTotalsIndex= reportDbMap.size()) ,rowDataSumTotals);
+				reportDbMap.put((Integer)(avgTotalsIndex= reportDbMap.size()),rowDataAverageTotals);
+				
+				for(Integer rowIndex:reportDbMap.keySet()){
+					ArrayList<String> rowData=reportDbMap.get(rowIndex);
+					if(bookData==null)bookData=new Object[reportDbMap.size()][rowData.size()];
+					for(int rowDataIndex=0;rowDataIndex<rowData.size();rowDataIndex++){
+						bookData[rowIndex.intValue()][rowDataIndex]=rowData.get(rowDataIndex);
+					}
+				}
+				
+				 rowCount = 0;
+			        
+			        if(bookData!=null){
+				        for (Object[] aBook : bookData) {
+				        	rowCount++;
+				            Row row = sheet.createRow(sheetRowCount++);
+				             
+				            int columnCount = 0;
+				             
+				            for (Object field : aBook) {
+				                Cell cell = row.createCell(columnCount++);
+				                CellStyle cellStyle=workbook.createCellStyle();
+				                
+				                cellStyle.setBorderRight(CellStyle.BORDER_THIN);
+				                cellStyle.setRightBorderColor(IndexedColors.BLACK.getIndex());
+				                cellStyle.setBorderBottom(CellStyle.BORDER_THIN);
+				                cellStyle.setBottomBorderColor(IndexedColors.BLACK.getIndex());
+				                cellStyle.setBorderLeft(CellStyle.BORDER_THIN);
+				                cellStyle.setLeftBorderColor(IndexedColors.BLACK.getIndex());
+				                cellStyle.setBorderTop(CellStyle.BORDER_THIN);
+				                cellStyle.setTopBorderColor(IndexedColors.BLACK.getIndex());
+				                
+				                if(rowCount==1||(((rowCount-1)==sumTotalsIndex||(rowCount-1)==avgTotalsIndex)&&columnCount==1)){
+					                Font headerFont = workbook.createFont();
+					                headerFont.setBoldweight(Font.BOLDWEIGHT_BOLD);
+					                headerFont.setFontHeightInPoints((short) 12);
+					                cellStyle.setFont(headerFont);
+				                }
+				                else{
+				                	if(cellDataFormats.containsKey(datasetColumns.get((Integer)(columnCount-1)))){
+				                		cellStyle.setDataFormat(workbook.createDataFormat().getFormat(cellDataFormats.get(datasetColumns.get((Integer)(columnCount-1)))));
+				                	}
+				                }
+				                
+				                cell.setCellStyle(cellStyle);
+				                if (field instanceof String) {
+				                	String string=(String) field;
+				                	if((datasetColumns.get((Integer)(columnCount-1)).equals("ABANDONED_OUTSIDE_30SEC"))&&string.equals("1")){
+				                		callsAbandoned++;
+				                	}
+				                	else if((datasetColumns.get((Integer)(columnCount-1)).equals("HANDLED_WITHIN_30SEC"))&&string.equals("1")){
+				                		callsHandled++;
+				                	}
+				                	else if((datasetColumns.get((Integer)(columnCount-1)).equals("HANDLED_OUTSIDE_30SEC"))&&string.equals("1")){
+				                		callsHandledOutside++;
+				                	}
+				                	if(string.startsWith("=")){
+				                		cell.setCellType(HSSFCell.CELL_TYPE_FORMULA);
+				                		while(string.startsWith("=")) string=string.substring(1,string.length());
+					                	cell.setCellFormula(string);
+				                	}
+				                	else {
+				                		if(isLong(string)){
+				                			cell.setCellValue(Long.parseLong(string));
+				                		}
+				                		else if(isNumeric(string)&&string.indexOf(".")>-1){
+				                			cell.setCellValue(Double.parseDouble(string));
+				                		}
+				                		else if(isTime(string)&&string.contains(":")){
+				                			cell.setCellValue(DateUtil.convertTime(string));
+				                		}
+				                		else{
+				                			cell.setCellValue(string);
+				                		}
+				                	}
+				                } else if (field instanceof Integer) {
+				                    cell.setCellValue((Integer) field);
+				                }
+				            }			             
+				        }
+			        }
+			        
+			        sheet.createRow(sheetRowCount++);
+			        Row sheetRow=sheet.createRow(sheetRowCount++);
+			        Cell sheetCell=sheetRow.createCell(0);
+			        sheetCell.setCellValue("CALLS OFFERED:");
+			        sheetCell=sheetRow.createCell(2);
+			        sheetCell.setCellValue(callsMade);
+			        
+			        sheetRow=sheet.createRow(sheetRowCount++);
+			        sheetCell=sheetRow.createCell(0);
+			        sheetCell.setCellValue("CALLS HANDLED:");
+			        sheetCell=sheetRow.createCell(2);
+			        sheetCell.setCellValue((callsHandled.longValue()+callsHandledOutside.longValue()));
+			        
+			        sheetRow=sheet.createRow(sheetRowCount++);
+			        sheetCell=sheetRow.createCell(0);
+			        sheetCell.setCellValue("PERCENTAGE ANSWERED WITHIN 30sec:");
+			        sheetCell=sheetRow.createCell(2);
+			        sheetCell.setCellValue((Float)(callsHandled.floatValue()/callsMade.floatValue()));
+			        CellStyle percstyle = workbook.createCellStyle();
+			        percstyle.setDataFormat(workbook.createDataFormat().getFormat(persentageFormat));
+			        sheetCell.setCellStyle(percstyle);
+			        
+			        sheetRow=sheet.createRow(sheetRowCount++);
+			        sheetCell=sheetRow.createCell(0);
+			        sheetCell.setCellValue("PERCENTAGE ANSWERED OUTSIDE 30sec AND ABANDONED:");
+			        sheetCell=sheetRow.createCell(2);
+			        sheetCell.setCellValue((Float)((callsHandledOutside.floatValue()+callsAbandoned.floatValue())/callsMade.floatValue()));
+			        percstyle = workbook.createCellStyle();
+			        percstyle.setDataFormat(workbook.createDataFormat().getFormat(persentageFormat));
+			        sheetCell.setCellStyle(percstyle);
+			        
+			        sheetRow=sheet.createRow(sheetRowCount++);
+			}
+		        //SOFTPHONE ENTRIES
+		        try {
+		        	reportDbMap.clear();
+					Database.executeDBRequest(reportDbMap, "REPORTING", "SELECT * FROM <DBUSER>.AGENT_SOFTPHONECALLS("+suggestedDate+")  ORDER BY DATE,TIME", null,null);
+					
+				} catch (Exception e1) {
+					e1.printStackTrace();
+				}
+				
+		   if(!reportDbMap.isEmpty()){
+				datasetColumns=reportDbMap.get(reportDbMap.firstKey());
+				rowDataAverageTotals.clear();
+				rowDataSumTotals.clear();
+				
+				for(int i=0;i<reportDbMap.firstEntry().getValue().size();i++){
+					if(validFormulaIndexes.contains(datasetColumns.get((Integer)i))){
+						//if(i>=14&&i<=17){
+						//	rowDataAverageTotals.add("=ROUND(AVERAGE("+(char)(i+65)+String.valueOf(sheetRowCount+2)+":"+(char)(i+65)+String.valueOf(sheetRowCount+reportDbMap.size())+"),5)");
+						//}
+						//else{
+							rowDataAverageTotals.add("=AVERAGE("+(char)(i+65)+"2:"+(char)(i+65)+String.valueOf(reportDbMap.size())+")");
+						//}
+						rowDataSumTotals.add("=SUM("+(char)(i+65)+String.valueOf(sheetRowCount+2)+":"+(char)(i+65)+String.valueOf(sheetRowCount+reportDbMap.size())+")");
+					}
+					else{
+						rowDataAverageTotals.add("");
+						rowDataSumTotals.add("");
+					}
+				}
+				
+				rowCount=0;
+				bookData=null;
+				
+				rowDataSumTotals.set(0, "SUM TOTALS:");
+				rowDataAverageTotals.set(0, "AVERAGE TOTALS:");
+				
+				sumTotalsIndex=0;
+				avgTotalsIndex=0;
+				
+				reportDbMap.put((Integer)(sumTotalsIndex= reportDbMap.size()) ,rowDataSumTotals);
+				reportDbMap.put((Integer)(avgTotalsIndex= reportDbMap.size()),rowDataAverageTotals);
+				
+				for(Integer rowIndex:reportDbMap.keySet()){
+					ArrayList<String> rowData=reportDbMap.get(rowIndex);
+					if(bookData==null)bookData=new Object[reportDbMap.size()][rowData.size()];
+					for(int rowDataIndex=0;rowDataIndex<rowData.size();rowDataIndex++){
+						bookData[rowIndex.intValue()][rowDataIndex]=rowData.get(rowDataIndex);
+					}
+				}
+				
+				rowCount = 0;
+		        
+		        if(bookData!=null){
+			        for (Object[] aBook : bookData) {
+			        	rowCount++;
+			            Row row = sheet.createRow(sheetRowCount++);
+			             
+			            int columnCount = 0;
+			             
+			            for (Object field : aBook) {
+			                Cell cell = row.createCell(columnCount++);
+			                CellStyle cellStyle=workbook.createCellStyle();
+			                
+			                cellStyle.setBorderRight(CellStyle.BORDER_THIN);
+			                cellStyle.setRightBorderColor(IndexedColors.BLACK.getIndex());
+			                cellStyle.setBorderBottom(CellStyle.BORDER_THIN);
+			                cellStyle.setBottomBorderColor(IndexedColors.BLACK.getIndex());
+			                cellStyle.setBorderLeft(CellStyle.BORDER_THIN);
+			                cellStyle.setLeftBorderColor(IndexedColors.BLACK.getIndex());
+			                cellStyle.setBorderTop(CellStyle.BORDER_THIN);
+			                cellStyle.setTopBorderColor(IndexedColors.BLACK.getIndex());
+			                
+			                if(rowCount==1||(((rowCount-1)==sumTotalsIndex||(rowCount-1)==avgTotalsIndex)&&columnCount==1)){
+				                Font headerFont = workbook.createFont();
+				                headerFont.setBoldweight(Font.BOLDWEIGHT_BOLD);
+				                headerFont.setFontHeightInPoints((short) 12);
+				                cellStyle.setFont(headerFont);
+			                }
+			                else{
+			                	if(cellDataFormats.containsKey(datasetColumns.get((Integer)(columnCount-1)))){
+			                		cellStyle.setDataFormat(workbook.createDataFormat().getFormat(cellDataFormats.get(datasetColumns.get((Integer)(columnCount-1)))));
+			                	}
+			                }
+			                
+			                cell.setCellStyle(cellStyle);
+			                if (field instanceof String) {
+			                	String string=(String) field;
+			                	if(string.startsWith("=")){
+			                		cell.setCellType(HSSFCell.CELL_TYPE_FORMULA);
+			                		while(string.startsWith("=")) string=string.substring(1,string.length());
+				                	cell.setCellFormula(string);
+			                	}
+			                	else {
+			                		if(isLong(string)){
+			                			cell.setCellValue(Long.parseLong(string));
+			                		}
+			                		else if(isNumeric(string)&&string.indexOf(".")>-1){
+			                			cell.setCellValue(Double.parseDouble(string));
+			                		}
+			                		else if(isTime(string)&&string.contains(":")){
+			                			cell.setCellValue(DateUtil.convertTime(string));
+			                		}
+			                		else{
+			                			cell.setCellValue(string);
+			                		}
+			                	}
+			                } else if (field instanceof Integer) {
+			                    cell.setCellValue((Integer) field);
+			                }
+			            }			             
+			        }
+		        }
+		   }
+        }
+       
+        final ByteArrayOutputStream bufferout=new ByteArrayOutputStream();
+        try {
+			workbook.write(bufferout);
+			workbook.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+        
+        return new InputStream() {
+			
+        	private byte[] _bufferout=bufferout.toByteArray();
+        	private int _bufferoutindex=0;
+        	
+			@Override
+			public int read() throws IOException {
+				return 0;
+			}
+			
+			@Override
+			public int read(byte[] b) throws IOException {
+				return this.read(b,0,b.length);
+			}
+			
+			@Override
+			public int read(byte[] b, int off, int len) throws IOException {
+				int availableL=0;
+				
+				while(len>0){
+					if(_bufferout==null) break;
+					if(_bufferoutindex==_bufferout.length) break;
+					if(b.length>off){
+						b[off++]=_bufferout[_bufferoutindex++];
+						availableL++;
+						len--;
+					}
+					else{
+						break;
+					}
+					break;
+				}
+				
+				return _bufferout==null?-1:availableL==0?_bufferoutindex==_bufferout.length?-1:availableL:availableL;
+			}
+		};
+	}
+	
+	public static boolean isNumeric(String s) {
+		if((s=s==null?"":s.trim()).equals("")) return false;
+	    return s.matches("[-+]?\\d*\\.?\\d+");  
+	} 
+	
+	public static boolean isLong(String s) {
+		if((s=s==null?"":s.trim()).equals("")) return false;
+	    return s.startsWith("0")&&s.length()>1?false:s.matches("[-+]?\\d*");  
+	} 
+	
+	public static boolean isTime(String s){
+		if((s=s==null?"":s.trim()).equals("")) return false;
+	    return s.matches("([01]?[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]");
+	}
+
+	public static HashMap<String,ScheduledTask> _scheduledReports=new HashMap<String, ScheduledTask>();
+	public static void scheduleReport(String subject,String from,String to,String body,String reportName,String suggestedDate,String smtpaddress,String mailPort,String smtpUser,String smtpPassword,String scheduleType,String[]schedule) {
+		if(_scheduledReports.containsKey(reportName)) return;
+		ScheduledTask scheduledTask=new ScheduledTask(subject, from, to, body, reportName,suggestedDate, smtpaddress, mailPort, smtpUser, smtpPassword, scheduleType, schedule);
+		
+		if(scheduledTask.isValid()){
+			_scheduledReports.put(reportName, scheduledTask);
+			new Thread(scheduledTask).start();
+		}
+		
+		
+	}
+	
+	public static void shutdownScheduledReports(){
+		_shutdownQueue=true;
+		while(!_scheduledReports.isEmpty()){
+			try {
+				Thread.sleep(10);
+			} catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+		
+	}
+}

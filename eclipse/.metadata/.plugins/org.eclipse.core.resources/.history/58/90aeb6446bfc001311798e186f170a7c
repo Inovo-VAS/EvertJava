@@ -1,0 +1,112 @@
+package inovo.monitoring.monitors;
+
+import java.util.ArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class Monitor implements Runnable{
+	
+	private static ExecutorService _monitorsServices=null;
+	
+	private static ExecutorService _monitorRequestServices=null;
+	
+	private static ArrayList<Monitor> _monitors=new ArrayList<Monitor>();
+	private Monitor _monitorRef=null;
+	
+	private ArrayList<MonitorRequest> _monitorRequests=new ArrayList<MonitorRequest>();
+	public Monitor(){
+		this._monitorRef=this;
+	}
+	
+	public void requestCompleted(MonitorRequest monitorRequest) {
+		if(monitorRequest.stillBusyExecuting()){
+			_monitorRequestServices.execute(monitorRequest);
+		}
+	}
+	
+	public static Monitor initiateMonitor(Class<?> monitorClass) throws Exception{
+		Monitor monitorInit=null;
+		initiateMonitor(monitorInit=(Monitor)monitorClass.newInstance());
+		return monitorInit;
+	}
+	
+	public static void initiateMonitor(Monitor monitor){
+		if(_monitorsServices==null){
+			_monitorsServices=Executors.newCachedThreadPool();
+		}
+		synchronized (_monitors) {
+			_monitors.add(monitor);
+		}
+		_monitorsServices.execute(monitor);
+	}
+	
+	public static void killAllMonitors(){
+		while(!_monitors.isEmpty()){
+			
+			synchronized (_monitors) {
+				for(Monitor mon:_monitors){
+					if(!mon.shuttingdownMonitor()){
+						mon.shutdownMonitor();
+					}
+				}
+			}
+			try {
+				Thread.sleep(2);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+		_monitorsServices.shutdownNow();
+	}
+
+	private boolean _shutdownMonitor=false;
+	
+	@Override
+	public void run() {
+		if(!this._shutdownMonitor){
+			synchronized (_monitorRef) {
+				try {
+					this._monitorRef.wait();
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+		synchronized (_monitorRequests) {
+			
+		}
+		
+		System.out.println("MONITOR["+this.getClass().toString()+"] stopped");
+		synchronized (_monitors) {
+			_monitors.remove(this._monitorRef);
+		}
+	}
+	
+	public boolean shuttingdownMonitor(){
+		return this._shutdownMonitor;
+	}
+	
+	public void shutdownMonitor(){
+		this._shutdownMonitor=true;
+		synchronized (_monitorRef) {
+			_monitorRef.notifyAll();
+		}
+	}
+	
+	public MonitorRequest initiateMonitorRequest(MonitorRequest monitorRequest){
+		
+		MonitorRequest monRequest=null;
+		synchronized (_monitorRef) {
+			monitorRequest.attachToMonitor(_monitorRef);
+		}
+		monitorRequest.attachMonitorRequests((MonitorRequest[])null);
+		if(_monitorRequestServices==null){
+			_monitorRequestServices=Executors.newCachedThreadPool();
+		}
+		synchronized (_monitorRequests) {
+			this._monitorRequests.add(monitorRequest);
+		}
+		_monitorRequestServices.execute(monRequest=monitorRequest);
+		return monRequest;
+	}
+}

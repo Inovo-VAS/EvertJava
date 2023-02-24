@@ -1,0 +1,122 @@
+package mailsoaclient;
+
+import inovo.servlet.InovoCoreEnvironmentManager;
+import inovo.servlet.InovoServletContextListener;
+
+import java.io.PrintStream;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.rmi.RemoteException;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import javax.xml.rpc.ServiceException;
+import org.apache.log4j.Logger;
+import za.co.woolworths.Indibano.WS_WFS_Multimedia.Attachment;
+import za.co.woolworths.Indibano.WS_WFS_Multimedia.AttachmentFile;
+import za.co.woolworths.Indibano.WS_WFS_Multimedia.EmailMsg;
+import za.co.woolworths.Indibano.WS_WFS_Multimedia.MailExportRequestMetadata;
+import za.co.woolworths.Indibano.WS_WFS_Multimedia.MailExportRequestObjectin;
+import za.co.woolworths.Indibano.WS_WFS_Multimedia.MailExportResponseObjectout;
+import za.co.woolworths.Indibano.WS_WFS_Multimedia.WS_WFS_Multimedia_PortType;
+import za.co.woolworths.Indibano.WS_WFS_Multimedia.WS_WFS_Multimedia_Service;
+import za.co.woolworths.Indibano.WS_WFS_Multimedia.WS_WFS_Multimedia_ServiceLocator;
+
+public class WFS_Multimedia
+{
+  private MailExportRequestMetadata metaData = null;
+  private MailExportRequestObjectin mailObjin = null;
+  private List<Attachment> attArray = null;
+
+  private Logger logger = null;
+
+  public WFS_Multimedia() {
+    this.logger = InovoServletContextListener.inovoServletListener().logger();
+  }
+
+  public void addMetaData(String contactId, String customerIDNumber, String emailAddress, Date emailDate, String emailSubjectLine, String documentType)
+  {
+    if (this.metaData == null) {
+      this.metaData = new MailExportRequestMetadata();
+    }
+    this.metaData.setChannel("PRSC");
+    this.metaData.setContactId(contactId);
+    this.metaData.setCustomerIDNumber(customerIDNumber);
+    this.metaData.setEmailAddress(emailAddress);
+    this.metaData.setEmailDate(emailDate);
+    this.metaData.setEmailSubjectLine(emailSubjectLine);
+    this.metaData.setDocumentType(documentType);
+    this.metaData.setAttachmentCount(0);
+
+    this.logger.debug("Setting metadata [contactId=" + contactId + 
+      ",customerIDNumber=" + customerIDNumber + 
+      ",emailAddress=" + emailAddress + 
+      ",emailDate=" + emailDate + 
+      ",emailSubjectLine=" + emailSubjectLine + 
+      ",documentType=" + documentType + "]");
+  }
+  public void addEmailMessage(String emailFileName, String base64MessageBody) {
+    if (this.mailObjin == null) {
+      this.mailObjin = new MailExportRequestObjectin();
+    }
+    EmailMsg msg = new EmailMsg(base64MessageBody, emailFileName);
+    this.mailObjin.setEmailMsg(msg);
+  }
+  public void addAttachment(String base64AttBody, String attFileName, int attNumber) {
+    AttachmentFile attFile = new AttachmentFile(base64AttBody, attFileName);
+    Attachment att = new Attachment(attFile, attNumber);
+    if (this.attArray == null)
+      this.attArray = new ArrayList();
+    this.attArray.add(att);
+  }
+
+  public String requestArchive(String url)
+  {
+    System.setProperty("javax.net.ssl.keyStore", "wfs_truststore");
+    System.setProperty("javax.net.ssl.keyStorePassword", "presence!DP");
+    System.setProperty("javax.net.ssl.keyStoreType", "JKS");
+    WS_WFS_Multimedia_Service service = new WS_WFS_Multimedia_ServiceLocator();
+    try {
+      if ((this.mailObjin != null) && (this.metaData != null))
+      {
+        if (url.equals("")) url = service.getWS_WFS_MultimediaSOAPAddress();
+
+        this.logger.debug("Requesting archive to " + url);
+
+        if ((this.attArray != null) && (this.attArray.size() > 0)) {
+          this.metaData.setAttachmentCount(this.attArray.size());
+          this.mailObjin.setAttachmentArray((Attachment[])this.attArray.toArray(new Attachment[this.attArray.size()]));
+        }
+        this.logger.debug("Setting mail export meta data !");
+        this.mailObjin.setMailExportRequestMetadata(this.metaData);
+
+        WS_WFS_Multimedia_PortType port = service.getWS_WFS_MultimediaSOAP(new URL(url));
+        this.logger.debug("Request the actual mail archive.");
+        MailExportResponseObjectout returnParam = port.requestSendMultiMediaMsg(this.mailObjin);
+        this.logger.debug("Return from service [" + returnParam.getCode() + "] - [" + returnParam.getMessage() + "]");
+        return "[" + returnParam.getCode() + "][" + returnParam.getMessage() + "]";
+      }
+    } catch (MalformedURLException e) {
+      this.logger.debug("MalformedURLException : " + e.getMessage());
+      System.out.println("MalformedURLException : " + e.getMessage());
+      return "ERROR:URL:" + e.getMessage();
+    } catch (ServiceException e) {
+      this.logger.debug("ServiceException : " + e.getMessage());
+      System.out.println("ServiceException : " + e.getMessage());
+      return "ERROR:SERVICE - " + e.getMessage();
+    } catch (RemoteException e) {
+      StackTraceElement[] stack = e.getStackTrace();
+      this.logger.debug("RemoteException : " + e.getMessage());
+      for (StackTraceElement stackTraceElement : stack) {
+        this.logger.debug("Stack trace element : " + stackTraceElement);
+      }
+      System.out.println("RemoteException : " + e.getMessage());
+      return "ERROR:REMOTE:" + e.getMessage();
+    }
+    return "[-1][Call failed to AIT]";
+  }
+
+  public String requestArchive() {
+    return requestArchive("");
+  }
+}

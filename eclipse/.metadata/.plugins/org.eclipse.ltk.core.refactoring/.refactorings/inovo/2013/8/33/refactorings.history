@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring accessors="true" comment="Delete 3 elements from project &apos;inovo&apos;&#x0D;&#x0A;- Original project: &apos;inovo&apos;&#x0D;&#x0A;- Original elements:&#x0D;&#x0A;     presence.AdministratorClassFactory.java&#x0D;&#x0A;     presence.IAdministratorAO.java&#x0D;&#x0A;     presence.IAOAdministracionEsmarto.java" description="Delete elements" element1="/src&lt;presence{IAOAdministracionEsmarto.java" element2="/src&lt;presence{AdministratorClassFactory.java" element3="/src&lt;presence{IAdministratorAO.java" elements="3" flags="589830" id="org.eclipse.jdt.ui.delete" resources="0" stamp="1376495057361" subPackages="false" version="1.0"/>
+</session>

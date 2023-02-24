@@ -1,0 +1,47 @@
+package lancet.leads.automation;
+
+import inovo.db.Database;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+public class ExportAccountFiles {
+
+	public void startExportingFiles() {
+		
+	}
+	
+	private UnloadAccounts _unloadAccounts=new UnloadAccounts();
+	public void readRowData(Integer rowIndex,ArrayList<String> rowData,ArrayList<String> columns){
+		HashMap<String,String> fileExportInfo=Database.rowData(columns, rowData);
+		
+		File exportFile=new File(fileExportInfo.get("FILEPATH"));
+		
+		if(exportFile.exists()){
+			
+			FileInputStream accFileIn=null;
+			try {
+				accFileIn = new FileInputStream(exportFile);
+			} catch (FileNotFoundException e) {
+				e.printStackTrace();
+			}
+			
+			_unloadAccounts.setFileRequestRescription(fileExportInfo.get("UNLOAD_FILE_REQUEST"));
+			
+			if(accFileIn!=null){
+				try{
+					Database.populateDatasetFromFlatFileStream(null, "CSV", accFileIn, null,'|',_unloadAccounts);
+				}catch(Exception e){
+					e.printStackTrace();
+				}
+			}
+		}
+		
+		fileExportInfo.clear();
+		fileExportInfo=null;
+	}
+
+}

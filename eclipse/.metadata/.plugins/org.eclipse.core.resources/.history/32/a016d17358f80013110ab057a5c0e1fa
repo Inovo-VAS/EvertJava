@@ -1,0 +1,270 @@
+package paas.protocol.request;
+
+import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import paas.scripting.ScriptEngine;
+
+public class RequestHandleScriptEngine extends MarkupScriptEngine {
+
+	private RequestHandle _requestHandle=null;
+	private HashMap<Integer,Class<?>> _requestHandleLevelsClass=new HashMap<Integer,Class<?>>();
+	private HashMap<String,ArrayList<Class<?>>> _validRequestHandleClasses=new HashMap<String,ArrayList<Class<?>>>();
+	
+	private ArrayList<ByteArrayOutputStream> _startTagContentBuffers=new ArrayList<ByteArrayOutputStream>();
+	private ByteArrayOutputStream _startTagContentBuffer=null;
+	private boolean _activatedStartTag=false;
+	private ArrayList<String> _startTagLevels=new ArrayList<String>();
+	
+	public RequestHandleScriptEngine(RequestHandle requestHandle){
+		super(requestHandle);
+		this._requestHandle=requestHandle;
+		//this._requestHandleLevelsClass.put((Integer)this._requestHandleLevelsClass.size(),this._lastValidRequestHandleClassFound=requestHandle.getClass());
+	}
+	
+	@Override
+	public void performActiveScript() throws Exception {
+		if(this.prepairedProcessHandle()){
+			String requestHandleTagName=this._requestHandle.getClass().getName();
+			this._activatedStartTag=true;
+			this.outputStream().write(("<"+requestHandleTagName+"/>").getBytes());
+			//this.loadElementClassMarkupMimeResourceTemplatePaths(_requestHandle.getClass(), this._requestHandle.templatelayoutResourcePathsMap());
+			//this._startTagContentBuffers.add(this._startTagContentBuffer=new ByteArrayOutputStream());
+			//this.initiateElementClassMarkupMimeResourceTemplatePaths(this._requestHandle.getClass(), this._requestHandle.contextHandle().requestResourcePathExtension(), true);
+			//this._startTagContentBuffer=this._startTagContentBuffers.remove(this._startTagContentBuffers.size()-1);
+			super.performActiveScript();
+		}
+		((RequestHandle)this.thisRef()).processHandle();
+	}
+	
+	@Override
+	public void loadElementClassMarkupMimeResourceTemplatePath(
+			Class<?> elementClass, String mimeType,
+			String mimeResourceTemplatePath, boolean firstPath, boolean lastPath)
+			throws Exception {
+		if(firstPath){
+			if(!this._requestHandle.contextHandle().requestResourcePathExtension().equals(mimeType)&&mimeType.equals("js")){
+				this.outputStream().write("<script type=\"text/javascript\">".getBytes());
+			}
+		}
+		super.loadElementClassMarkupMimeResourceTemplatePath(elementClass, mimeType,
+				mimeResourceTemplatePath, firstPath, lastPath);
+		if(lastPath){
+			if(!this._requestHandle.contextHandle().requestResourcePathExtension().equals(mimeType)&&mimeType.equals("js")){
+				this.outputStream().write("</script>".getBytes());
+			}
+		}
+	}
+
+	public boolean prepairedProcessHandle() throws Exception{
+		boolean prepairedProcessHandle=false;
+		if((prepairedProcessHandle=this._requestHandle.templatelayoutResourcePathsMap().containsKey(this._requestHandle.contextHandle().requestResourcePathExtension()))){
+			
+		}
+		return prepairedProcessHandle;
+	}
+	
+	private Class<?> _lastValidRequestHandleClassFound=null;
+	private String _lastTagToTest="";
+	
+	
+	@Override
+	public boolean validTag(String tagToTest) throws Exception{
+		if(tagToTest.equals("widget")) return true;
+		if(this.isInvalidTag(tagToTest)){
+			return false;
+		}
+		else{
+			String actualTagToTest=tagToTest;
+			tagToTest=(tagToTest.lastIndexOf(".")>-1?tagToTest.substring(tagToTest.lastIndexOf(".")+1):tagToTest);
+			
+			ArrayList<Class<?>> validClasses=this._validRequestHandleClasses.get(tagToTest);
+			if(validClasses==null){
+				Class<?> requestHandleClassFound=null;
+				
+				ArrayList<Class<?>> matchingClassesFound=new ArrayList<Class<?>>();
+				String rootMathingClasspath=this._requestHandle.getClass().getName();
+				rootMathingClasspath="/"+(rootMathingClasspath.lastIndexOf(".")>-1?rootMathingClasspath.substring(0,rootMathingClasspath.lastIndexOf(".")):rootMathingClasspath).replaceAll("[.]", "/");
+				
+				paas.reflection.ReflectUtils.findMatchingClasses(matchingClassesFound,new Class<?> [] {RequestHandle.class,this._requestHandle.getClass()},new String[]{"/paas/protocol/request/web",rootMathingClasspath});
+				
+				int matchingClassesFoundCount=matchingClassesFound.size()-1;
+				
+				while(matchingClassesFoundCount>=0){
+					if(!matchingClassesFound.get(matchingClassesFoundCount).getSimpleName().equals(tagToTest)){
+						matchingClassesFound.remove(matchingClassesFoundCount--);
+					}
+					else{
+						matchingClassesFoundCount--;
+					}
+				}
+				
+				if(matchingClassesFound.isEmpty()){
+					matchingClassesFound.clear();
+					matchingClassesFound=null;
+					this.setInvalidTag(tagToTest);
+					return false;
+				}
+				else{
+					
+					if(validClasses==null){
+						this._validRequestHandleClasses.put(tagToTest, validClasses=new ArrayList<Class<?>>());
+						while(!matchingClassesFound.isEmpty()){
+							Class<?> matchingClass=matchingClassesFound.remove(0);
+							if(validClasses.indexOf(matchingClass)==-1) validClasses.add(matchingClass);
+						}
+					}
+					
+					if(actualTagToTest.equals(tagToTest)){
+						this.loadValidRequestHandleClassLayoutTemplates(this._lastValidRequestHandleClassFound=validClasses.get(0));
+						_lastTagToTest=actualTagToTest;
+						return true;
+					}
+					else{
+						for(Class<?> possibleTagClass:validClasses){
+							if(possibleTagClass.getName().equals(actualTagToTest)){
+								this.loadValidRequestHandleClassLayoutTemplates(this._lastValidRequestHandleClassFound=possibleTagClass);
+								_lastTagToTest=actualTagToTest;
+								return true;
+							}
+						}
+						Class<?> matchableClass=paas.reflection.ReflectUtils.findClass("/"+actualTagToTest.replaceAll("[.]", "/"), this._requestHandle.getClass());
+						if(matchableClass!=null){
+							if(validClasses.indexOf(matchableClass)==-1) validClasses.add(matchableClass);
+							this.loadValidRequestHandleClassLayoutTemplates(this._lastValidRequestHandleClassFound=matchableClass);
+							_lastTagToTest=actualTagToTest;
+							return true;
+						}
+						return false;
+					}
+				}
+			}
+			else{
+				if(actualTagToTest.equals(tagToTest)){
+					this.loadValidRequestHandleClassLayoutTemplates(this._lastValidRequestHandleClassFound=validClasses.get(0));
+					_lastTagToTest=actualTagToTest;
+					return true;
+				}
+				else{
+					for(Class<?> possibleTagClass:validClasses){
+						if(possibleTagClass.getName().equals(actualTagToTest)){
+							this.loadValidRequestHandleClassLayoutTemplates(this._lastValidRequestHandleClassFound=possibleTagClass);
+							_lastTagToTest=actualTagToTest;
+							return true;
+						}
+					}
+					Class<?> matchableClass=paas.reflection.ReflectUtils.findClass("/"+actualTagToTest.replaceAll("[.]", "/"), this._requestHandle.getClass());
+					if(matchableClass!=null){
+						if(validClasses.indexOf(matchableClass)==-1) validClasses.add(matchableClass);
+						this.loadValidRequestHandleClassLayoutTemplates(this._lastValidRequestHandleClassFound=matchableClass);
+						_lastTagToTest=actualTagToTest;
+						return true;
+					}
+					return false;
+				}
+			}
+		}
+	}
+	
+	private HashMap<Class<?>,HashMap<String,ArrayList<String>>> _validRequestHandleClassLayoutTemplates=new HashMap<Class<?>, HashMap<String,ArrayList<String>>>();
+	private void loadValidRequestHandleClassLayoutTemplates(Class<?> requestHandleClass) {
+		HashMap<String,ArrayList<String>> templatelayoutResourcePathsMap=new HashMap<String,ArrayList<String>>();
+		 
+		 ArrayList<String> templateLayoutsFound=new ArrayList<String>(paas.reflection.ReflectUtils.classResourceTemplatePaths("masks", requestHandleClass, RequestHandle.class, this._requestHandle.contextHandle().requestResourcePathExtension()));
+			
+			ArrayList<String> templateLayoutPaths=templatelayoutResourcePathsMap.get(this._requestHandle.contextHandle().requestResourcePathExtension());
+			if(templateLayoutPaths==null){
+				templatelayoutResourcePathsMap.put(this._requestHandle.contextHandle().requestResourcePathExtension(), templateLayoutPaths=new ArrayList<String>());
+			}
+			
+			while(!templateLayoutsFound.isEmpty()){
+				String templateFound= templateLayoutsFound.remove(0);
+				if(templateLayoutPaths.indexOf(templateFound)==-1){
+					templateLayoutPaths.add(templateFound);
+				}
+			}
+			
+			_validRequestHandleClassLayoutTemplates.put(requestHandleClass, templatelayoutResourcePathsMap);
+	}
+
+	public String templatelayoutResourceRootPath(){
+		String templatelayoutResourceRootPath="/"+this._lastValidRequestHandleClassFound.getName().replaceAll("[.]", "/");
+		templatelayoutResourceRootPath=templatelayoutResourceRootPath.substring(0,templatelayoutResourceRootPath.lastIndexOf("/")+1)+"masks";
+		return templatelayoutResourceRootPath; 
+	}
+	
+	@Override
+	public void startValidElementTag(String tagToTest,
+			HashMap<String, String> validElementProperties) throws Exception {
+		if(!tagToTest.equals("widget")){
+			this._requestHandleLevelsClass.put((Integer)this._requestHandleLevelsClass.size(),this._lastValidRequestHandleClassFound);
+			this._startTagContentBuffers.add(this._startTagContentBuffer=new ByteArrayOutputStream());
+			this._startTagLevels.add(tagToTest);
+			this._lastTagToTest=tagToTest;
+		}
+		else{
+			if(this._startTagContentBuffer.size()>0){
+				
+			}
+		}
+	}
+	
+	
+	@Override
+	public void endValidElementTag(String tagToTest) throws Exception {
+		if(tagToTest.equals("widget")){
+			if(this._lastValidRequestHandleClassFound!=null){
+				this.initiateElementClassMarkupMimeResourceTemplatePaths(_lastValidRequestHandleClassFound, this._requestHandle.contextHandle().requestResourcePathExtension(), true);
+			}
+		}
+		else{
+			
+			if(_lastTagToTest.equals(tagToTest)){
+				//ByteArrayOutputStream startTagContentBuffer=this._startTagContentBuffers.remove(0);
+				if(this._lastValidRequestHandleClassFound!=null){
+					
+					HashMap<String,ArrayList<String>> templatelayoutResourcePathsMap=this._validRequestHandleClassLayoutTemplates.get(this._lastValidRequestHandleClassFound);
+					if(templatelayoutResourcePathsMap!=null){ 
+						this.loadElementClassMarkupMimeResourceTemplatePaths(this._lastValidRequestHandleClassFound,templatelayoutResourcePathsMap);
+						this.initiateElementClassMarkupMimeResourceTemplatePaths(_lastValidRequestHandleClassFound, this._requestHandle.contextHandle().requestResourcePathExtension(), true);
+					}
+					
+				}
+				
+				this.flushedMarkupContent(startTagContentBuffer.toString().toCharArray());
+				startTagContentBuffer.close();
+				startTagContentBuffer=null;
+			}
+			
+			
+			if(this._requestHandleLevelsClass.isEmpty()){
+				this._requestHandleLevelsClass.put((Integer)this._requestHandleLevelsClass.size(),this._lastValidRequestHandleClassFound=this._requestHandle.getClass());
+			}
+			else{
+				this._lastValidRequestHandleClassFound=this._requestHandleLevelsClass.remove((Integer)this._requestHandleLevelsClass.size()-1);
+			}
+		}
+	}
+	
+	public Class<?> currentWidgetClass(){
+		return this._requestHandleLevelsClass.get((Integer)this._requestHandleLevelsClass.size()-1);
+	}
+	
+	@Override
+	public void flushedMarkupContent(char[] markupcontent) throws Exception{
+		super.flushedMarkupContent(markupcontent);
+		if(this._activatedStartTag){
+			for(char cm:markupcontent){
+				this._startTagContentBuffer.write((byte)cm);
+			}
+		}
+		else{
+			this._requestHandle.contextHandle().respondString(new String(markupcontent));
+		}
+	}
+	
+	public Class<?> requestHandleLevelsClass(){
+		return (this._requestHandleLevelsClass.isEmpty()?this._requestHandle.getClass():this._requestHandleLevelsClass.get(this._requestHandleLevelsClass.size()-1));
+	}
+}

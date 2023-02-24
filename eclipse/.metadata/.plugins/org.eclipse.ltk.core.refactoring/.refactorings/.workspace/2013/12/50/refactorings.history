@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">&#x0A;<refactoring comment="Delete resource &apos;pce.accounting.customers&apos;" deleteContents="true" description="Delete resource &apos;pce.accounting.customers&apos;" element1="/pce.accounting.customers" flags="7" id="org.eclipse.ltk.core.refactoring.delete.resources" resources="1" stamp="1386614403362"/>&#x0A;<refactoring comment="Delete resource &apos;pce.group.portal&apos;" deleteContents="true" description="Delete resource &apos;pce.group.portal&apos;" element1="/pce.group.portal" flags="7" id="org.eclipse.ltk.core.refactoring.delete.resources" resources="1" stamp="1386614434151"/>
+</session>

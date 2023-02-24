@@ -1,0 +1,34 @@
+package baasserver.web.system;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class InputButton extends ActionElement {
+
+	public InputButton(IOWidgetHandle parentWidget, IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+	
+	@Override
+	public String type(){
+		return "button";
+	}
+	
+	public String value(){
+		return this.property("caption");
+	}
+	
+	@Override
+	public String form(){
+		String form=this.property("FORM");
+		if(form.equals("")){
+			if(this.parentWidget()!=null){
+				IOWidgetHandle parentWidgetHandle=this.parentWidget();
+				if(parentWidgetHandle!=null) parentWidgetHandle=parentWidgetHandle.parentWidget();
+				form=(parentWidgetHandle==null?this.parentWidget():parentWidgetHandle).fullPathToWidgetClassIncClassName();
+			}
+		}
+		return form;
+	}
+}
+    

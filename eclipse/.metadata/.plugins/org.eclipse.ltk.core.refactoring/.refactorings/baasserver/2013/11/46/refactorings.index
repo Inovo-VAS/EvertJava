@@ -1,0 +1,12 @@
+1384337053816	Rename resource 'jcancas.min.js'
+1384347669391	Rename type 'IORequestBroker'
+1384347699037	Rename type 'IOMarkupRequestBroker'
+1384347717635	Rename type 'IORequestProcessor'
+1384347740400	Rename type 'IOMarkupRequestProcessor'
+1384369243099	Rename type 'IOBrokerHandle'
+1384372357936	Rename package 'baasserver.webystem.html'
+1384434047355	Delete element
+1384434058912	Rename package 'baasserver.basesystem'
+1384434392820	Rename package 'baasserver.websystem.html'
+1384434467694	Rename package 'baasserver.db'
+1384457492088	Move compilation units

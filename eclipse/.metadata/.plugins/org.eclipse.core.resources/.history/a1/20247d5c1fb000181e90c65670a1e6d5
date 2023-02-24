@@ -1,0 +1,181 @@
+package inovo;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
+import inovo.db.Database;
+import inovo.servlet.InovoCoreEnvironmentManager;
+import inovo.servlet.InovoServletContextListener;
+
+public class LockingFilesImporter implements Callable<LockingFilesImporter>,Runnable{
+
+	private static String listeningPath="";
+	
+	/*private static ExecutorService execService=new ThreadPoolExecutor(0,Integer.MAX_VALUE,10,TimeUnit.MILLISECONDS,new LinkedBlockingQueue<>()){
+	
+		protected void afterExecute(Runnable r, Throwable t) {
+			super.afterExecute(r, t);
+			if (t==null){
+				if (r instanceof Future<?>){
+					try {
+						Object result=((Future<?>)r).get();
+						if (result!=null){
+							if (result instanceof LockingFilesImporter){
+								this.submit((Runnable)result);
+							} if (result instanceof FileLockUnlock){
+								this.submit((Runnable)result);
+							}
+						}
+					} catch(CancellationException e){
+						e.printStackTrace();
+					} catch (ExecutionException e) {
+						e.printStackTrace();
+					} catch (InterruptedException e) {
+						Thread.currentThread().interrupt(); 
+					}
+				}
+			} else {
+				System.out.println(t.getMessage());
+			}
+		};
+	};*/
+	
+	protected class FileLockUnlock implements Callable<FileLockUnlock>,Runnable{
+		private File f;
+		private String lockunlock="";
+		private String orgFileName="";
+		private LockingFilesImporter lockingFilesImporter;
+		private String userName;
+		private String remoteip;
+		
+		private FileLockUnlock(LockingFilesImporter lockingFilesImporter,File f,String lockunlock,String orgFileName,String userName,String remoteip){
+			this.f=new File(f.getAbsolutePath().replaceAll("sep", "lck"));
+			f.renameTo(this.f);
+			this.lockunlock=lockunlock;
+			this.orgFileName=orgFileName;
+			this.lockingFilesImporter=lockingFilesImporter;
+			this.userName=userName;
+			this.remoteip=remoteip;
+		}
+		
+		private HashMap<String, Object> lockAccountsFileParams=new HashMap<String, Object>();
+		@Override
+		public void run() {
+			FileInputStream fin;
+			try {
+				fin = new FileInputStream(this.f);
+				ArrayList<String> cols=new ArrayList<String>();
+				this.lockingFilesImporter.debug("START LOCK/UNLOCK FILE:"+this.orgFileName);
+				lockAccountsFileParams.clear();
+				lockAccountsFileParams.put("ORGFILENAME", this.orgFileName);
+				lockAccountsFileParams.put("CIMUSERNAME",this.userName);
+				lockAccountsFileParams.put("CIMUSERREMOTEIP",this.remoteip);
+				lockAccountsFileParams.put("LOCKUNLOCKSTATE", this.lockunlock);
+				
+				try {
+					Database.executeDBRequest(null, "LOCKING", "EXECUTE dbo.REQUESTLOCKUNLOCK :ORGFILENAME,:CIMUSERNAME,:CIMUSERREMOTEIP,:LOCKUNLOCKSTATE,'ACCOUNT','START'", lockAccountsFileParams, null);
+					try{
+						Database.populateDatasetFromFlatFileStream("CSV", fin, ',', this, "lockAccountsFromFileData");
+						try{fin.close();}catch(Exception fe){}
+					} catch(Exception e){
+						try{fin.close();}catch(Exception fe){}
+						e.printStackTrace();
+						this.lockingFilesImporter.debug("ERROR:"+e.getMessage());
+					}
+					Database.executeDBRequest(null, "LOCKING", "EXECUTE dbo.REQUESTLOCKUNLOCK :ORGFILENAME,:CIMUSERNAME,:CIMUSERREMOTEIP,:LOCKUNLOCKSTATE,'ACCOUNT','STOP'", lockAccountsFileParams, null);
+				} catch (Exception dbe) {
+				}
+				this.lockingFilesImporter.debug("STOP LOCK/UNLOCK FILE:"+this.orgFileName);
+				fin=null;
+			} catch (FileNotFoundException e1) {
+				e1.printStackTrace();
+				this.lockingFilesImporter.debug("ERROR:"+e1.getMessage());
+			}
+			this.f.delete();
+		}
+
+		@Override
+		public FileLockUnlock call() throws Exception {
+			return this;
+		}
+		
+		private HashMap<String, Object> lockAccountsParams=new HashMap<String, Object>();
+		public void lockAccountsFromFileData(boolean doneRecs,long rowindex,ArrayList<Object> data,ArrayList<Object> cols) throws Exception{
+			if (rowindex>0){
+				lockAccountsParams.clear();
+				lockAccountsParams.put("ACCOUNTREF", data.get(0));
+				lockAccountsParams.put("LOCKED",this.lockunlock);
+				Database.executeDBRequest(null, "LOCKING", "EXECUTE dbo.LOCKACCOUNT :ACCOUNTREF,:LOCKED", lockAccountsParams, null);
+			}
+		}
+	}
+	
+	private LinkedBlockingQueue<FileLockUnlock> filesToLockUnlock=new LinkedBlockingQueue<FileLockUnlock>();
+	
+	public void importLockUnlockFile(File ftoLock,String lockunlock,String orgFilename,String userName,String remoteip){
+		FileLockUnlock fileLockUnlock=new FileLockUnlock(this,ftoLock,lockunlock,orgFilename,userName,remoteip);
+		while(!filesToLockUnlock.offer(fileLockUnlock)){
+			try {
+				Thread.currentThread().sleep(10);
+			} catch (InterruptedException e) {
+			}
+		}
+	}
+	
+	private static InovoCoreEnvironmentManager envManager;
+	private static LockingFilesImporter lockingFilesImporter=null;
+	public static LockingFilesImporter lockingFilesImporter(){
+		if (lockingFilesImporter==null){
+			envManager=(InovoCoreEnvironmentManager) InovoServletContextListener.inovoServletListener();
+			new Thread((lockingFilesImporter=new LockingFilesImporter())).start();
+			 //execService.submit((Callable<?>)(lockingFilesImporter=new LockingFilesImporter()));
+		}
+		return lockingFilesImporter;
+	}
+	
+	private boolean active=true;
+	public void shutdown() {
+		active=false;
+	}
+	
+	@Override
+	public void run() {
+		ArrayList<FileLockUnlock> fileLockUnlocksArr=new ArrayList<LockingFilesImporter.FileLockUnlock>();
+		while(active){
+			if(this.filesToLockUnlock.isEmpty()){
+				try {
+					Thread.currentThread().sleep(100);
+				} catch (InterruptedException e) {
+				}
+			} else {
+				this.filesToLockUnlock.drainTo(fileLockUnlocksArr);
+			}
+			while(!fileLockUnlocksArr.isEmpty()){
+				//execService.submit((Callable<?>) );
+				new Thread(fileLockUnlocksArr.remove(0)).start();
+			}
+		}
+	}
+	
+	@Override
+	public LockingFilesImporter call() throws Exception {
+		return this;
+	}
+	
+	public void debug(String message){
+		if(envManager!=null){
+			envManager.logDebug(message);
+		}
+	}
+}

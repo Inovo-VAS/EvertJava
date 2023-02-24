@@ -1,0 +1,37 @@
+package inovo.db.flatfile;
+
+import java.io.InputStream;
+
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+
+public class FlatfileImport extends InovoHTMLPageWidget {
+
+	public FlatfileImport(InovoWebWidget parentWidget, InputStream inStream) {
+		super(parentWidget, inStream);
+	}
+
+	@Override
+	public void pageContent() throws Exception {
+		this.startTable(null);
+			this.startRow(null);
+				this.startColumn("font-size:0.6em");this.respondString("FILE");this.endColumn();
+				this.startCell(null);
+					this.simpleElement("input", "type=file|name=filetoimport".split("[|]"));
+				this.endCell();
+				this.startColumn("font-size:0.6em");this.respondString("DELIMITER");this.endColumn();
+				this.startCell(null);
+					this.simpleElement("input", "type=text|name=filedelim".split("[|]"));
+				this.endCell();
+				this.startCell(null);
+					this.action("UPLOAD FLAT FILE", "importDbFile", "", "", "uploadresponse", "", "", "");
+				this.endCell();
+			this.endRow();
+			
+		this.endTable();
+	}
+	
+	public void importDbFile() throws Exception{
+		
+	}
+}

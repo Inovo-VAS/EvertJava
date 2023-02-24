@@ -1,0 +1,5 @@
+package baasserver.client;
+
+public class ClientSocketHandle {
+
+}

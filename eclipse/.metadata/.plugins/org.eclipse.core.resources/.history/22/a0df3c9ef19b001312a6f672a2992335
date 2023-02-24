@@ -1,0 +1,11 @@
+package baasserver.db.server;
+
+import baasserver.io.nio.ServerConnectionsAcceptor;
+
+public class DBServerConnectionsAcceptor extends ServerConnectionsAcceptor {
+
+	public DBServerConnectionsAcceptor(int port) throws Exception {
+		super(port);
+	}
+
+}

@@ -1,0 +1,29 @@
+package inovo.db.flatfile;
+
+import java.io.InputStream;
+
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+
+public class FlatfileImport extends InovoHTMLPageWidget {
+
+	public FlatfileImport(InovoWebWidget parentWidget, InputStream inStream) {
+		super(parentWidget, inStream);
+	}
+
+	@Override
+	public void pageContent() throws Exception {
+		this.startTable(null);
+			this.startRow(null);
+				this.startCell(null);
+			
+				this.endCell();
+			this.endRow();
+			
+		this.endTable();
+	}
+	
+	public void importDbFile() throws Exception{
+		
+	}
+}

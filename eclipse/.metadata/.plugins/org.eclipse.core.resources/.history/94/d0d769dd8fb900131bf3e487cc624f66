@@ -1,0 +1,70 @@
+package baasserver.web.system.controls.tabscontrol;
+
+import java.util.HashMap;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class TabsControl extends IOWidgetHandle {
+
+	public TabsControl(IOWidgetHandle parentWidget, IOProcessorHandle processor)
+			throws Exception {
+		super(parentWidget, processor);
+	}
+
+	public boolean collapsible(){
+		String collapsible=this.property("collapsible").trim().toLowerCase();
+		if(collapsible.equals("true")){
+			return true;
+		}
+		if(collapsible.equals("false")){
+			return false;
+		}
+		return false;
+	}
+	
+	public void setTab(String tabCaption,String[] tabProperties){
+		HashMap<String,String> tabProps=new HashMap<String,String>();
+		for(String tabpropItem:tabProperties){
+			if(tabpropItem.indexOf("=")>-1){
+				tabProps.put(tabpropItem.substring(0,tabpropItem.indexOf("=")).toUpperCase(), tabpropItem.substring(tabpropItem.indexOf("=")+1).trim());
+			}
+		}
+		this.setTab(tabCaption, tabProps);
+	}
+	
+	public void setTab(String tabCaption,HashMap<String,String> tabProperties){
+		
+		if(tabProperties.get("FORM")==null){
+			tabProperties.put("FORM", this.property("FORM"));
+		}
+		if(tabProperties.get("COMMAND")==null){
+			tabProperties.put("COMMAND", "");
+		}
+		if(tabProperties.get("URL")==null){
+			tabProperties.put("URL", this.property("URL"));
+		}
+		if(tabProperties.get("URLPARAMS")==null){
+			tabProperties.put("URLPARAMS", this.property("URLPARAMS"));
+		}
+		
+		this._tabs.put(tabCaption.toUpperCase(), tabProperties);
+	}
+	
+	private HashMap<String,HashMap<String,String>> _tabs=new HashMap<String,HashMap<String,String>>(); 
+	public HashMap<String,HashMap<String,String>> tabs(){
+		return _tabs;
+	}
+	
+	public String tabsLayout(){
+		String tabsLayout=this.property("tabslayout").trim().toLowerCase();
+		if(tabsLayout.equals("vertical")){
+			return tabsLayout;
+		}
+		return "horisontal";
+	}
+	
+	public String form(){
+		return this.property("form");
+	}
+}

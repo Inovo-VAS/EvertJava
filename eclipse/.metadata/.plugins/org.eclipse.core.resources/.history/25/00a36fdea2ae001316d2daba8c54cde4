@@ -1,0 +1,19 @@
+package baasserver.web.system;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class InputElement extends Element {
+
+	public InputElement(IOWidgetHandle parentWidget, IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+	
+	public String type(){
+		return this.property("type");
+	}
+	
+	public String value(){
+		return this.property("value");
+	}
+}

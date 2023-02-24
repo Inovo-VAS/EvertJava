@@ -1,0 +1,23 @@
+package baas.saas.graphics;
+
+public class Graphic implements IGraphic{
+	
+	public Graphic(Object gcanvas){
+		
+	}
+
+	@Override
+	public void drawLine(int xstart, int ystart, int xend, int yend) {
+		
+	}
+
+	@Override
+	public void drawRecangle(int xstart, int ystart, int rwidth, int rheight) {
+		
+	}
+
+	@Override
+	public void drawEclipse(int xstart, int ystart, int radius) {
+		
+	}
+}

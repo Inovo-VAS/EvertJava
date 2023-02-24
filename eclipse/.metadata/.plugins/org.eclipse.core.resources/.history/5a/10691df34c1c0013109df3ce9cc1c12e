@@ -1,0 +1,193 @@
+package baas.net;
+
+import java.util.HashMap;
+import java.io.*;
+import java.lang.reflect.InvocationTargetException;
+import java.nio.channels.*;
+import java.nio.channels.spi.*;
+import java.net.*;
+import java.util.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadFactory;
+
+import baas.net.handlers.ServerMarkupRequestHandle;
+import baas.net.servers.MarkupServer;
+
+public class Server implements Runnable {
+
+	private LinkedBlockingQueue<ServerRequestHandle> _socketRequestHandlePool=null;
+	
+	
+	/*public void removeThreadExecutor(RequestWorker threxetoRemove){
+		synchronized (_socketthreadPool) {
+			_socketthreadPool.remove(threxetoRemove);
+		}
+	}*/
+	
+	public static HashMap<Integer,Server> _servers=new HashMap<Integer,Server>();
+	
+	private boolean _shutdown=false;
+	private String _serverRequestHandleClassPath="";
+	
+	public Server(int port,String serverRequestHandleClassPath) throws IOException{
+		this._serverRequestHandleClassPath=serverRequestHandleClassPath;
+		acceptConnectionOn(port);
+	}
+
+	public void shutdown(){
+		this._shutdown=true;
+	}
+	
+	private Selector _selector;
+	private ServerSocketChannel _ssc; 
+	private void acceptConnectionOn(int port) throws IOException {
+		_selector = SelectorProvider.provider().openSelector();
+		
+		_ssc = ServerSocketChannel.open();
+		_ssc.configureBlocking(false);
+		
+		InetSocketAddress isa = new InetSocketAddress(port);
+		this._maxPoolSize=Runtime.getRuntime().availableProcessors()*5+5;
+		_ssc.socket().bind(isa,this._maxPoolSize-5);
+		
+		this._socketRequestHandlePool=new LinkedBlockingQueue<ServerRequestHandle>(this._maxPoolSize);
+		SelectionKey acceptKey = _ssc.register(_selector, 
+			      SelectionKey.OP_ACCEPT);
+		
+		new Thread(this).start();
+		new Thread(){
+			public void run() {
+				while(!_shutdown){
+					ServerRequestHandle nextRWorker=nextRequestWorker();
+					if(nextRWorker==null){
+						try {
+							Thread.sleep(2);
+						} catch (InterruptedException e) {
+							e.printStackTrace();
+						}
+					}
+					else{
+						new Thread(nextRWorker).start();
+					}
+				}
+				while(!_socketRequestHandlePool.isEmpty()){new RequestWorkerThread(nextRequestWorker()).start();}
+			};
+		}.start();
+	}
+	
+	private class RequestWorkerThread extends Thread{
+		private RequestWorkerThread(Runnable runnable){
+			super(runnable);
+			this.setDaemon(true);
+		}
+	}
+	
+	private long _threadCount=0;
+	
+	private  ServerRequestHandle nextRequestWorker(){
+		ServerRequestHandle nextWorker=null;
+		
+		if(!this._socketRequestHandlePool.isEmpty()) nextWorker=this._socketRequestHandlePool.poll();
+		return nextWorker;
+	}
+
+	@Override
+	public void run() {
+		while(!_shutdown){
+			int keysAdded = 0;
+			
+			try {
+					while ((keysAdded = _selector.select()) > 0&&!_shutdown) {
+					    Set readyKeys = _selector.selectedKeys();
+					    Iterator ikey = readyKeys.iterator();
+					    
+					    while (ikey.hasNext()) {
+							SelectionKey sk = (SelectionKey)ikey.next();
+							if(!_shutdown){
+								if(sk.isValid()){
+									if(sk.isAcceptable()){
+										SocketChannel nextReady = (SocketChannel)_ssc.accept();
+										if(nextReady!=null) 
+										{
+											try {
+												this._socketthreadPool.offer(newRequestHandler(nextReady));
+												
+											} catch (Exception e) {
+												sk.cancel();
+												this._shutdown=true;
+											}
+										}
+										else{
+											try {
+												Thread.sleep(2);
+											} catch (InterruptedException e) {
+												e.printStackTrace();
+											}
+										}
+									
+									}
+								}
+								else{
+									sk.cancel();
+								}
+							}
+							else{
+								sk.cancel();
+							}
+						
+							ikey.remove();
+						}
+					    if(this._shutdown) break; 
+					}
+				try {
+					Thread.sleep(2);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+		
+		try {
+			_selector.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		try {
+			_ssc.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+	
+	public ServerRequestHandle  newRequestHandler( SocketChannel nextReady) throws IOException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, NoSuchMethodException, SecurityException, ClassNotFoundException {
+		return (ServerRequestHandle)Class.forName(_serverRequestHandleClassPath).getConstructor(Server.class,SocketChannel.class).newInstance(new Object[]{this,nextReady});
+	}
+	
+	public static Server server(Integer port,String serverClassPath,String serverRequestHandleClassPath) throws IOException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, NoSuchMethodException, SecurityException, ClassNotFoundException{
+		Server serverSet=null;
+		synchronized (_servers) {
+			serverSet=_servers.get(port);
+			if(serverSet==null){
+				_servers.put(port, serverSet=(Server)Class.forName(serverClassPath).getConstructor(int.class,String.class).newInstance(new Object[]{port,ServerMarkupRequestHandle.class.getName()}));
+			}
+		}
+		return serverSet;
+	}
+
+	public static Server server(Integer port) throws IOException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, NoSuchMethodException, SecurityException, ClassNotFoundException{
+		return server(port, MarkupServer.class.getName(), "");
+	}
+	
+	public static Server server(Integer port,String serverRequestHandleClassPath) throws IOException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, NoSuchMethodException, SecurityException, ClassNotFoundException{
+		return server(port, Server.class.getName(), serverRequestHandleClassPath);
+	}
+
+	private int _maxPoolSize=200;
+	
+}

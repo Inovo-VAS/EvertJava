@@ -1,0 +1,11 @@
+package inovo.flat.file.leads.importer;
+
+public class FlatFileRequestCallsImporter implements Runnable {
+
+	@Override
+	public void run() {
+		// TODO Auto-generated method stub
+
+	}
+
+}

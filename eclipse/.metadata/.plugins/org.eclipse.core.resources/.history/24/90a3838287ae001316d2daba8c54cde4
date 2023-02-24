@@ -1,0 +1,74 @@
+package baasserver.db.system;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import baasserver.system.BaseSystem;
+import baasserver.web.system.WebSystem;
+
+public class DBSystem extends WebSystem {
+	
+	public static DBSystem registerWebSystem(String systemAllias) throws Exception{
+		return (DBSystem) BaseSystem.registerSystem(systemAllias, DBSystem.class);
+	}
+	
+	public Class<?> defaultDBManagerClass(){
+		return DBManager.class;
+	}
+	
+	private HashMap<String, DBManager> _dbmanagers=new HashMap<String,DBManager>();
+	
+	public DBManager dbmanager(String dbmanagername){
+		DBManager dbmanagerFound=null;
+		synchronized (_dbmanagers) {
+			dbmanagerFound=_dbmanagers.get(dbmanagername.toUpperCase());
+		}
+		return dbmanagerFound;
+	}
+	
+	public DBManager registerDBManager(String dbmanagername,HashMap<String,Object> dbproperties) throws Exception{
+		if(dbproperties==null){
+			return null;
+		}
+		if(dbproperties.isEmpty()){
+			return null;
+		}
+		
+		String[] dbmanproperties=new String[dbproperties.size()];
+		int dbmanpropindex=0;
+		for(String propertyName:dbproperties.keySet()){
+			dbmanproperties[dbmanpropindex++]=propertyName.toUpperCase()+"="+dbproperties.get(propertyName);
+		}
+		return  registerDBManager(dbmanagername, dbmanproperties);
+	}
+	
+	public DBManager registerDBManager(String dbmanagername,String[] dbproperties) throws Exception{
+		DBManager registerDBManager=null;
+		synchronized (_dbmanagers) {
+			if(_dbmanagers.containsKey(dbmanagername=dbmanagername.toUpperCase())){
+				registerDBManager=_dbmanagers.get(dbmanagername);
+			}
+			else{
+				_dbmanagers.put(dbmanagername.toUpperCase(),registerDBManager=new DBManager(this, dbproperties));
+			}
+		}
+		return registerDBManager;
+	}
+	
+	public DBManager registerDefaultDBManager(String[] dbproperties) throws Exception{
+		String dbmanagername=this.defaultDBManagerClass().getName();
+		DBManager registerDBManager=null;
+		synchronized (_dbmanagers) {
+			if(_dbmanagers.containsKey(dbmanagername=dbmanagername.toUpperCase())){
+				registerDBManager=_dbmanagers.get(dbmanagername);
+			}
+			else{
+				if(dbproperties!=null){
+					registerDBManager=(DBManager)this.defaultDBManagerClass().getConstructor(DBSystem.class,String[].class).newInstance(new Object[]{this, dbproperties});
+					_dbmanagers.put(dbmanagername.toUpperCase(),registerDBManager);
+				}
+			}
+		}
+		return registerDBManager;
+	}
+}

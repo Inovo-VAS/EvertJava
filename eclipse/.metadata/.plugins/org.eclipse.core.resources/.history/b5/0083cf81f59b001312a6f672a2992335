@@ -1,0 +1,20 @@
+package baasserver.db.server;
+
+import java.io.IOException;
+import baasserver.io.nio.AdvancedServer;
+
+public class DBServer extends AdvancedServer {
+
+	//public DBServer(int port,Class<?> ioRequestHandleClass) throws IOException{
+	//	super(port, ioRequestHandleClass);
+	//}
+	
+	public DBServer(int port) throws Exception{
+		super(port);
+	}
+	
+	@Override
+	public Class<?> serverConnectionsAcceptorClass() {
+		return DBServerConnectionsAcceptor.class;
+	}
+}

@@ -1,0 +1,14 @@
+package paas.web.modules;
+
+import paas.markup.sendreceive.MarkupIORequest;
+import paas.markup.sendreceive.MarkupIOWidget;
+
+public class Form extends MarkupIOWidget {
+
+	public Form(MarkupIORequest parentRequest) throws Exception {
+		super(parentRequest);
+	}
+	
+	public void formContent() throws Exception{
+	}
+}

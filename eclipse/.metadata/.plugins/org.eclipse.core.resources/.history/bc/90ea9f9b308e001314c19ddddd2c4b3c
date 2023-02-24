@@ -1,0 +1,76 @@
+package baasserver.protocols.markup;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IORequestHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class IOMarkupProcessorHandle extends IOProcessorHandle {
+	
+	public IOMarkupProcessorHandle(IOProcessorHandle mainProcessorHandle, Class<?> widgetHandleclass, IORequestHandle requestHandle) throws Exception{
+		super(mainProcessorHandle, widgetHandleclass,requestHandle);
+	}
+	
+	
+	
+	private byte[] _processorResponseBuffer=new byte[8912];
+	private int _processorResponseBufferIndex=0;
+	
+	private ArrayList<IOWidgetHandle> _currentWidgets=new ArrayList<IOWidgetHandle>();
+	private ArrayList<String> _widgetEndTagRefs=new ArrayList<String>();
+	private ArrayList<String> _widgetStreamMaskPaths=new ArrayList<String>();
+	
+	
+	
+	private int _codeSecCount=0;
+	
+	private ArrayList<Byte> _maskBytesToProcess=new ArrayList<Byte>();
+	private boolean _addedStartWidget=false;
+	private boolean _nolayoutMaskPaths=false;
+		
+	@Override
+	public void process() throws Exception {
+		super.process();
+		
+		
+		if(this.currentWidget()==null){
+			this.setCurrentWidget(this.widgetHandle());
+		}
+		String currentWidgetClassName=this.currentWidget().fullWidgetClassName();
+		if(currentWidgetClassName.indexOf("@")>-1){
+			currentWidgetClassName=currentWidgetClassName.substring(0,currentWidgetClassName.indexOf("@"));
+		}
+		
+		if((_nolayoutMaskPaths=this.currentWidget().widgetLayoutMaskPaths().isEmpty())){
+			this.processMaskBytes((this.startProcessorPar()+currentWidgetClassName+endProcessorPar()+this.startProcessorPar()+"/"+currentWidgetClassName+this.endProcessorPar()).getBytes(),0);
+		}
+		else{
+			_addedStartWidget=true;
+			this._widgetStreamMaskPaths=this.currentWidget().widgetLayoutMaskPaths();
+			
+			this.codingScriptBroker().putCodingReadPhrase(this.codingScriptBroker().codingSpecificIndex("handleWidgetContent"));
+			this.codingScriptBroker().putCodingReadContent(this.currentWidget());
+			this.codingScriptBroker().putCodingReadContent(new HashMap<String,String>());
+			this.codingScriptBroker().putCodingReadPhrase(this.codingScriptBroker().codingSpecificIndex(";"));
+			
+			this.processInputMaskStream(baasserver.reflection.REFUtils.getResourceAsStream(this._widgetStreamMaskPaths.remove(0)));
+		}
+		
+		this.codingScriptBroker().performCodingRead();
+	}
+	
+	private byte _prevmb=0;
+	private HashMap<IOWidgetHandle,HashMap<String,String>> _widgetProperties=new HashMap<IOWidgetHandle,HashMap<String,String>>();
+	
+	
+
+	private String _currentWidgetStartTag="";
+	private ArrayList<String> _invalidWidgetTags=new ArrayList<String>();
+	private HashMap<String,Class<?>> _validWidgetTags=new HashMap<String,Class<?>>();
+	private ArrayList<byte[]> _unmatchStartTags=new ArrayList<byte[]>();
+	private ArrayList<byte[]> _unmatchEndTags=new ArrayList<byte[]>();
+	
+	private byte[] _currentMaskCodeBytes=new byte[8912];
+	private int _currentMaskCodeBytesIndex=0;
+}

@@ -1,0 +1,11 @@
+package baas.saas.graphics;
+
+public interface IGraphic {
+	public abstract void drawLine(int xstart,int ystart,int xend,int yend);
+	
+	public abstract void drawRecangle(int xstart,int ystart,int rwidth,int rheight);
+	
+	public abstract void drawEclipse(int xstart,int ystart,int radius);
+	
+	
+}

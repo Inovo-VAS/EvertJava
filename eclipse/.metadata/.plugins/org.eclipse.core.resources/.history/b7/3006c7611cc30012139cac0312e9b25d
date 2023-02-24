@@ -1,0 +1,30 @@
+import javax.servlet.ServletContext;
+
+import inovo.servlet.InovoCoreEnvironmentManager;
+
+
+public class InovoEnvironmentManager extends InovoCoreEnvironmentManager {
+	
+	@Override
+	public String defaultLocalPath(String suggestedlocalpath) {
+		return super.defaultLocalPath("C:\\projects\\java\\");
+	}
+	
+	@Override
+	public void initializeServletContext(ServletContext sc) {
+		super.initializeServletContext(sc);
+		inovo.presence.LeadsAutomation.leadsAutomation().initiateAutomation();
+		new Thread(){
+			public void run() {
+				presence.Administrator.administrator().connectToPresence();
+			};
+		}.start();
+	}
+		
+	@Override
+	public void disposeServletContext(ServletContext sc) {
+		inovo.presence.LeadsAutomation.leadsAutomation().shutdownAutomation();
+		presence.Administrator.administrator().disconnectFromPresence();
+		super.disposeServletContext(sc);
+	}
+}

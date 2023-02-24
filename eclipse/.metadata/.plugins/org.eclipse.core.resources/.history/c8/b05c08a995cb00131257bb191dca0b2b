@@ -1,0 +1,5 @@
+package inovo.presence.agent.gateway;
+
+public class PresenceAgentStatusQueue {
+	
+}

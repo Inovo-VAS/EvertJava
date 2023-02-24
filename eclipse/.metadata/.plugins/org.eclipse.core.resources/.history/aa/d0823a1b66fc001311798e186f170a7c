@@ -1,0 +1,79 @@
+package inovo.monitoring.monitors;
+
+import java.util.ArrayList;
+
+public class MonitorRequest implements Runnable{
+
+	private Exception _em=null;
+	private boolean _busyExecuting=false; 
+	
+	private Monitor _monitor=null;
+	private ArrayList<MonitorRequest> _monitorRequests=new ArrayList<MonitorRequest>();
+	private MonitorRequest _parentMonitorRequest=null;
+	public MonitorRequest(){
+		this(null);
+	}
+	
+	public Monitor monitor(){
+		return this._monitor;
+	}
+	
+	public MonitorRequest(MonitorRequest parentMonitorRequest){
+		this._parentMonitorRequest=parentMonitorRequest;
+		if(this._parentMonitorRequest!=null){
+			this.attachToMonitor(_parentMonitorRequest.monitor());
+		}
+		this._busyExecuting=true;
+	}
+	
+	public void attachToMonitor(Monitor monitor){
+		this._monitor=monitor;
+	}
+	
+	public void attachMonitorRequests(MonitorRequest[] monitorRequest){
+		if(monitorRequest==null) return;
+		
+	}
+	
+	public void attachMonitorRequests(ArrayList<MonitorRequest> monitorRequest){
+		if(monitorRequest==null) return;
+		if(!monitorRequest.isEmpty()){
+			synchronized (_monitorRequest) {
+				_monitorRequest.addAll(monitorRequest);
+			}
+		}
+	}
+	
+	@Override
+	public void run() {
+		this._em=null;
+		try{
+			if(!this._monitorRequest.isEmpty()){
+				synchronized (_monitorRequest) {
+					
+				}
+			}
+			else{
+				this._busyExecuting=this.executeMonitor();
+			}
+		}
+		catch(Exception e){
+			this._em=e;
+		}
+		this.completedRequest(this);
+	}
+	
+	public boolean stillBusyExecuting(){
+		return this._busyExecuting;
+	}
+	
+	private void completedRequest(MonitorRequest monitorRequest) {
+		if(this._monitor!=null){
+			this._monitor.requestCompleted(this);
+		}
+	}
+
+	public boolean executeMonitor(){
+		return true;
+	}
+}

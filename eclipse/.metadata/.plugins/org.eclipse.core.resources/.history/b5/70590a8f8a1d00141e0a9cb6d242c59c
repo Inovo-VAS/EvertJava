@@ -1,0 +1,42 @@
+package pce.accountants.modules.admin;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.TreeMap;
+
+import pce.accountants.Module;
+import saas.db.Database;
+import saas.protocol.Request;
+import saas.protocol.Widget;
+
+public class Modules extends Module {
+
+	public Modules(Request request, Widget parentWidget) {
+		super(request, parentWidget);
+		this.setWidgetProperty("modulepath","/"+Modules.class.getName().replaceAll("[.]", "/").toLowerCase());
+	}
+	
+	public void readModuleRowData(Integer rowindex,ArrayList<String> rowData,ArrayList<String> rowColumns){
+		HashMap<String,String> moduleInfo=Database.rowData(rowColumns, rowData);
+		if(rowindex==0){
+			startComplexElement("tr");
+				startComplexElement("td","class=ui-widget-header");
+					respondString("MODULE NAME");
+				endComplexElement("td");
+			endComplexElement("tr");
+		}
+		
+		moduleInfo.clear();
+		moduleInfo=null;
+	}
+	
+	@Override
+	public void executeModule() throws Exception {
+		
+		this.startComplexElement("table");
+		
+		Database.executeDBRequest(null,this.dballias(),"SELECT module.id,  module.modulename,  module.modulelib,  module.parentmodid FROM system.module where module.parentmodid=0",null,this,"readModuleRowData");
+		
+		this.endComplexElement("table");
+	}
+}

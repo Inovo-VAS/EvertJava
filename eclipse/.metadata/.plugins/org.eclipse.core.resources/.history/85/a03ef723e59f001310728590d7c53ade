@@ -1,0 +1,7 @@
+package org.quartz.dbtables.postgresql;
+
+import baasserver.db.protocols.DBWidgetHandle;
+
+public class Tables_Postgres extends DBWidgetHandle {
+
+}

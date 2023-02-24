@@ -1,0 +1,150 @@
+package inovo.presence.pmconsole;
+
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
+import org.apache.catalina.tribes.transport.bio.PooledMultiSender;
+
+public class PMConsoleApp implements Runnable{
+
+	private String ipaddress="";
+	private PMConsoleServiceQueue pmConsoleServiceQueue=null;
+	private String appName="";
+	public PMConsoleApp(PMConsoleServiceQueue pmConsoleServiceQueue,String appName,String ipaddress){
+		this.ipaddress=ipaddress;
+		this.appName=appName;
+		this.pmConsoleServiceQueue=pmConsoleServiceQueue;
+		this.executorServicePMSockets=new ThreadPoolExecutor(0,Integer.MAX_VALUE,100,TimeUnit.MILLISECONDS,new SynchronousQueue<Runnable>(),new ThreadPoolExecutor.DiscardPolicy());
+		this.resizePMSocketPool();
+	}
+	
+	public String ipAddress(){
+		return this.ipaddress;
+	}
+	
+	private List<PMSocket> pmSockets=null;
+	
+	private ExecutorService executorServicePMSockets=null;
+	
+	public void executePMSocket(PMSocket pmSocket){
+		this.executorServicePMSockets.execute(pmSocket);
+	}
+	
+	private final Object resizePoolLock=new Object();
+	
+	private void resizePMSocketPool() {
+		if(this.poolSize>0){
+			
+			if((this.pmSockets==null?(pmSockets=new ArrayList<PMSocket>()):this.pmSockets).size()!=this.poolSize){
+				synchronized (resizePoolLock) {
+					int poolIndex=0;
+					while(poolIndex<this.poolSize){
+						try {
+							PMSocket pmSocket=new PMSocket(this,new InetSocketAddress(ipaddress.indexOf(":")==-1?ipaddress:ipaddress.substring(0, ipaddress.indexOf(":")),Integer.parseInt(ipaddress.indexOf(":")==-1?this.defaultPort():ipaddress.substring(ipaddress.indexOf(":")+1, ipaddress.length()))));
+							this.pmSockets.add(pmSocket);
+							this.executePMSocket(pmSocket);
+							poolIndex++;
+						} catch (Exception e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}
+					}
+				}				
+			}
+		}
+	}
+
+	private String defaultPort() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	public String appName(){
+		return this.appName;
+	}
+	
+	private enum PMConsoleAppState{
+		resize_poolSize,
+		request_command,
+	}
+	
+	private List<PMConsoleAppState> pmConsoleAppStates=new ArrayList<PMConsoleApp.PMConsoleAppState>();
+	
+	private boolean shutdown=false;
+	
+	public void shutdown(){
+		this.shutdown=true;
+	}
+	
+	public boolean isActiveApp(){
+		return !this.shutdown&&this.pmConsoleServiceQueue.isActiveQueue();
+	}
+	
+	@Override
+	public void run() {
+		while(this.isActiveApp()){
+			try {
+				Thread.sleep(10);
+			} catch (InterruptedException e) {
+			}
+		}
+		
+		this.pmConsoleServiceQueue.removePMConsoleApp(this);
+	}
+
+	private int poolSize=1;
+	
+	public void setPoolSize(int poolsize) {
+		if(poolsize>0){
+			this.poolSize=poolsize;
+		}
+	}
+	
+	private int nextPMSocketIndex=0;
+	 
+	private PMSocket nextPMSocket(){
+		PMSocket nextPMSocket=null;
+		if(this.pmSockets==null&&this.pmSockets.isEmpty()) return nextPMSocket;
+		boolean foundConnection=false;
+		while(!foundConnection){
+			synchronized (resizePoolLock) {
+				nextPMSocketIndex--;
+				if(nextPMSocketIndex<0||nextPMSocketIndex>this.pmSockets.size()) nextPMSocketIndex=this.pmSockets.size()-1;
+				
+				if((foundConnection=this.pmSockets.get(nextPMSocketIndex).connected)){
+					nextPMSocket=this.pmSockets.get(nextPMSocketIndex);
+				}
+				if(nextPMSocketIndex==0){
+					break;
+				}
+			}
+		}
+		return nextPMSocket;
+	}
+
+	public void cleanupPMConsoleApp() {
+		this.pmConsoleAppStates.clear();
+		
+	}
+
+	public int retryConnectionSecs() {
+		return 20;
+	}
+
+	public void pmcommand(String command, OutputStream out,String parseFormat) throws Exception {
+		PMSocket pmSocket=this.nextPMSocket();
+		if(pmSocket!=null){
+			pmSocket.addCommand(command, out,parseFormat);
+		}
+		else{
+			out.write("NO ACTIVE PM CONNECTION".getBytes());
+			//throw new Exception("NO ACTIVE PM CONNECTION");
+		}
+	}
+}

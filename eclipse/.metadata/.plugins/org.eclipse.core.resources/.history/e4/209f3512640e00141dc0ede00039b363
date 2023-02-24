@@ -1,0 +1,38 @@
+package inovo.presence.mail.archiver;
+
+import java.io.InputStream;
+import java.util.HashMap;
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+
+public class PresenceMailExport extends InovoHTMLPageWidget {
+
+	public PresenceMailExport(InovoWebWidget parentWidget,
+			InputStream inStream) {
+		super(parentWidget, inStream);
+	}
+
+	public void archivemail() throws Exception{
+		HashMap archiveRequestSettings = new HashMap();
+		archiveRequestSettings.put("AGENTID", this.requestParameter("AGENTID"));
+		archiveRequestSettings.put("METAFIELD1NAME", "CUSTOMERID");
+		archiveRequestSettings.put("METAFIELD1VALUE", (this.requestParameter("CUSTOMERID").equals("")?"0000000000000":this.requestParameter("CUSTOMERID")));
+		archiveRequestSettings.put("INBOUNDMAILID", this.requestParameter("INBOUNDMAILID"));
+	    try
+	    {
+			String validationError = "";
+			if (validationError.equals("")) {
+				validationError = MailExportQueue.mailEportQueue().requestMailArchive(archiveRequestSettings, new String[] { "AGENTID", "INBOUNDMAILID", "METAFIELD1VALUE" }, "PRSC_[AGENTID]_[METAFIELD1VALUE]_[MAILID]", "METAFIELD1".split(","),true);
+			}
+			if (validationError.equals("")) {
+				this.respondString("SUCCESSFUL");
+			}
+			else
+				this.respondString("UNSUCCESSFUL:" + validationError.replace("\n", " "));
+			}
+		catch (InstantiationException|IllegalAccessException|ClassNotFoundException e)
+		{
+			this.respondString(encodeHTML("ERROR:" + e.getMessage().replace("\n", " ")));
+		}
+	}
+}

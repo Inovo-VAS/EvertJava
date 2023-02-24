@@ -1,0 +1,14 @@
+package inovo.x.link;
+
+import java.io.InputStream;
+
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+
+public class XLink extends InovoHTMLPageWidget {
+
+	public XLink(InovoWebWidget parentWidget, InputStream inStream) {
+		super(parentWidget, inStream);
+	}
+
+}

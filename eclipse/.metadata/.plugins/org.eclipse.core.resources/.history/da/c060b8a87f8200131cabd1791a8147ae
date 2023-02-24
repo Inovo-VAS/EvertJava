@@ -1,0 +1,25 @@
+package inovo.automation.db;
+
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.HashMap;
+
+public class Queue extends inovo.automation.Queue{
+
+	private String _dbAlliasName="";
+	public Queue(String dbAlliasName) throws Exception {
+		super();
+		this._dbAlliasName=dbAlliasName;
+	}
+	
+	public String dbAlliasName(){
+		return this._dbAlliasName;
+	}
+	
+	public SQLRequest queueSQLRequest(ArrayList<Calendar> schedules, String sqlRequestAllias,String sqlStatement,HashMap<String,String> sqlparams,boolean queueModal) throws Exception{
+		SQLRequest sqlRequest=new SQLRequest(schedules);
+		sqlRequest.setSqlStatement(sqlStatement, sqlparams);
+		sqlRequest=(SQLRequest) this.queueRequest(sqlRequestAllias, sqlRequest, queueModal);
+		return sqlRequest;
+	}
+}

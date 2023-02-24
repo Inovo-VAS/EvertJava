@@ -1,0 +1,159 @@
+package saas.protocol;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import org.omg.stub.java.rmi._Remote_Stub;
+
+import saas.io.SaasInputStream;
+import saas.protocol.io.URIRequestStream;
+
+public class SaasRequestInputStream extends SaasInputStream {
+
+	private URIRequestStream _uriRequestStream=null;
+	
+	//private HashMap<String,String> _requestHeaders=new HashMap<String, String>();
+	//private HashMap<String,String> _responseHeaders=new HashMap<String, String>();
+	
+	//private HashMap<String, ArrayList<String>> _requestParams=new HashMap<String, ArrayList<String>>();
+	//private HashMap<String, HashMap<String, String>> _requestParameterProperties=new HashMap<String, HashMap<String,String>>();
+	//private HashMap<String, File> _requestParameterFiles=new HashMap<String, File>();
+	private String _requestCommand="";
+	private String _requestUrl="";
+	private String _requestUrlResource="";
+	private String _requestUrlExtension="";
+	private String _requestProtocol="";
+	private OutputStream _outputStream=null;
+	
+	private Exception _exception=null; 
+	
+	public SaasRequestInputStream(InputStream inputStream,OutputStream outputStream){
+		super(inputStream);
+		this._outputStream=outputStream;
+		this._uriRequestStream=new URIRequestStream(){
+			
+			@Override
+			public void foundCommand(String command, String uri, String protocol,HashMap<String, ArrayList<String>> decodedUrlParams) {
+				_requestCommand=command;
+				_requestUrl=uri;
+				_requestUrlResource=_requestUrl.substring(_requestUrl.lastIndexOf("/")+1);
+				_requestUrlExtension=(_requestUrlResource.lastIndexOf(".")>-1?_requestUrlResource.substring(_requestUrlResource.lastIndexOf(".")+1):"");
+				_requestUrlResource=(_requestUrlExtension.equals("")?_requestUrlResource:_requestUrlResource.substring(0,_requestUrlResource.length()-(_requestUrlExtension.length()+1)));
+				_requestUrl=_requestUrl.substring(0,_requestUrl.lastIndexOf("/")+1);
+				
+				if(_requestUrl.startsWith("/shutdown/environment")){
+					shutdownEnvironment();
+				}
+				if(_request==null){
+					_request=new Request();
+				}
+				
+				_requestProtocol=protocol;
+				this.foundHeader("URI-COMMAND", _requestCommand);
+				this.foundHeader("URI-URL", _requestUrl);
+				this.foundHeader("URI-URL-RESOURCE", _requestUrlResource);
+				this.foundHeader("URI-URL-EXTENSION", _requestUrlExtension);
+				this.foundHeader("URI-PROTOCOL", _requestProtocol);
+			}
+			
+			@Override
+			public void foundHeader(String header, String value) {
+				_request.setRequestHeader(header, value);
+				//_requestHeaders.put(header, value);
+			}
+			
+			@Override
+			public void foundMultiPartContentCompleted(
+					HashMap<String, ArrayList<String>> parameters,
+					HashMap<String, HashMap<String, String>> parameterProperties,
+					HashMap<String, File> parameterFiles) {
+				_request.requestParameters().putAll(parameters);
+				_request.requestParameterFiles().putAll(parameterFiles);
+				_request.requestParameterProperties().putAll(parameterProperties);
+			}
+			
+			@Override
+			public void interprateContentBytes(byte[] cb, boolean contentDone) {
+				
+			}
+			
+			@Override
+			public void requestDone() {
+				setResponseContentType(_requestUrlExtension.equals("")?"":_requestUrlExtension.substring(0));
+				executeActualRequest();
+				SaasRequestOutputStream saasRequestOutputStream=null;
+				try {
+					saasRequestOutputStream=((SaasRequestOutputStream)saasRequestOutputStreamClass().getConstructor(OutputStream.class).newInstance(new Object[]{_outputStream}));
+					saasRequestOutputStream.loadResponseHeaders(_request.responseHeaders());
+					saasRequestOutputStream.loadRequestHeaders(_request.requestHeaders());
+					
+						_request.outputEmbeddedResource(_requestUrl+_requestUrlResource+(_requestUrlExtension.equals("")?"":"."+_requestUrlExtension));
+					
+					saasRequestOutputStream.preProcessRequestOutputStream(_request.requestOutputBufferLength(),_request.requestOutputBuffer());
+					saasRequestOutputStream.readWriteStreams(8192);
+				} catch (Exception e) {
+					_exception=e;
+				}
+				if(_request!=null){
+					_request.cleanUp();
+				}
+			}
+		};
+	}
+	
+	public Exception exeptionFound(){
+		return this._exception;
+	}
+	
+	private Request _request=null;
+	private void executeActualRequest(){
+		
+	}
+	
+	private void setResponseContentType(String requestUrlExtension) {
+		this._request.setResponseHeader("CONTENT-TYPE", "text/plain");
+		if(requestUrlExtension.equals("html")||requestUrlExtension.equals("htm")){
+			this._request.setResponseHeader("CONTENT-TYPE", "text/html");
+		}
+		else if(requestUrlExtension.equals("xml")){
+			this._request.setResponseHeader("CONTENT-TYPE", "text/xml");
+		}
+		else if(requestUrlExtension.equals("js")){
+			this._request.setResponseHeader("CONTENT-TYPE", "text/javascript");
+		}
+		else if(requestUrlExtension.equals("css")){
+			this._request.setResponseHeader("CONTENT-TYPE", "text/CSS");
+		}
+		else if(requestUrlExtension.equals("png")){
+			this._request.setResponseHeader("CONTENT-TYPE", "image/PNG");
+		}
+		else if(requestUrlExtension.toLowerCase().equals("gif")){
+			this._request.setResponseHeader("CONTENT-TYPE", "image/GIF");
+		}
+		else if(requestUrlExtension.equals("jpg")){
+			this._request.setResponseHeader("CONTENT-TYPE", "image/JPEG");
+		}
+	}
+
+	public Class<?> saasRequestOutputStreamClass(){
+		return SaasRequestOutputStream.class;
+	}
+	
+	@Override
+	public void saasActualRead(byte[] b) throws Exception {
+		this._uriRequestStream.interprateBytes(b);
+	}
+
+	private boolean _shudownEnvironment=false;
+	public void shutdownEnvironment(){
+		this._shudownEnvironment=true;
+	}
+	public boolean canShutdownEnvironment() {
+		return this._shudownEnvironment;
+	}
+}

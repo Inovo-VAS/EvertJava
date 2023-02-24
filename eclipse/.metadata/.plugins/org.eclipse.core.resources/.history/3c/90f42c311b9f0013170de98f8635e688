@@ -1,0 +1,43 @@
+package baasserver.db.web.system.definitions;
+
+import baasserver.db.web.system.Field;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class NumericField extends Field {
+
+	public NumericField(IOWidgetHandle parentWidget, IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+	
+	@Override
+	public String fieldDefinition() {
+		if(this.dbParentWidget().dbManager().dbType().equals("sqlserver")||this.dbParentWidget().dbManager().dbType().equals("postgresql")){
+			//[ID] IDENTITY(1,1) NUMERIC(18,0) NOT NULL
+			//[ID] serial NOT NULL
+			return "["+this.fieldName()+"] IDENTITY(1,1) [numeric](,0) NOT NULL";
+		}
+		return super.fieldDefinition();
+	}
+	
+	public Double defaultValue(){
+		return null;
+	}
+	
+	public int size(){
+		String size=this.property("size");
+		if(size.equals("")){
+			size="18";
+		}
+		return Integer.parseInt(size);
+	}
+	
+	public int precision(){
+		String size=this.property("size");
+		if(size.equals("")){
+			size="0";
+		}
+		return Integer.parseInt(size);
+	}
+	
+}

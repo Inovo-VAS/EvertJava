@@ -1,0 +1,7 @@
+package inovo.db.flatfile;
+
+import inovo.web.InovoHTMLPageWidget;
+
+public class FlatfileImport extends InovoHTMLPageWidget {
+
+}

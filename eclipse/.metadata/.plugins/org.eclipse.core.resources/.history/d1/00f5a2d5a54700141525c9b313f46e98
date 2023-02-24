@@ -1,0 +1,410 @@
+package inovo.presence;
+
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.TreeMap;
+
+import presence.Administrator;
+import inovo.db.Database;
+import inovo.json.JSONArray;
+import inovo.json.JSONObject;
+import inovo.json.JSONStyle;
+
+public class LeadsAutomation {
+	
+	private boolean _shutdownQueue=false;
+	private static LeadsAutomation _leadsAutomation=null;
+	private ArrayList<String> _registeredCallTaskKeys=new ArrayList<String>();
+	private ArrayList<String> _callTasksKeysCompleted=new ArrayList<String>();
+	private ArrayList<String> _serviceIDsToReload=new ArrayList<String>();
+	private String _presenceServerIP="";
+	private String _environmentPath="";
+	
+	public LeadsAutomation(String environmentPath,String presenceServerIP){
+		this._presenceServerIP=presenceServerIP;
+		this._environmentPath=environmentPath;
+	}
+	
+	private ArrayList<String> _environmentChecklist=new ArrayList<String>();
+	public synchronized ArrayList<String> environmentChecklist(){
+		return _environmentChecklist;
+	}
+	
+	private boolean environmentSetupCheck(){
+		ArrayList<String> environmentChecklist=new ArrayList<String>();
+		try {
+			Database.executeDBRequest(null, "LEADSAUTOMATION", "SELECT GETDATE() AS SYSDATE", null, null);
+		} catch (Exception e) {
+			environmentChecklist.add("DB CONNECTION ERROR:"+e.getMessage());
+		}
+		if(environmentChecklist.isEmpty()){
+			try {
+				Database.executeDBRequest(null, "LEADSAUTOMATION", "SELECT TOP 1 * FROM <DBUSER>.DYNAMICCALLERLIST", null, null);
+			} catch (Exception e) {
+				environmentChecklist.add("DB SETUP ERROR: "+e.getMessage());
+				environmentChecklist.add("DB SETUP ERROR: POSSIBLE SOLUTION - RUN SQL INSTALL SCRIPT");
+			}
+		}
+		boolean envCheckStatus=environmentChecklist.isEmpty();
+		if(!envCheckStatus){
+			for(String environmenterr:environmentChecklist){
+				inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug(environmenterr);
+			}
+			synchronized (_environmentChecklist) {
+				_environmentChecklist.clear();
+				_environmentChecklist.addAll(environmentChecklist);
+			}
+			environmentChecklist.clear();
+			environmentChecklist=null;
+			try {
+				Thread.sleep(30*1014);
+			} catch (InterruptedException e) {
+			}
+		}
+		return envCheckStatus;
+	}
+	
+	public void initiateAutomation(){
+		new Thread(){
+			@Override
+			public void run() {
+				while(!_shutdownQueue){
+					if(environmentSetupCheck()){
+						environmentChecklist();
+						loadCalls();
+					}
+					try {
+						this.sleep(10*1024);
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					}
+				}
+			}
+		}.start();
+		
+		new Thread(){
+			@Override
+			public void run() {
+				while(!_shutdownQueue){
+					cleanUpCallRequests();
+					try {
+						this.sleep(100);
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					}
+				}
+				cleanUpCallRequests();
+			};
+		}.start();
+	}
+	
+	private void cleanUpCallRequests(){
+		boolean hasCallKeysToRemove=false;
+		synchronized (_callTasksKeysCompleted) {
+			hasCallKeysToRemove=!_callTasksKeysCompleted.isEmpty();
+		}
+		if(hasCallKeysToRemove){
+			ArrayList<String> currentCallTasksKeysCompleted=new ArrayList<String>();
+			synchronized (_callTasksKeysCompleted) {
+				while(!_callTasksKeysCompleted.isEmpty()){
+					currentCallTasksKeysCompleted.add(_callTasksKeysCompleted.remove(0));
+				}
+			}
+			synchronized (_registeredCallTaskKeys) {
+				while(!currentCallTasksKeysCompleted.isEmpty()){
+					String callsTaskKey=currentCallTasksKeysCompleted.remove(0);
+					_registeredCallTaskKeys.remove(callsTaskKey);
+					System.out.println(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date())+" REMOVE TASK:"+callsTaskKey);
+				}
+			}
+		}
+		String svrIds="";
+		synchronized (_serviceIDsToReload) {
+			if(!_serviceIDsToReload.isEmpty()){
+				String lastServiceIDAdded="";
+				while(!_serviceIDsToReload.isEmpty()){
+					String removedServiceID=_serviceIDsToReload.remove(0);
+					if(lastServiceIDAdded.equals(removedServiceID)) continue;
+					lastServiceIDAdded=removedServiceID;
+					svrIds+=removedServiceID+(!_serviceIDsToReload.isEmpty()?",":"");
+				}
+			}
+		}
+		if(!svrIds.equals("")){
+			//if(Administrator.administrator().connectedToPresence()){
+				Administrator.administrator(this._environmentPath, this._presenceServerIP).reloadServicesBuffers(svrIds, true);
+			//}
+		}
+	}
+	
+	public void loadCalls(){
+		try{
+			Database.executeDBRequest(null,"LEADSAUTOMATION", "UPDATE <DBUSER>.[DYNAMICCALLERLIST] SET [RECORDHANDLEFLAG]=2,LASTACTIONDATETIME=NOW() WHERE [RECORDHANDLEFLAG]=1", null,null);
+		}
+		catch(Exception e){
+			e.printStackTrace();
+		}
+		TreeMap<Integer,ArrayList<String>> loadsCallsSet=new TreeMap<Integer, ArrayList<String>>();
+		try{
+			
+			Database.executeDBRequest(loadsCallsSet,"LEADSAUTOMATION", "SELECT DISTINCT [SERVICEID],[LOADID],[LOADREQUESTTYPE] FROM <DBUSER>.[DYNAMICCALLERLIST] WHERE [RECORDHANDLEFLAG]=2", null,null);
+			if(loadsCallsSet!=null){
+				
+				HashMap<String,String> loadCallsParams=new HashMap<String,String>();
+				ArrayList<Thread> leadRequestThreads=new ArrayList<Thread>();
+				int totalTasksAdded=0;
+				synchronized (_registeredCallTaskKeys) {
+					for(int rowindex:loadsCallsSet.keySet()){
+						if(rowindex==0) continue;
+						loadCallsParams.clear();
+						loadCallsParams.putAll(Database.rowData(loadsCallsSet, rowindex));
+						String callsTaskKey=loadCallsParams.get("SERVICEID")+"|"+loadCallsParams.get("LOADID")+"|"+loadCallsParams.get("LOADREQUESTTYPE");
+												
+						if(_registeredCallTaskKeys.indexOf(callsTaskKey)==-1){
+							_registeredCallTaskKeys.add(callsTaskKey);
+							System.out.println(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date())+" ADD TASK:"+callsTaskKey);
+							if(loadCallsParams.get("LOADREQUESTTYPE").equals("1")){
+								leadRequestThreads.add(new Thread(new LeadsAutomationNewCallsTask(loadCallsParams)));
+							}
+							else if(loadCallsParams.get("LOADREQUESTTYPE").equals("2")){
+								leadRequestThreads.add(new Thread(new LeadsAutomationRemoveCallsTask(loadCallsParams)));
+							}
+							else if(loadCallsParams.get("LOADREQUESTTYPE").equals("3")){
+								leadRequestThreads.add(new Thread(new LeadsAutomationModifyCallsTask(loadCallsParams)));
+							}
+							totalTasksAdded++;
+						}
+					}
+				}
+				
+				if(totalTasksAdded>0){
+					System.out.println("TOTAL TASKS ADDED - "+totalTasksAdded);
+				}
+				
+				while(!leadRequestThreads.isEmpty()) leadRequestThreads.remove(0).start();
+			}
+		}
+		catch(Exception e){
+			e.printStackTrace();
+		}
+		Database.cleanupDataset(loadsCallsSet);
+		loadsCallsSet=null;
+	}
+	int totalTasksRemoved=0;
+	public void removeCallsTasksKey(String callsTaskKey){
+		synchronized (_callTasksKeysCompleted){
+			_callTasksKeysCompleted.add(callsTaskKey);
+			System.out.println(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date())+" REMOVED TASK:"+callsTaskKey);
+		}
+		totalTasksRemoved++;
+		System.out.println("TOTAL TASKS REMOVED - "+totalTasksRemoved);
+	}
+	
+	public static LeadsAutomation leadsAutomation(String environmentPath,String presenceServerIP){
+		if(_leadsAutomation==null) _leadsAutomation=new LeadsAutomation(environmentPath, presenceServerIP);
+		return _leadsAutomation;
+	}
+	
+	public void shutdownAutomation(){
+		this._shutdownQueue=true;
+		while(!_registeredCallTaskKeys.isEmpty()){
+			try {
+				Thread.sleep(1024);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+	}
+	
+	public String loadCall(HashMap<String, String> dyncalldata){
+		StringBuilder loadCallResponse=new StringBuilder();
+		JSONObject jsonobj=new JSONObject();
+		JSONArray jsondyncalldataErrors=null;
+		jsonobj.put("ERRORS",jsondyncalldataErrors = new JSONArray());
+		ArrayList<String> invalidparams=new ArrayList<String>();
+		try{
+			JSONObject jsonobjparams=null;
+			jsonobj.put("LOADCALLPARAMS", jsonobjparams=new JSONObject());
+			for(String dyncalldatakey:dyncalldata.keySet()){
+				if("loadrequesttype,serviceid,loadid,sourceid,callername,comments,agentloginid,scheduleddate,phone1,phone2,phone3,phone4,phone5,phone6,phone7,phone8,phone9,phone10,metafield1,metafield2,metafield3,metafield4,metafield5,metafield6,metafield7,metafield8,metafield9,metafield10,metafield11,metafield12,metafield13,metafield14,metafield16,metafield17,metafield18,metafield19,metafield20,fieldstomodify,".toUpperCase().contains((dyncalldatakey.toUpperCase()+","))){
+					jsonobjparams.put(dyncalldatakey.toUpperCase(), dyncalldata.get(dyncalldatakey));
+				}
+				else{
+					invalidparams.add(dyncalldatakey);
+				}
+			}
+			if(jsondyncalldataErrors.isEmpty()){
+				if(formatPhoneNr((String)jsonobjparams.get("SERVICEID")).equals("0")||formatPhoneNr((String)jsonobjparams.get("LOADID")).equals("0")||formatPhoneNr((String)jsonobjparams.get("SOURCEID")).equals("0")){
+					jsondyncalldataErrors.add("INVALID SERVICEID, LOADID OR SOURCEID - [SERVICEID="+(String)jsonobjparams.get("SERVICEID")+", LOADID="+(String)jsonobjparams.get("LOADID")+" AND SOURCEID="+(String)jsonobjparams.get("SOURCEID")+"]");
+				}
+				
+				if(jsonobjparams.get("LOADREQUESTTYPE").equals("1")||jsonobjparams.get("LOADREQUESTTYPE").equals("3")){
+					int invalidPhoneNrCount=0;
+					StringBuilder invalidPhoneNrsString=new StringBuilder();
+					for(int phonenr=1;phonenr<=10;phonenr++){
+						if(formatPhoneNr((String)jsonobjparams.get("PHONE"+String.valueOf(phonenr))).equals("0")){
+							invalidPhoneNrCount++;
+							invalidPhoneNrsString.append("[PHONE"+String.valueOf(phonenr)+"="+(String)jsonobjparams.get("PHONE"+String.valueOf(phonenr))+"], ");
+						}
+					}
+					if(invalidPhoneNrCount>0){
+						jsondyncalldataErrors.add("INVALID PHONE NUMBER(S):"+invalidPhoneNrsString.substring(0,invalidPhoneNrsString.length()-2));
+					}
+					invalidPhoneNrsString.setLength(0);
+					invalidPhoneNrsString=null;
+				}
+				
+				if(jsonobjparams.get("LOADREQUESTTYPE").equals("1")){
+					
+				}
+				else if(jsonobjparams.get("LOADREQUESTTYPE").equals("2")){
+					
+				}
+				else if(jsonobjparams.get("LOADREQUESTTYPE").equals("3")){
+					if(((String)jsonobjparams.get("FIELDSTOMODIFY")).equals("")){
+						jsondyncalldataErrors.add("NO FIELD(s) TO MODIFY");
+					}
+					else{
+						StringBuilder invalidFieldsToModifyLabels=new StringBuilder();
+						for(String fieldtomodify:((String)jsonobjparams.get("FIELDSTOMODIFY")).split("[,]")){
+							if(",SCHEDULEDCALL,SCHEDULEDATE,AGENTLOGIN,AGENTLOGINID,CALLERNAME,NAME,COMMENTS,PHONE1,PHONE2,PHONE3,PHONE4,PHONE5,PHONE6,PHONE7,PHONE8,PHONE9,PHONE10,".indexOf(","+fieldtomodify.toUpperCase()+",")==-1){
+								invalidFieldsToModifyLabels.append(fieldtomodify+", ");
+							}
+						}
+						if(invalidFieldsToModifyLabels.length()>0){
+							jsondyncalldataErrors.add("INVALID FIELD(S) TO MODIFY SPECIFIED -["+invalidFieldsToModifyLabels.substring(0,invalidFieldsToModifyLabels.length()-2));
+						}
+					}
+				}
+				else{
+					jsondyncalldataErrors.add("INVALID LOADREQUESTTYPE [MUST BE 1-(addcall), 2-(removecall) or 3-(modifycall)");
+				}
+				if(jsondyncalldataErrors.isEmpty()){
+					
+				}
+			}
+		}
+		catch(Exception ex){
+			jsondyncalldataErrors.add(ex.getMessage());
+		}
+		
+		if(!invalidparams.isEmpty()){
+			jsondyncalldataErrors.add(new JSONObject());
+			((JSONArray)((JSONObject) jsondyncalldataErrors.get(0)).put("INVALIDPARAMS", new JSONArray())).addAll(invalidparams);
+		}
+		
+		
+		if(!jsondyncalldataErrors.isEmpty()){
+			loadCallResponse.append(jsondyncalldataErrors.toString(JSONStyle.NO_COMPRESS));
+		}
+		//loadCallResponse.append(jsonobj.toString(JSONStyle.NO_COMPRESS));
+		jsonobj.clear();
+		jsonobj=null;
+		return loadCallResponse.toString();
+	}
+
+	public void addCall(HashMap<String, String> dyncalldata) {
+		dyncalldata.put("SOURCEID", dyncalldata.get("ID"));
+		dyncalldata.put("STATUS", "1");
+		dyncalldata.put("NAME", dyncalldata.get("CALLERNAME"));
+		
+		for(int phonenr=1;phonenr<=10;phonenr++){
+			String phonenrfield="PHONE"+String.valueOf(phonenr);
+			if(!dyncalldata.get(phonenrfield).equals("")){
+				String phonenrval=this.formatPhoneNr(dyncalldata.get(phonenrfield));
+				dyncalldata.put(phonenrfield,phonenrval);
+				if(!dyncalldata.containsKey("PHONE")){
+					dyncalldata.put("PHONE", phonenrval);
+				}
+			}
+		}
+		
+		if(!dyncalldata.containsKey("PHONE")){
+			dyncalldata.put("PHONE", "");
+		}
+		
+		if(!dyncalldata.get("SCHEDULEDCALL").equals("")) dyncalldata.put("SCHEDULEDATE",dyncalldata.get("SCHEDULEDCALL"));
+		if(!dyncalldata.get("AGENTLOGINID").equals("")) dyncalldata.put("CAPTURINGAGENT",dyncalldata.get("AGENTLOGINID"));
+		try {
+			PresenceDB.createPresenceCall(dyncalldata);
+			Database.executeDBRequest(null,"LEADSAUTOMATION", "UPDATE <DBUSER>.[DYNAMICCALLERLIST] SET [RECORDHANDLEFLAG]=3,[LASTACTIONDATETIME]=NOW() WHERE [RECORDHANDLEFLAG]=2 AND [SERVICEID]=:SERVICEID AND [LOADID]=:LOADID AND [ID]=:ID", dyncalldata,null);
+		} catch (Exception e) {
+			e.printStackTrace();
+			try {
+				Database.executeDBRequest(null,"LEADSAUTOMATION", "UPDATE <DBUSER>.[DYNAMICCALLERLIST] SET [RECORDHANDLEFLAG]=4,[LASTACTIONDATETIME]=NOW() WHERE [RECORDHANDLEFLAG]=2 AND [SERVICEID]=:SERVICEID AND [LOADID]=:LOADID AND [ID]=:ID", dyncalldata,null);
+			} catch (Exception e1) {
+				e1.printStackTrace();
+			}
+		}
+	}
+	
+	private String formatPhoneNr(String phonenrToFormat) {
+		String formattedPhoneNr="";
+		
+		for(char cp:phonenrToFormat.toCharArray()){
+			if("0123456789".indexOf(cp)>-1){
+				formattedPhoneNr+=cp;
+			}
+		}
+		
+		while(formattedPhoneNr.startsWith("0")) formattedPhoneNr=formattedPhoneNr.substring(1);
+		if(formattedPhoneNr.equals("")) formattedPhoneNr="0";
+		return formattedPhoneNr;
+	}
+
+	public void removeCall(HashMap<String, String> dyncalldata) {
+		try {
+			PresenceDB.removePresenceCall(Integer.parseInt(dyncalldata.get("SERVICEID")),Integer.parseInt(dyncalldata.get("LOADID")),Integer.parseInt(dyncalldata.get("ID")));
+			Database.executeDBRequest(null,"LEADSAUTOMATION", "DELETE FROM <DBUSER>.[DYNAMICCALLERLIST] WHERE [RECORDHANDLEFLAG]=2 AND [SERVICEID]=:SERVICEID AND [LOADID]=:LOADID AND [ID]=:ID", dyncalldata,null);
+		} catch (Exception e) {
+			e.printStackTrace();
+			try {
+				Database.executeDBRequest(null,"LEADSAUTOMATION", "UPDATE <DBUSER>.[DYNAMICCALLERLIST] SET [RECORDHANDLEFLAG]=4,[LASTACTIONDATETIME]=NOW() WHERE [RECORDHANDLEFLAG]=2 AND [SERVICEID]=:SERVICEID AND [LOADID]=:LOADID AND [ID]=:ID", dyncalldata,null);
+			} catch (Exception e1) {
+				e1.printStackTrace();
+			}
+		}
+	}
+	
+	public void modifyCall(HashMap<String, String> dyncalldata) {
+		try {
+			HashMap<String,String> callDetailsToChange=new HashMap<String,String>();
+			for(String callFieldToChange:dyncalldata.get("FIELDSTOMODIFY").trim().split(",")){
+				if(callFieldToChange.equals("SCHEDULEDCALL")||callFieldToChange.equals("SCHEDULEDATE")){
+					callDetailsToChange.put("SCHEDULEDATE", dyncalldata.get("SCHEDULEDCALL"));
+				}
+				else if(callFieldToChange.equals("AGENTLOGIN")||callFieldToChange.equals("AGENTLOGINID")){
+					callDetailsToChange.put("AGENTLOGIN", dyncalldata.get("AGENTLOGINID"));
+				}
+				else if(callFieldToChange.equals("COMMENTS")){
+					callDetailsToChange.put("COMMENTS", dyncalldata.get("COMMENTS"));
+				}
+				else if(callFieldToChange.equals("CALLERNAME")){
+					callDetailsToChange.put("NAME", dyncalldata.get("CALLERNAME"));
+				}
+				else if(callFieldToChange.startsWith("PHONE")){
+					int phonenr=Integer.parseInt(callFieldToChange.substring("PHONE".length()));
+					callDetailsToChange.put("PHONE"+String.valueOf(phonenr), dyncalldata.get("PHONE"+String.valueOf(phonenr)));
+				}
+			}
+			
+			PresenceDB.updatePresenceCallDetails(callDetailsToChange,Integer.parseInt(dyncalldata.get("SERVICEID")),Integer.parseInt(dyncalldata.get("LOADID")),Integer.parseInt(dyncalldata.get("ID")));
+			Database.executeDBRequest(null,"LEADSAUTOMATION", "UPDATE <DBUSER>.[DYNAMICCALLERLIST] SET [RECORDHANDLEFLAG]=3,[LASTACTIONDATETIME]=NOW() WHERE [RECORDHANDLEFLAG]=2 AND [SERVICEID]=:SERVICEID AND [LOADID]=:LOADID AND [ID]=:ID", dyncalldata,null);
+		} catch (Exception e) {
+			e.printStackTrace();
+			try {
+				Database.executeDBRequest(null,"LEADSAUTOMATION", "UPDATE <DBUSER>.[DYNAMICCALLERLIST] SET [RECORDHANDLEFLAG]=4,[LASTACTIONDATETIME]=NOW() WHERE [RECORDHANDLEFLAG]=2 AND [SERVICEID]=:SERVICEID AND [LOADID]=:LOADID AND [ID]=:ID", dyncalldata,null);
+			} catch (Exception e1) {
+				e1.printStackTrace();
+			}
+		}
+	}
+
+	public void reloadServices(ArrayList<String> serviceIds) {
+		synchronized (_serviceIDsToReload) {
+			_serviceIDsToReload.addAll(serviceIds);
+		}	
+	}
+}

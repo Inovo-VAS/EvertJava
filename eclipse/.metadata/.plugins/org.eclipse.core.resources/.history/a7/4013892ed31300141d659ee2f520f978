@@ -1,0 +1,12 @@
+package inovo.automation.scheduledsqljobs;
+
+public class ScheduledSqlJobsQueue {
+	
+	private boolean _shutdownQueue=false;
+	
+	public ScheduledSqlJobsQueue(){
+		
+	}
+	
+	
+}

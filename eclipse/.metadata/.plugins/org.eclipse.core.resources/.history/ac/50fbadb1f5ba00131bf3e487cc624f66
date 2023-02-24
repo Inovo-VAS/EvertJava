@@ -1,0 +1,52 @@
+package baasserver.web.system.controls.dialog;
+
+import java.util.HashMap;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class Dialog extends IOWidgetHandle {
+
+	public Dialog(IOWidgetHandle parentWidget, IOProcessorHandle processor)
+			throws Exception {
+		super(parentWidget, processor);
+		this.setProperty("REPLACEWIDGET", "main_window_handle");
+	}
+	
+	public String webActionRequest(String[] actionparams){
+		HashMap<String,Object> actionParamsToUse=new HashMap<String,Object>();
+		actionParamsToUse.put("CALLBACKURL", "");
+		actionParamsToUse.put("FORM", "");
+		actionParamsToUse.put("ACTIONTARGET", "");
+		
+		for(String actionparam:actionparams){
+			if(actionparam.indexOf("=")>-1){
+				String paramName=actionparam.substring(0,actionparam.indexOf("=")).trim().toUpperCase();
+				String paramValue=actionparam.substring(actionparam.indexOf("=")+1).trim();
+				if(paramName.equals("TARGET")||paramName.equals("ACTIONTARGET")){
+					actionParamsToUse.put("ACTIONTARGET", paramValue);
+				}
+				else if(paramName.equals("FORM")||paramName.equals("FORMID")){
+					actionParamsToUse.put("FORM", paramValue);
+				}
+				else if(paramName.equals("CALLBACKURL")||paramName.equals("URL")){
+					actionParamsToUse.put("CALLBACKURL", paramValue);
+				}
+			}
+		}
+		
+		return webActionRequest(actionParamsToUse);
+	}
+	
+	public String webActionRequest(HashMap<String,Object> actionparams){
+		if(!actionparams.containsKey("CALLBACKURL")) actionparams.put("CALLBACKURL", "");
+		if(!actionparams.containsKey("FORM")) actionparams.put("FORM", "");
+		if(!actionparams.containsKey("ACTIONTARGET")) actionparams.put("ACTIONTARGET", "");
+		String webActionRequest="webActionRequest('"+actionparams.get("CALLBACKURL")+"','"+actionparams.get("FORM")+"','"+actionparams.get("ACTIONTARGET")+"');";
+		return webActionRequest;
+	}
+	
+	public String buttonScriptAction(String buttonKey){
+		return "";
+	}
+}

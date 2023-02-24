@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring accessors="true" comment="Delete 2 elements from project &apos;InovoFlatFileLeadsImporterReportsEngine&apos;&#x0D;&#x0A;- Original project: &apos;InovoFlatFileLeadsImporterReportsEngine&apos;&#x0D;&#x0A;- Original elements:&#x0D;&#x0A;     inovo.jar&#x0D;&#x0A;     sqljdbc4.jar" description="Delete elements" element1="WebContent/WEB-INF/lib/inovo.jar" element2="WebContent/WEB-INF/lib/sqljdbc4.jar" elements="0" flags="589830" id="org.eclipse.jdt.ui.delete" resources="2" stamp="1462869691042" subPackages="false" version="1.0"/>
+</session>

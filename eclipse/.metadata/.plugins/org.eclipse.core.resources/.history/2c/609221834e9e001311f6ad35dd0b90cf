@@ -1,0 +1,23 @@
+package baasserver.db.web.system.definitions;
+
+import baasserver.db.web.system.Field;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class IdenytityField extends Field {
+	public IdenytityField(IOWidgetHandle parentWidget,
+			IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+	
+	@Override
+	public String fieldDefinition() {
+		if(this.dbParentWidget().dbManager().dbType().equals("sqlserver")){
+			//[ID] IDENTITY(1,1) NUMERIC(18,0) NOT NULL
+			//[ID] serial NOT NULL
+			return "["+this.fieldName()+"] IDENTITY(1,1) [numeric](18,0) NOT NULL";
+		}
+		
+		return super.fieldDefinition();
+	}
+}

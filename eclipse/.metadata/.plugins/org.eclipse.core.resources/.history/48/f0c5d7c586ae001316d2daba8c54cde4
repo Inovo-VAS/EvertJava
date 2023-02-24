@@ -1,0 +1,81 @@
+package baasserver.db.protocols;
+
+import java.util.ArrayList;
+import java.util.TreeMap;
+
+import baasserver.db.system.DBManager;
+import baasserver.db.system.DBSystem;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IORequestHandle;
+import baasserver.protocols.markup.IOMarkupProcessorHandle;
+
+public class DBProcessorHandle extends IOMarkupProcessorHandle {
+
+	public DBProcessorHandle(IOProcessorHandle mainProcessorHandle,Class<?> widgetHandleclass,
+			IORequestHandle requestHandle) throws Exception{
+		super(mainProcessorHandle, widgetHandleclass, requestHandle);
+		this._enableAppendScript=!(this.widgetHandle() instanceof DBWidgetHandle);
+	}
+	
+	private boolean _enableAppendScript=false;
+
+	public DBRequestHandle dbRequestHandle(){
+		return (DBRequestHandle)super.requestHandle();
+	}
+	
+	public DBWidgetHandle dbWidgetHandle(){
+		return (DBWidgetHandle)super.widgetHandle();
+	}
+	
+	private String _dbUrl="";
+	
+	private DBSystem _dbSystem=null;
+	private DBManager _dbManager=null;
+	
+	@Override
+	public void loadedWidgetHandleProperties() throws Exception{
+		if(this.widgetHandle() instanceof DBWidgetHandle){
+			String dbUrl=this.widgetHandle().property("DBURL");
+			this._dbUrl=dbUrl;
+			if(dbUrl.equals("")){
+				return;
+			}
+			if(dbUrl.startsWith("//")){
+				dbUrl=dbUrl.substring(2);
+				String dbsystem=dbUrl.substring(0,dbUrl.indexOf("/"));
+				this._dbSystem=(this._dbSystem==null?baasserver.db.system.DBSystem.registerWebSystem(dbsystem):this._dbSystem);
+				dbUrl=dbUrl.substring(dbUrl.indexOf("/")+1);
+				String dbmanager=dbUrl;
+				this._dbManager=(this._dbManager==null?this._dbSystem.dbmanager(dbmanager):this._dbManager);
+			}
+			if((this.widgetHandle() instanceof DBWidgetHandle)){
+				this.dbRequestHandle().enableCapturingSQLCommand();
+				this.dbWidgetHandle().setDBSystem(this._dbSystem);
+				this.dbWidgetHandle().setDBManager(this._dbManager);
+			}
+		}
+	}
+	
+	@Override
+	public void process() throws Exception {
+		super.process();
+		if(!this._dbUrl.equals("")){
+			TreeMap<Integer, ArrayList<Object>> resultSetObtained=this.dbWidgetHandle().executeDBUrlRequest(this.dbRequestHandle()._sqlCommandBytesReceived.toString());
+			this.dbRequestHandle().doneCapturingSQLCommand();
+			
+			if(resultSetObtained!=null){
+				this.requestHandle().streamObject(resultSetObtained);
+			}
+		}
+	}
+	
+	@Override
+	public boolean canAppendScriptTag() {
+		return (this._enableAppendScript?super.canAppendScriptTag():this.dbRequestHandle().isDoneCapturingSQLCommand());
+	}
+	
+	@Override
+	public ArrayList<String> alternateDefaultNameSpaces(String[] namespaces) {
+		return super.alternateDefaultNameSpaces(new String[]{"baasserver.db.web.system","baasserver.db.web.system.definitions","baasserver.db.web.system.definitions.fields"});
+	}
+}

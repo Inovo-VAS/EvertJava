@@ -1,0 +1,63 @@
+package baasserver.io.nio.handlers;
+
+import java.util.ArrayList;
+
+public class MultiPartContentHandler extends RequestContentHandler {
+	public MultiPartContentHandler(RequestHandler requestHandler) {
+		super(requestHandler);
+	}	
+	
+	private enum MultiPartContentEnum{
+		generateBoundary,
+		multiPartHeaderName,
+		multiPartHeaderValue,
+		multiPartContent,
+		multiPartBoundary,
+		multiPartEnd
+	}
+	
+	private MultiPartContentEnum _multiPartContentStage=MultiPartContentEnum.generateBoundary;
+	private String _multiPartBoundary="";
+	private String _multiPartHeaderName="";
+	private String _multiPartHeaderValue="";
+	
+	private int _multiPartBoundaryIndex=0;
+	
+	private ArrayList<Byte> _multiPartBoundaryBytes=new ArrayList<Byte>();
+	
+	@Override
+	public void handleContentBytes(byte[] contentBytes) {
+		for(byte br:contentBytes){
+			switch(_multiPartContentStage){
+			case generateBoundary:
+				switch(br){
+				case 13:
+					continue;
+				case 10:
+					_multiPartBoundary="\r\n--"+_multiPartBoundary;
+					_multiPartContentStage=MultiPartContentEnum.multiPartHeaderName;
+					break;
+				default:
+					_multiPartBoundary+=(char)br;
+					break;
+				}
+				break;
+			case multiPartBoundary:
+				
+				break;
+			case multiPartContent:
+				
+				break;
+			case multiPartEnd:
+				break;
+			case multiPartHeaderName:
+				switch(br){
+				
+				}
+				break;
+			default:
+				break;
+			}
+		}
+	}
+}

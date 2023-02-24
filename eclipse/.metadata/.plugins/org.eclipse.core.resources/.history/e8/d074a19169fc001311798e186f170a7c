@@ -1,0 +1,44 @@
+import javax.servlet.ServletContext;
+
+import inovo.monitoring.monitors.Monitor;
+import inovo.monitoring.monitors.MonitorRequest;
+import inovo.servlet.InovoCoreEnvironmentManager;
+
+public class InovoEnvironmentManager extends InovoCoreEnvironmentManager {
+	
+	@Override
+	public String defaultLocalPath(String suggestedlocalpath) {
+		return super.defaultLocalPath("c:/projects/java/");//suggestedlocalpath);
+	}
+	
+	@Override
+	public void initializeServletContext(ServletContext sc) {
+		super.initializeServletContext(sc);
+		try {
+			Monitor.initiateMonitor(Monitor.class).initiateMonitorRequest(new MonitorRequest(){
+				@Override
+				public void attachMonitorRequests(
+						MonitorRequest[] monitorRequests) {
+					super.attachMonitorRequests(new MonitorRequest[]{new MonitorRequest(this){
+						public boolean executeMonitor(MonitorRequest parentMonitorRequest) {
+							
+							return false;
+						};
+						
+					}});
+				}
+			});
+			Monitor.initiateMonitor(Monitor.class);
+			Monitor.initiateMonitor(Monitor.class);
+			Monitor.initiateMonitor(Monitor.class);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+	
+	@Override
+	public void disposeServletContext(ServletContext sc) {
+		Monitor.killAllMonitors();
+		super.disposeServletContext(sc);
+	}
+}

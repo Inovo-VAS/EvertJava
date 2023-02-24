@@ -1,0 +1,5 @@
+package baasserver.web.system;
+
+public class DialogAction extends ActionElement {
+
+}

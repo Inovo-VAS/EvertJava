@@ -1,0 +1,35 @@
+package inovo.queues;
+
+import java.util.ArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class Queue {
+	
+	private static ArrayList<Queue> _queues=new ArrayList<Queue>();
+	private static boolean _killAllQueues=false;
+	
+	private ExecutorService _queueService=Executors.newCachedThreadPool();
+	
+	public Queue() throws Exception{
+		this.initiate();
+	}
+
+	public void initiate() throws Exception{
+	}
+
+	public Request queueRequest(Request requestToQueue,boolean queueModal) throws InterruptedException{
+		this._queueService.execute(requestToQueue);
+		if(queueModal){
+			while(!requestToQueue.completed()){
+				Thread.currentThread().sleep(2);
+			}
+		}
+		return requestToQueue;
+	}
+	
+	
+	public static void killAllQueues(){
+		
+	}
+}

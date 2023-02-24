@@ -1,0 +1,790 @@
+package inovo.presence.pmconsole;
+
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.PrintStream;
+import java.net.ConnectException;
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.ClosedChannelException;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Iterator;
+import java.util.List;
+import java.util.TreeMap;
+
+public class PMSocket implements Runnable{
+
+	private SocketChannel socketChannel=null;
+	private Selector selector=null;
+	private InetSocketAddress inetAddress=null;
+	private PMConsoleApp pmConsoleApp=null;
+	
+	public PMSocket(PMConsoleApp pmConsoleApp, InetSocketAddress inetSocketAddress) throws Exception{
+		this.inetAddress=inetSocketAddress;
+		this.pmConsoleApp=pmConsoleApp;
+		this.reConnect();
+	}
+	
+	private void reConnect() throws Exception {
+		this.connected=false;
+		if(this.currentPMCommand!=null){
+			if(this.currentPMCommand!=null){
+				this.currentPMCommand.cleanupPMCommand();
+				this.currentPMCommand=null;
+			}
+		}
+		while((this.currentPMCommand=this.nextQueuedPMCommandExecute())!=null){
+			this.currentPMCommand.cleanupPMCommand();
+			this.currentPMCommand=null;
+		}
+		if(this.socketChannel!=null){
+			try{
+				this.socketChannel.close();
+			}
+			catch(Exception e){
+			}
+			this.socketChannel=null;
+		}
+		if(this.selector!=null){
+			try {
+				this.selector.close();
+			} catch (Exception e) {
+			}
+			this.selector=null;
+		}
+		this.socketChannel=SocketChannel.open();
+		this.socketChannel.configureBlocking(false);
+		this.socketChannel.socket().setReuseAddress(false);
+		this.socketChannel.socket().setOOBInline(false);
+		this.selector=Selector.open();
+		this.socketChannel.register(this.selector, SelectionKey.OP_CONNECT);
+		this.socketChannel.connect(inetAddress);
+		this.connected=false;
+	}
+
+	public boolean connected=false;
+
+	private boolean shutdown=false;
+	
+	public void shutdown(){
+		this.shutdown=true;
+	}
+	
+	private boolean isValid(){
+		return !this.shutdown&&this.pmConsoleApp.isActiveApp();
+	}
+	
+	private long selectTimeOut=15;
+	
+	private long lastDummyRequestStamp=0;
+	
+	private PMCommand currentPMCommand=null;
+	
+	@Override
+	public void run() {
+		while(this.isValid()){
+			try {
+				while(this.selector.select(this.selectTimeOut)==0){
+					if(this.selectTimeOut<100){
+						this.selectTimeOut+=15;
+					}
+					if(this.currentPMCommand==null){
+						if(this.queuedPMCommands.isEmpty()&&(this.lastDummyRequestStamp<Calendar.getInstance().getTimeInMillis())){
+							this.lastDummyRequestStamp=Calendar.getInstance().getTimeInMillis()+(this.pmConsoleApp.retryConnectionSecs() *1000);
+							if(this.connected){
+								this.addCommand("HELP",System.out,false,"");
+							}
+						}
+						else if(!this.queuedPMCommands.isEmpty()){
+							this.lastDummyRequestStamp=Calendar.getInstance().getTimeInMillis()+(this.pmConsoleApp.retryConnectionSecs() *1000);
+							if(this.connected){
+								this.currentPMCommand=this.nextQueuedPMCommandExecute();
+								this.socketChannel.register(this.selector, SelectionKey.OP_WRITE);
+							}
+						}
+					}
+					else if(this.currentPMCommand!=null){
+						if(this.currentPMCommand.doneProcessing){
+							this.currentPMCommand.cleanupPMCommand();
+							this.currentPMCommand=null;
+						}
+					}
+				}
+				if(this.isValid()){
+					this.selectTimeOut=15;
+					Iterator<SelectionKey> selKeys=this.selector.selectedKeys().iterator();
+					while(selKeys.hasNext()){
+						SelectionKey sKey=selKeys.next();
+						if(sKey.isValid()&&this.isValid()){
+							if(sKey.isConnectable()){
+								while(!this.socketChannel.finishConnect() ){
+									try {
+										Thread.sleep(selectTimeOut);
+									} catch (InterruptedException e) {
+										this.shutdown();
+									}
+								}
+								this.connected=true;
+							}
+							else if(sKey.isWritable()){
+								this.writePMCommand(this.socketChannel, this.currentPMCommand);
+							}
+							else if(sKey.isReadable()){
+								this.readPMCommand(this.socketChannel, this.currentPMCommand);
+							}
+						}
+						else{
+							sKey.cancel();
+						}
+						selKeys.remove();
+					}
+				}
+			}
+			catch(ConnectException|ClosedChannelException e){
+				try {
+					long retryConnectDelayMilliSec=1000*this.pmConsoleApp.retryConnectionSecs();
+					if(retryConnectDelayMilliSec<=0) retryConnectDelayMilliSec=30*1000;
+					Thread.currentThread().sleep(retryConnectDelayMilliSec);
+					try {
+						this.reConnect();
+					} catch (Exception e1) {
+						//this.shutdown();
+						e1.printStackTrace();
+					}
+				} catch (InterruptedException e1) {
+					this.shutdown();
+				}
+			}
+			catch (IOException e) {
+				this.shutdown();
+			}
+			catch(Exception e){
+				e.printStackTrace();
+			}
+		}
+	}
+	
+	private void writePMCommand(SocketChannel channel,
+			PMCommand pCommand) throws ClosedChannelException, IOException{
+		int readLen=0;
+		byte[] readBytes=new byte[8192];
+		while((readLen=pCommand.bufInput.read(readBytes, 0, readBytes.length))>-1){
+			if(readLen>0){
+				ByteBuffer byteBuffer=ByteBuffer.wrap(readBytes, 0, readLen);
+				while(byteBuffer.hasRemaining()){
+					channel.write(byteBuffer);
+				}
+			}
+		}
+		if(readLen==-1){
+			channel.register(this.selector, SelectionKey.OP_READ);
+		}
+	}
+	
+	private void readPMCommand(SocketChannel channel,
+			PMCommand pCommand) throws ClosedChannelException, IOException{
+		long actualRead=0;
+		ByteBuffer bufRead=ByteBuffer.allocate(8192);
+		int readLen=0;
+		byte[] bytesRead=new byte[8192];
+		int bytesReadOff=0;
+		int bytesReadLen=0;
+		List<byte[]> bytesReadBuffer=new ArrayList<byte[]>();
+		int bytesReadBytesIndex=0;
+		byte[] bytesReadBytes=new byte[8192];
+		
+		while((readLen=channel.read(bufRead))>-1){
+			if(readLen>0){
+				while(bufRead.hasRemaining()){
+					bufRead.flip();
+					bufRead.get(bytesRead,bytesReadOff=bufRead.position(),bytesReadLen=bufRead.limit());
+					while(bytesReadLen>0){
+						bytesReadBytes[bytesReadBytesIndex++]=bytesRead[bytesReadOff++];
+						if(bytesReadBytes.length==bytesReadBytesIndex){
+							bytesReadBuffer.add(bytesReadBytes);
+							bytesReadBytesIndex=0;
+							bytesReadBytes=new byte[8192];
+						}
+						bytesReadLen--;
+						actualRead++;
+					}
+				}
+			}
+			else{
+				break;
+			}
+		}
+		if(bytesReadBytesIndex>0){
+			byte[] bread=new byte[bytesReadBytesIndex];
+			System.arraycopy(bytesReadBytes, 0, bread, 0, bytesReadBytesIndex);
+			bytesReadBuffer.add(bread);
+			bytesReadBytes=null;
+			bytesReadBytesIndex=0;
+		}
+		byte prevB=0;
+		while(!bytesReadBuffer.isEmpty()){
+			bytesReadBytes=bytesReadBuffer.remove(0);
+			if(pCommand!=null&&pCommand.bufOutput!=null){
+				int len=bytesReadBytes.length;
+				int off=0;
+				while(len>0){
+					byte wb=bytesReadBytes[off++];
+					len--;
+					if(prevB==13&&wb!=10){
+						pCommand.bufOutput.write(prevB);
+						pCommand.bufOutput.write((byte)10);
+						pCommand.bufOutput.write(wb);
+						prevB=wb;
+					}
+					else if(wb==13){
+						prevB=wb;
+					}
+					else{
+						pCommand.bufOutput.write(wb);
+						prevB=wb;
+					}
+				}
+			}
+			bytesReadBytes=null;
+		}
+		
+		if(pCommand!=null&&pCommand.bufOutput!=null&&prevB==10){
+			pCommand.bufOutput.write(prevB);
+		}
+		if(actualRead>0){
+			if(pCommand!=null&&pCommand.bufOutput!=null){
+				pCommand.bufOutput.flush();
+			}
+		}
+		if(pCommand!=null&&pCommand.bufOutput!=null){
+			pCommand.doneProcessing=true;
+			if(pCommand!=null){
+				pCommand.outputParsedFormat();
+				if(!this.currentPMCommand.ismodal){
+					this.currentPMCommand.cleanupPMCommand();
+				}
+				else{
+					this.currentPMCommand.ismodal=false;
+					synchronized (this.currentPMCommand.modalLock) {
+						this.currentPMCommand.modalLock.notifyAll();
+					}
+					this.currentPMCommand=null;
+				}
+				pCommand=null;
+			}
+		}
+		if(actualRead==0) throw new ClosedChannelException();
+	}
+
+	private PMCommand nextQueuedPMCommandExecute() {
+		PMCommand nextQueuedPMCommandExecute=null;
+		if(!this.queuedPMCommands.isEmpty()){
+			synchronized (queuedCommandsLock) {
+				nextQueuedPMCommandExecute=this.queuedPMCommands.get(this.queuedPMCommands.firstKey());
+			}
+		}
+		return nextQueuedPMCommandExecute;
+	}
+
+	public void addCommand(String command, PrintStream out,String parseFormat) {
+		this.addCommand(command, out, true,parseFormat);
+	}
+	
+	public void addCommand(String command, PrintStream out,boolean waitForCommand,String parseFormat) {
+		PMCommand pmCommand=new PMCommand(formatPMCommand(command),out);
+		this.addCommand(pmCommand,waitForCommand,parseFormat);
+	}
+	
+	private static String formatPMCommand(String command){
+		int cmdIndex=0;
+		
+		String formattedCommand="";
+		
+		for(String cmd:command.split("[ ]")){
+			if(cmdIndex==0){
+				formattedCommand+="c:"+cmd+"\n";
+			}
+			else{
+				formattedCommand+=String.valueOf(cmdIndex)+":"+cmd+"\n";
+			}
+			cmdIndex++;
+		}
+		
+		if(formattedCommand.endsWith("\n")) formattedCommand=formattedCommand.substring(0, formattedCommand.length()-1);
+		
+		return formattedCommand;
+	}
+	
+	public void addCommand(String command, OutputStream out,String parseFormat) {
+		this.addCommand(command, out, true,parseFormat);
+	}
+	
+	public void addCommand(String command, OutputStream out,boolean waitForCommand,String parseFormat) {
+		addCommand(new ByteArrayInputStream((formatPMCommand(command)+"\n\n").getBytes()), out,waitForCommand,parseFormat);
+	}
+	
+	private void addCommand(InputStream command,OutputStream out,boolean waitForCommand,String parseFormat){
+		PMCommand pmCommand=new PMCommand(command,out);
+		this.addCommand(pmCommand,waitForCommand,parseFormat);
+	}
+	
+	private final Object queuedCommandsLock=new Object();
+	
+	private void addCommand(PMCommand pmCommand,boolean waitForCommand,String parseFormat){
+		long stampedKey=Calendar.getInstance().getTimeInMillis();
+		pmCommand.ismodal=waitForCommand;
+		pmCommand.parseFormat=parseFormat;
+		synchronized (this.queuedCommandsLock) {
+			this.queuedPMCommands.put((Long)(pmCommand.stampKey=stampedKey), pmCommand);
+		}
+		if(waitForCommand){
+			while(pmCommand.ismodal){
+				synchronized (pmCommand.modalLock) {
+					try {
+						pmCommand.modalLock.wait();
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+						break;
+					}
+				}
+			}
+			pmCommand.cleanupPMCommand();
+			pmCommand=null;
+		}
+	}
+	
+	private class SocketOutputStream extends OutputStream{
+		
+		@Override
+		public void write(int b) throws IOException {
+			
+		}
+		
+	}
+	
+	private SocketOutputStream socketOutputStream=new SocketOutputStream();
+	
+	public OutputStream output(){
+		return this.socketOutputStream;
+	}
+	
+	private List<byte[]> outputBuffer=null;
+	
+	private byte[] outputBytes=null;
+	private int outputBytesIndex=0;
+	
+	private List<byte[]> inputBuffer=null;
+	
+	private byte[] inputBytes=null;
+	private int inputBytesIndex=0;
+	
+	private class SocketInputStream extends InputStream{
+
+		@Override
+		public int read() throws IOException {
+			// TODO Auto-generated method stub
+			return 0;
+		}
+
+	}
+	
+	private SocketInputStream socketInputStream=new SocketInputStream();
+	
+	public InputStream input(){
+		return this.socketInputStream;
+	}
+	
+	private enum PMCommandOutputStage{
+		result,
+		type,
+		message,
+		message_section,
+		done
+	}
+	
+	private enum PMCommandMessageSectionStage{
+		none,
+		gridcoltypes,
+		gridcolsizes,
+		gridcols,
+		griddata
+	}
+	
+	private class PMCommand{
+		
+		private long stampKey=0;
+		
+		private boolean doneProcessing=false;
+		private boolean ismodal=false;
+		
+		private final Object modalLock=new Object();
+		private String parseFormat="";
+		
+		private PMCommandOutputStage pmCommandOutputStage=PMCommandOutputStage.result;
+		private PMCommandMessageSectionStage pmCommandMessageSectionStage=PMCommandMessageSectionStage.none;
+		
+		public PMCommand(){
+		}
+		
+		private StringBuilder parsedCmdString=new StringBuilder();
+		
+		public void outputParsedFormat() {
+			try {
+				this.bytesOutput.flush();
+				if(this.parseFormat.equals("json")||this.parseFormat.equals("xml")){
+					if(this.parseFormat.equals("xml")){
+						this.out.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>".getBytes());
+						this.out.write("<pmcommand>".getBytes());
+					}
+					else if(this.parseFormat.equals("json")){
+						this.out.write("{".getBytes());
+					}
+					for(byte pb:this.bytesOutput.toByteArray()){
+						char cb=(char)pb;
+						switch(this.pmCommandOutputStage){
+						case result:
+							switch(cb){
+							case 10:
+								if(this.parsedCmdString.length()>0){
+									if(this.parsedCmdString.indexOf(":")>-1){
+										this.parseResponse(this.parsedCmdString.substring(0,this.parsedCmdString.indexOf(":")).trim(),this.parsedCmdString.substring(this.parsedCmdString.indexOf(":")+1,this.parsedCmdString.length()).trim());
+									}
+									this.parsedCmdString.delete(0, this.parsedCmdString.length());
+									this.parsedCmdString.setLength(0);
+									this.pmCommandOutputStage=PMCommandOutputStage.type;
+								}
+								break;
+							case 13: break;
+							default: this.parsedCmdString.append(cb);
+								break;
+							}
+							break;
+						case type:
+							switch(cb){
+							case 10:
+								if(this.parsedCmdString.length()>0){
+									if(this.parsedCmdString.indexOf(":")>-1){
+										this.parseType(this.parsedCmdString.substring(0,this.parsedCmdString.indexOf(":")).trim(),this.parsedCmdString.substring(this.parsedCmdString.indexOf(":")+1,this.parsedCmdString.length()).trim());
+									}
+									this.parsedCmdString.delete(0, this.parsedCmdString.length());
+									this.parsedCmdString.setLength(0);
+									this.pmCommandOutputStage=PMCommandOutputStage.message;
+								}
+								break;
+							case 13: break;
+							default: this.parsedCmdString.append(cb);
+								break;
+							}
+							break;
+						case message:
+							switch(cb){
+							case 10:
+								if(this.parsedCmdString.length()>0){
+									if(this.parsedCmdString.indexOf(":")>-1){
+										this.parseMessage(this.parsedCmdString.substring(0,this.parsedCmdString.indexOf(":")).trim(),this.parsedCmdString.substring(this.parsedCmdString.indexOf(":")+1,this.parsedCmdString.length()).trim());
+									}
+									else{
+										this.pmCommandOutputStage=PMCommandOutputStage.done;
+									}
+									this.parsedCmdString.delete(0, this.parsedCmdString.length());
+									this.parsedCmdString.setLength(0);
+								}
+								else{
+									if(this.response.toLowerCase().equals("error")){
+										this.pmCommandOutputStage=PMCommandOutputStage.done;
+									}
+								}
+								break;
+							case 13: break;
+							default: this.parsedCmdString.append(cb);
+								break;
+							}
+							break;
+						case message_section:
+							switch(cb){
+							case 10:
+								if(this.parsedCmdString.length()>0){
+									this.parseMessageSection();
+									this.parsedCmdString.delete(0, this.parsedCmdString.length());
+									this.parsedCmdString.setLength(0);
+								}
+								else{
+									this.pmCommandOutputStage=PMCommandOutputStage.done;
+								}
+								break;
+							case 13: break;
+							default: this.parsedCmdString.append(cb);
+								break;
+							}
+							break;
+						case done:
+							switch(cb){
+							case 10:
+								if(!this.parseFormat.equals("")){
+									this.parseDone();
+									this.parseFormat="";
+								}								
+								break;
+							case 13: break;
+							default: this.parsedCmdString.append(cb);
+								break;
+							}
+							break;
+						}
+					}
+				}
+				else{
+					this.out.write(this.bytesOutput.toByteArray());
+					this.out.flush();
+				}
+			} catch (IOException e) {
+			}
+			
+		}
+
+		private String response="";
+		private void parseResponse(String responseLabel,String response) throws IOException {
+			if(this.parseFormat.equals("xml")){				
+				this.out.write(("<"+responseLabel+">"+response+"</"+responseLabel+">").getBytes());
+			}
+			else if(this.parseFormat.equals("json")){				
+				this.out.write((""+responseLabel+":\""+response+"\"").getBytes());
+			}
+			this.response=response;
+		}
+		
+		private String type="";
+		private void parseType(String typeLabel,String type) throws IOException {
+			if(this.parseFormat.equals("xml")){				
+				this.out.write(("<"+typeLabel+">"+type+"</"+typeLabel+">").getBytes());
+			}
+			else if(this.parseFormat.equals("json")){				
+				this.out.write((","+typeLabel+":\""+type+"\"").getBytes());
+			}
+			this.type=type;
+		}
+		
+		private String messageLabel="";
+		private void parseMessage(String msgLabel,String subMessage) throws IOException {
+			this.messageLabel=msgLabel;
+			if(this.parseFormat.equals("xml")){				
+				this.out.write(("<"+msgLabel+">").getBytes());
+			}
+			else if(this.parseFormat.equals("json")){
+				this.out.write((","+msgLabel+":").getBytes());
+			}
+			if(this.type.equals("grid")){
+				this.pmCommandMessageSectionStage=PMCommandMessageSectionStage.gridcoltypes;
+				if(this.parseFormat.equals("xml")){
+					this.out.write(("<"+type+">").getBytes());
+				}
+				else if(this.parseFormat.equals("json")){
+					this.out.write(("{").getBytes());
+				}
+				this.pmCommandOutputStage=PMCommandOutputStage.message_section;
+			}
+			else{
+				this.subMessage=subMessage;
+				if(response.toLowerCase().equals("error")){
+					
+					if(this.subMessage.indexOf(":")>-1&&this.subMessage.startsWith("Usage")){
+						this.out.write(("{Usage:[").getBytes());
+						this.pmCommandOutputStage=PMCommandOutputStage.message_section;
+						if(this.parseFormat.equals("xml")){
+							
+						}
+						else if(this.parseFormat.equals("json")){
+							this.out.write(("\""+this.subMessage.substring(this.subMessage.indexOf(":")+1, this.subMessage.length()).trim()+"\"").getBytes());
+						}
+					}
+					else{
+						this.out.write(("\""+subMessage+"\"").getBytes());
+					}
+				}
+				else if(response.toLowerCase().equals("successful")){
+					if(this.subMessage.indexOf(":")>-1){
+						if(this.parseFormat.equals("xml")){
+							
+						}
+						else if(this.parseFormat.equals("json")){
+							this.out.write(("{").getBytes());
+							this.out.write(("\""+this.subMessage.substring(this.subMessage.indexOf(":")+1, this.subMessage.length()).trim()+"\"").getBytes());
+						}
+					}
+				}
+			}
+		}
+		
+		private String subMessage="";
+		private String[] coltypes=null;
+		private String[] colSizes=null;
+		private String[] colNames=null;
+		private String[] data=null;
+		private String dataLine="";
+		private void parseMessageSection() throws IOException{
+			if(this.type.equals("grid")){
+				if(this.parsedCmdString.substring(0,this.parsedCmdString.length()).indexOf(";INITEXT;")>-1||this.parsedCmdString.substring(0,this.parsedCmdString.length()).indexOf(";ENDTEXT;")>-1){
+					
+				}
+				else{
+					if(this.parsedCmdString.indexOf("\"")<this.parsedCmdString.indexOf(";")){
+						if(this.pmCommandMessageSectionStage==PMCommandMessageSectionStage.gridcoltypes){
+							coltypes=this.parsedCmdString.substring(0,this.parsedCmdString.length()).split("[;]");
+							if(this.parseFormat.equals("json")){
+								
+							}
+							this.pmCommandMessageSectionStage=PMCommandMessageSectionStage.gridcolsizes;
+						}
+						else if(this.pmCommandMessageSectionStage==PMCommandMessageSectionStage.gridcolsizes){
+							colSizes=this.parsedCmdString.substring(0,this.parsedCmdString.length()).split("[;]");
+							if(this.parseFormat.equals("json")){
+								
+							}
+							this.pmCommandMessageSectionStage=PMCommandMessageSectionStage.gridcols;
+						}
+						else if(this.pmCommandMessageSectionStage==PMCommandMessageSectionStage.gridcols){
+							colNames=this.parsedCmdString.substring(0,this.parsedCmdString.length()).split("[;]");
+							if(this.parseFormat.equals("json")){
+								int colNamesIndex=0;
+								this.out.write("DataHeader:{".getBytes());
+								while(colNamesIndex<colNames.length){
+									colNamesIndex++;
+									this.out.write(("\""+colNames[colNamesIndex-1]+"\":\""+coltypes[colNamesIndex-1]+"\""+(colNamesIndex==colNames.length?"":",")).getBytes());
+								}
+								this.out.write("},".getBytes());
+								this.out.write("Data:[".getBytes());
+							}
+							this.pmCommandMessageSectionStage=PMCommandMessageSectionStage.griddata;
+						}
+						else if(this.pmCommandMessageSectionStage==PMCommandMessageSectionStage.griddata){
+							data=this.parsedCmdString.substring(0,this.parsedCmdString.length()).split("[;]");
+							if(this.parseFormat.equals("json")){
+								if(!dataLine.equals("")){
+									this.out.write((dataLine+",").getBytes());
+									dataLine="";
+								}
+								
+								int dataIndex=0;
+								dataLine="{";
+								while(dataIndex<data.length){
+									dataIndex++;
+									String dataVal=data[dataIndex-1];
+									if(coltypes[dataIndex-1].equals("s")){
+										dataVal="\""+dataVal+"\"";
+									}
+									dataLine+=("\""+colNames[dataIndex-1]+"\":"+dataVal+(dataIndex==data.length?"":","));
+								}
+								dataLine+="}";
+								data=null;
+							}
+						}
+						
+					}
+				}
+			}
+			else if(this.type.equals("text")){
+				this.subMessage=this.parsedCmdString.substring(0, this.parsedCmdString.length());
+				if(this.subMessage.startsWith("Usage")&&this.subMessage.indexOf(":")>-1){
+					if(this.parseFormat.equals("xml")){
+						
+					}
+					else if(this.parseFormat.equals("json")){
+						this.out.write((",\""+this.subMessage.substring(this.subMessage.indexOf(":")+1, this.subMessage.length()).trim()+"\"").getBytes());
+					}
+				}
+				else{
+					
+				}
+			}
+		}
+		
+		private void parseDone() throws IOException{
+			if(this.type.equals("grid")){
+				if(this.parseFormat.equals("json")){
+					if(!this.dataLine.equals("")){
+						this.out.write(dataLine.getBytes());
+						this.dataLine="";
+					}
+					this.out.write("]}".getBytes());
+				}
+			}
+			
+			if(this.parseFormat.equals("xml")){
+				this.out.write("</pmcommand>".getBytes());
+			}
+			else if(this.parseFormat.equals("json")){
+				this.out.write("}".getBytes());
+			}
+		}
+
+		public void cleanupPMCommand() {
+			synchronized (queuedCommandsLock) {
+				queuedPMCommands.remove((Long)this.stampKey);
+			}
+			
+			if(this.bufInput!=null){
+				try {
+					this.bufInput.close();
+				} catch (IOException e) {
+				}
+				this.bufInput=null;
+			}
+			if(this.bufOutput!=null){
+				try {
+					this.bufOutput.flush();
+				} catch (IOException e) {
+				}
+				try {
+					this.bufOutput.close();
+				} catch (IOException e) {
+				}
+				this.bufOutput=null;
+			}
+		}
+
+		public PMCommand(String command, final PrintStream out) {
+			this(new ByteArrayInputStream((command=command.trim()+"\n\n").getBytes()),new OutputStream() {
+				
+				byte[] bo=new byte[1];
+				@Override
+				public void write(int b) throws IOException {
+					bo[0]=(byte)b;
+					this.write(bo, 0, 1);
+				}
+				
+				@Override
+				public void write(byte[] b) throws IOException {
+					this.write(b,0,b==null?0:b.length);
+				}
+				
+				@Override
+				public void write(byte[] b, int off, int len)
+						throws IOException {
+					out.write(b, off, len);
+				}
+			});
+		}
+
+		private BufferedInputStream bufInput=null;
+		private BufferedOutputStream bufOutput=null;
+		private ByteArrayOutputStream bytesOutput=null;
+		private OutputStream out=null;
+		
+		public PMCommand(InputStream command, OutputStream out) {
+			this.bufInput=new BufferedInputStream(command);
+			this.bufOutput=new BufferedOutputStream(this.bytesOutput=new ByteArrayOutputStream());
+			this.out=out;
+		}
+	}
+	
+	private TreeMap<Long, PMCommand> queuedPMCommands=new TreeMap<Long, PMSocket.PMCommand>();
+}

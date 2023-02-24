@@ -1,0 +1,13 @@
+package baasserver.web.system.datagrid;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class DataGridHeader extends IOWidgetHandle {
+
+	public DataGridHeader(IOWidgetHandle parentWidget,
+			IOProcessorHandle processor) throws Exception {
+		super(parentWidget, processor);
+	}
+
+}

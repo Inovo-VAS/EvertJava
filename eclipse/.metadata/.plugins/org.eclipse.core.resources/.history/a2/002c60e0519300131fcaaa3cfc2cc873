@@ -1,0 +1,241 @@
+package baasserver;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.channels.SelectableChannel;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
+import java.nio.channels.spi.SelectorProvider;
+import java.util.ArrayList;
+
+import com.sun.org.apache.xalan.internal.xsltc.compiler.sym;
+
+import baasserver.io.handler.InputOutputHandler;
+
+public class Client {
+	
+	public class ClientInputStream extends InputStream{
+		
+		private Client _client=null;
+		private ClientSocketHandle _clientSocketHandle=null;
+		private ArrayList<byte[]> _recievedBytes=new ArrayList<byte[]>();
+		
+		private ClientInputStream(Client client,ClientSocketHandle clientSocketHandle){
+			this._client=client;
+			this._clientSocketHandle=clientSocketHandle;
+			this._clientSocketHandle.setClientInputStream(this);
+		}
+		
+		@Override
+		public int read() throws IOException {
+			return 0;
+		}
+		
+		@Override
+		public int read(byte[] b) throws IOException {
+			return this.read(b, 0, b.length);
+		}
+		
+		@Override
+		public int read(byte[] b, int off, int len) throws IOException {
+			return 0;
+		}
+
+		public void retreiveRemoteBytes() throws Exception {
+			ArrayList<byte[]> recievedBytes=new ArrayList<byte[]>();
+			this._clientSocketHandle.readBytesToInput(recievedBytes);
+		}
+	}
+	
+	public class ClientOutputStream extends OutputStream implements Runnable{
+
+		private Thread _clientOutputThread=null;
+		private Client _client=null;
+		private ClientSocketHandle _clientSocketHandle=null;
+		private ClientOutputStream(Client client,ClientSocketHandle clientSocketHandle){
+			this._client=client;
+			this._clientSocketHandle=clientSocketHandle;
+			this._clientSocketHandle.setClientOutputStream(this);
+			this._currentBytesBuffer=new byte[1024];
+		}
+		
+		private Object outputLock=new Object();
+		private ArrayList<byte[]> _bytesToSend=new ArrayList<byte[]>();
+		
+		@Override
+		public void write(int arg0) throws IOException {
+			
+		}
+		
+		@Override
+		public void write(byte[] b) throws IOException {
+			this.write(b, 0, b.length);
+		}
+		
+		private byte[] _currentBytesBuffer=null;
+		private int _currentBytesBufferIndex=0;
+		
+		@Override
+		public void write(byte[] b, int off, int len) throws IOException {
+			int bytesLength=b.length;
+			int actuallen=len;
+			
+			int actualbindex=0;
+			
+			while(off<bytesLength){
+				_currentBytesBuffer[_currentBytesBufferIndex++]=b[off++];
+				if(_currentBytesBuffer.length==_currentBytesBufferIndex){
+					this._bytesToSend.add(_currentBytesBuffer);
+					_currentBytesBuffer=new byte[1024];
+					_currentBytesBufferIndex=0;
+					if(_bytesToSend.size()==10){
+						this.flush();
+					}
+				}
+				actualbindex++;
+				if(actualbindex==len) break;
+			}
+		}
+		
+		@Override
+		public void flush() throws IOException {
+			if(this._currentBytesBufferIndex>0){
+				this._bytesToSend.add(_currentBytesBuffer);
+				_currentBytesBuffer=new byte[1024];
+				this._currentBytesBufferIndex=0;
+			}
+			ArrayList<byte[]> bytesBeingSent=new ArrayList<byte[]>();
+			synchronized (this._bytesToSend) {
+				bytesBeingSent.addAll(_bytesToSend);
+				this._bytesToSend.clear();
+			}
+			this._clientSocketHandle.writeBytesToOutput(bytesBeingSent);
+		}
+		
+		public void write(String stringToWrite) throws IOException{
+			stringToWrite=(stringToWrite==null?"":stringToWrite);
+			if(!stringToWrite.equals("")) this.write(stringToWrite.getBytes());
+		}
+
+		public void writeln(String stringToWrite) throws IOException{
+			this.write(stringToWrite+"\r\n");
+		}
+		
+		
+		@Override
+		public void run() {
+			
+		}
+	}
+	
+	public class  ClientSocketHandle extends InputOutputHandler{
+
+		private Client _client=null;
+		
+		public ClientSocketHandle(Client client,SelectableChannel channel) throws Exception {
+			super(channel);
+			this._client=client;
+		}
+		
+		public void readBytesToInput(ArrayList<byte[]> recievedBytes) throws Exception {
+			this.readBytesFromChannel(recievedBytes, _channel, 1024);
+		}
+
+		private ClientInputStream _clientInputStream=null;
+		private void setClientInputStream(ClientInputStream clientInputStream) {
+			this._clientInputStream=clientInputStream;
+		}
+		
+		private ClientOutputStream _clientOutputStream=null;
+		private void setClientOutputStream(ClientOutputStream clientOutputStream) {
+			this._clientOutputStream=clientOutputStream;
+		}
+
+		@Override
+		public void initiateSelectorChannel(Selector selector,
+				SelectableChannel channel) throws Exception{
+			this.registerReadWriteAcceptConnect(selector, channel, "CONNECT");
+		}
+		
+		private boolean _connected=false;
+		
+		public boolean connected(){
+			return this._connected;
+		}
+		
+		private Object _clientSocketHandleLock=new Object();
+		@Override
+		public void run() {
+			
+			try {
+				while(!_connected){
+					this.connectChannel();
+					_connected=true;
+				}
+			} catch (Exception e) {
+				_connected=false;
+			}
+			while(_connected){
+				synchronized (_clientSocketHandleLock) {
+					try {
+						_clientSocketHandleLock.wait();
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					}
+				}
+				try {
+					this._clientInputStream.retreiveRemoteBytes();
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+			}
+		}
+		
+		@Override
+		public void doneWriting() throws Exception{
+			synchronized (_clientSocketHandleLock) {
+				_clientSocketHandleLock.notify();
+			}
+		}
+	}
+	
+	private ClientSocketHandle _clientSocktHandle=null;
+	private SocketChannel _channel=null;
+	
+	public Client(String host,int port) throws Exception{
+		this(new InetSocketAddress(host, port));
+	}
+	
+	private ClientInputStream _clientInputStream=null;
+	private ClientOutputStream _clientOutputStream=null;
+	
+	public void reConnect() throws Exception{
+		this._channel.connect(this._inetAddress);
+	}
+	
+	private InetSocketAddress _inetAddress=null;
+	public Client(InetSocketAddress inetaddress) throws Exception{
+		this._channel=SelectorProvider.provider().openSocketChannel();
+		this._channel.configureBlocking(false);
+		this._inetAddress=inetaddress;
+		this._clientSocktHandle=new ClientSocketHandle(this, this._channel);
+		
+		this._clientInputStream=new ClientInputStream(this,this._clientSocktHandle);
+		this._clientOutputStream=new ClientOutputStream(this,this._clientSocktHandle);
+		
+		this.reConnect();
+		
+		new Thread(this._clientSocktHandle).start();
+		
+	}
+	
+	public ClientInputStream clientInputStream(){
+		return this._clientInputStream;
+	}
+	
+	public ClientOutputStream clientOutputStream(){
+		return this._clientOutputStream;
+	}
+}

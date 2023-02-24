@@ -1,0 +1,87 @@
+package baasserver.io.nio.handlers;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+public class RequestContentHandler {
+	private RequestHandler _requestHandler=null;
+	private long _requiredContentLength=0;
+	private long _contentProcessedLength=0;
+	
+	public RequestContentHandler(RequestHandler requestHandler){
+		this._requestHandler=requestHandler;
+		_contentProcessedLength=(this._requiredContentLength=Long.parseLong(this._requestHandler.reqRequestHeader("CONTENT-LENGTH"))>0?2:0);
+	}
+	
+	public RequestHandler requestHandler(){
+		return this._requestHandler;
+	}
+
+	public boolean processContentBytes(byte[] contentBytes) throws Exception{
+		this._contentProcessedLength+=contentBytes.length;
+		this.handleContentBytes(contentBytes);
+		this._done=(this._contentProcessedLength==this._requiredContentLength);
+		if(this._done){
+			return this._done;
+		}
+		return isDone();
+	}
+	
+	public void handleContentBytes(byte[] contentBytes) throws Exception{	
+	}
+
+	public void done(){
+		this._done=true;
+	}
+	
+	private boolean _done=false;
+	public boolean isDone(){
+		return _done;
+	}
+	
+	public String reqRequestHeader(String headerName){
+		return this._requestHandler.reqRequestHeader(headerName);
+	}
+	
+	public void setReqRequestHeader(String headerName,String headerValue){
+		this._requestHandler.setReqRequestHeader(headerName, headerValue);
+	}
+	
+	public String reqResponseHeader(String headerName){
+		return this._requestHandler.reqResponseHeader(headerName);
+	}
+	
+	public void setReqResponseHeader(String headerName,String headerValue){
+		this._requestHandler.setReqResponseHeader(headerName, headerValue);
+	}
+	
+	public void setReqParameterProperty(String parameterName,
+			String paramPropertyName, String paramPropertyValue) {
+		this._requestHandler.setReqParameterProperty(parameterName, paramPropertyName, paramPropertyValue);
+	}
+	
+	public String reqParameterProperty(String parameterName,String paramPropertyName){
+		return this._requestHandler.reqParameterProperty(parameterName, paramPropertyName);
+	}
+	
+	public void setReqParameter(String paramName, String paramValue, boolean override) {
+		this._requestHandler.setReqParameter(paramName, paramValue, override);
+	}
+	
+	public ArrayList<String> reqParameter(String paramName){
+		return this._requestHandler.reqParameter(paramName);
+	}
+	
+	public String reqStringParameter(String paramName){
+		return this._requestHandler.reqStringParameter(paramName);
+	}
+	
+	public void setReqFileParam(String parameterName,File parameterFile){
+		this._requestHandler.setReqFileParam(parameterName, parameterFile);
+	}
+	
+	public File reqFileParam(String parameterName){
+		return this._requestHandler.reqFileParam(parameterName);
+	}
+}

@@ -1,0 +1,199 @@
+package baasserver.web.system.controls.datagrid;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.TreeMap;
+
+import baasserver.json.simple.JSONArray;
+import baasserver.json.simple.JSONObject;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IORequestHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class DataGrid extends IOWidgetHandle {
+
+	public DataGrid(IOWidgetHandle parentWidget, IOProcessorHandle processor)
+			throws Exception {
+		super(parentWidget, processor);
+	}
+
+	@Override
+	public void handelContent(HashMap<String, String> contentProperties,
+			IOProcessorHandle processor) throws Exception {
+		super.handelContent(contentProperties, processor);
+		if(this.property("title").equals("")){
+			this.setProperty("title", this.formatedSubjectTitle(this.widgetClassName().replace("DataGrid", "")));
+		}
+		if(this.property("id").equals("")){
+			this.setProperty("id", this.widgetClassName().toLowerCase());
+		}
+	}
+	
+	private HashMap<Integer,Integer> _gridColumnSizes=new HashMap<Integer,Integer>();
+	
+	public void setGridColumNames(Object[]columNames){
+		for(Object colName:columNames){
+			this._gridDataSet.get((Integer)(0)).add(((String)colName).toUpperCase());
+		}
+	}
+	
+	private void setColumnWidth(Integer colIndex,Integer colWidth){
+		Integer currentColWidth=this._gridColumnSizes.get(colIndex);
+		if(currentColWidth==null) currentColWidth=0;
+		if(colWidth>currentColWidth){
+			this._gridColumnSizes.put(colIndex, colWidth);
+		}
+	}
+	
+	public void addGridRowData(Object[]rowData){
+		ArrayList<Object> rowDataToAdd=new ArrayList<Object>();
+		for(Object data:rowData){
+			this.setColumnWidth(rowDataToAdd.size(), ((String)data).length());
+			rowDataToAdd.add(data);
+		}
+		
+		if(rowDataToAdd.size()==this._gridDataSet.get((Integer)0).size()){
+			this._gridDataSet.put((Integer)this._gridDataSet.size(), rowDataToAdd);
+		}
+	}
+	
+	private TreeMap<Integer,ArrayList<Object>> _gridDataSet=new TreeMap<Integer,ArrayList<Object>>();
+	
+	public void dataSet(TreeMap<Integer,ArrayList<Object>> datasetToLoad){
+		this._gridDataSet.putAll(datasetToLoad);
+	}
+
+	public boolean isProcessingHeaders() {
+		return false;
+	}
+	
+	public String gridColumnTitles(){
+		JSONArray gridColumnTitles=new JSONArray();
+		ArrayList<Object> gridColumnDisplayNames=this.gridColumnDisplayNames();
+		for(Object gridColDispName:gridColumnDisplayNames){
+			String gridDispName=((String)gridColDispName).replaceAll("[_]", " ");
+			this.setColumnWidth(gridColumnTitles.size(), gridDispName.length());
+			gridColumnTitles.add(gridDispName.toUpperCase());
+		}
+		return gridColumnTitles.toJSONString();
+	}
+	
+	public String gridColumnsModel(){
+		if(_gridColumnSizes.isEmpty()&&!this._gridDataSet.isEmpty()){
+			this.gridColumnTitles();
+		}
+		JSONArray gridColumnsModel=new JSONArray();
+		Integer colIndex=0;
+		
+		ArrayList<Object> gridColumnDisplayNames=this.gridColumnDisplayNames();
+		
+		for(Object gridColName:this._gridDataSet.get((Integer)0)){
+			String gridColNameModel=((String)gridColName).replaceAll(" ", "_");
+			
+			JSONObject gridColModel=new JSONObject();
+			gridColModel.put("display", ((String)gridColName).toUpperCase().replaceAll("_", " "));
+			gridColModel.put("name", gridColNameModel.toUpperCase());
+			gridColModel.put("index", gridColNameModel.toUpperCase());
+			//gridColModel.put("width", _gridColumnSizes.get(colIndex)*10);
+			gridColumnsModel.add(gridColModel);
+			colIndex++;
+		}
+		
+		return gridColumnsModel.toJSONString();
+	}
+	
+	public String gridDataModel(){
+		JSONArray gridDataModel=new JSONArray();
+		ArrayList<Object> columnNames=new ArrayList<Object>();
+		for(Object gridColName:this._gridDataSet.get((Integer)0)){
+			columnNames.add(((String)gridColName).replaceAll(" ", "_"));
+		}
+		
+		int rowColIndex=0;
+		
+		for(Integer rowKey:this._gridDataSet.keySet()){
+			if(rowKey<=0) continue;
+			rowColIndex=0;
+			ArrayList<Object> rowData=this._gridDataSet.get(rowKey);
+			JSONArray jsonRowCellData=new JSONArray();
+			
+			while(rowColIndex<rowData.size()){
+				this.setColumnWidth((Integer)rowColIndex, ((String)(rowData.get(rowColIndex)==null?"":rowData.get(rowColIndex))).length());
+				jsonRowCellData.add(rowData.get(rowColIndex));
+				rowColIndex++;
+			}
+			
+			JSONObject jsonRowData=new JSONObject();
+			jsonRowData.put("cell", jsonRowCellData);
+			gridDataModel.add(jsonRowData);
+		}
+		
+		return gridDataModel.toJSONString();
+	}
+	
+	private ArrayList<Object> gridColumnDisplayNames() {
+		return this._gridDataSet.get((Integer)0);
+	}
+
+	public TreeMap<Integer,ArrayList<Object>> griddataSet(){
+		return this._gridDataSet;
+	}
+	
+	public void setButton(String caption,String bclass,String baction){
+		bclass=(bclass==null?caption:bclass.equals("")?caption:bclass);
+		
+		baction=(baction==null?bclass:baction.equals("")?bclass:baction);
+		
+		baction=this.property("id")+"_"+baction;
+		
+		HashMap<String,String> buttonSettings=this._buttons.get(caption);
+		if(buttonSettings==null){
+			this._buttons.put(caption, buttonSettings=new HashMap<String,String>());
+		}
+		
+		buttonSettings.put("name", caption);
+		buttonSettings.put("bclass", bclass);
+		buttonSettings.put("onpress", "function_start(com,grid){"+baction+"(com,grid);}function_end");
+		
+	}
+	
+	private HashMap<String,HashMap<String,String>> _buttons=new HashMap<String,HashMap<String,String>>(); 
+	public String buttons(){
+		String buttons="";
+		JSONArray jsonButtons=new JSONArray();
+		
+		for(String bkey:_buttons.keySet()){
+			HashMap<String,String> bsettings=_buttons.get(bkey);
+			JSONObject jsonBSettings=new JSONObject();
+			for(String bsettingKey:bsettings.keySet()){
+				jsonBSettings.put(bsettingKey, bsettings.get(bsettingKey));
+			}
+			jsonButtons.add(jsonBSettings);
+		}
+		
+		JSONObject jsonButtonsSep=new JSONObject();
+		jsonButtonsSep.put("separator", true);
+		
+		jsonButtons.add(jsonButtonsSep);
+		String jsonButtonsString=jsonButtons.toJSONString();
+		
+		while(jsonButtonsString.indexOf("\"function_start")>-1){
+			jsonButtonsString=jsonButtonsString.substring(0,jsonButtonsString.indexOf("\"function_start"))+"function"+jsonButtonsString.substring(jsonButtonsString.indexOf("\"function_start")+"\"function_start".length());
+		}
+		
+		while(jsonButtonsString.indexOf("function_end\"")>-1){
+			jsonButtonsString=jsonButtonsString.substring(0,jsonButtonsString.indexOf("function_end\""))+jsonButtonsString.substring(jsonButtonsString.indexOf("function_end\"")+"function_end\"".length());
+		}
+		
+		return jsonButtonsString;
+	}
+	
+	public boolean hasButtons(){
+		return !_buttons.isEmpty();
+	}
+	/*buttons : [
+		{name: 'Add', bclass: 'add', onpress : test},
+		{name: 'Delete', bclass: 'delete', onpress : test},
+		{separator: true}
+		],*/
+}

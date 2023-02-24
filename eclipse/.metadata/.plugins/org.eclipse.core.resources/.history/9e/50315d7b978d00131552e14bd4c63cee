@@ -1,0 +1,531 @@
+package baasserver.protocols.markup;
+
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.TreeMap;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IORequestHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class IOMarkupProcessorHandle extends IOProcessorHandle {
+	
+	public IOMarkupProcessorHandle(IOProcessorHandle mainProcessorHandle, Class<?> widgetHandleclass, IORequestHandle requestHandle) throws Exception{
+		super(mainProcessorHandle, widgetHandleclass,requestHandle);
+	}
+	
+	private byte[] _processorResponseBuffer=new byte[8912];
+	private int _processorResponseBufferIndex=0;
+	private IOWidgetHandle _currentWidget=null;
+	private ArrayList<IOWidgetHandle> _currentWidgets=new ArrayList<IOWidgetHandle>();
+	
+	private ArrayList<String> _widgetEndTagRefs=new ArrayList<String>();
+	private ArrayList<String> _widgetStreamMaskPaths=new ArrayList<String>();
+	
+	private String _widgetTagRead="";
+	private String _widgetTagProperties="";
+	
+	private int _codeSecCount=0;
+	private ArrayList<Byte> _bytesToRespond=new ArrayList<Byte>();
+	private ArrayList<Byte> _maskBytesToProcess=new ArrayList<Byte>();
+	private boolean _addedStartWidget=false;
+	private boolean _nolayoutMaskPaths=false;
+	private char _startProcessorPar=0;
+	private char _endProcessorPar=0;
+	
+	@Override
+	public void process() throws Exception {
+		super.process();
+		this._startProcessorPar='<';
+		this._endProcessorPar='>';
+		
+		if(_currentWidget==null){
+			_currentWidget=this.widgetHandle();
+		}
+		String currentWidgetClassName=this._currentWidget.fullWidgetClassName();
+		if(currentWidgetClassName.indexOf("@")>-1){
+			currentWidgetClassName=currentWidgetClassName.substring(0,currentWidgetClassName.indexOf("@"));
+		}
+		
+		if((_nolayoutMaskPaths=this._currentWidget.widgetLayoutMaskPaths().isEmpty())){
+			this.processMaskBytes((this._startProcessorPar+currentWidgetClassName+_endProcessorPar+_startProcessorPar+"/"+currentWidgetClassName+_endProcessorPar).getBytes(),0);
+		}
+		else{
+			_addedStartWidget=true;
+			this._widgetStreamMaskPaths=this._currentWidget.widgetLayoutMaskPaths();
+			
+			this.codingScriptBroker().putCodingReadPhrase(this.codingScriptBroker().codingSpecificIndex("handleWidgetContent"));
+			this.codingScriptBroker().putCodingReadContent(this._currentWidget);
+			this.codingScriptBroker().putCodingReadContent(new HashMap<String,String>());
+			this.codingScriptBroker().putCodingReadPhrase(this.codingScriptBroker().codingSpecificIndex(";"));
+			
+			this.processInputMaskStream(baasserver.reflection.REFUtils.getResourceAsStream(this._widgetStreamMaskPaths.remove(0)));
+		}
+		
+		this.codingScriptBroker().performCodingRead();
+	}
+	
+	private byte _prevmb=0;
+	private HashMap<IOWidgetHandle,HashMap<String,String>> _widgetProperties=new HashMap<IOWidgetHandle,HashMap<String,String>>();
+	public void processMaskBytes(byte[] maskContentBuffer, int maskContentBufferCount) throws Exception{
+		while(maskContentBufferCount<maskContentBuffer.length){
+			byte mb=maskContentBuffer[maskContentBufferCount++];
+			if(_codeSecCount==2&&mb!=(byte)'%'){
+				_prevmb=mb;
+				this.loadMaskCodeByte((byte)mb);
+				continue;
+			}
+			else if(_codeSecCount==2&&mb==(byte)'%'){
+				this.loadMaskCodeByte((byte)_prevmb);
+				_prevmb=mb;
+				_codeSecCount--;
+				continue;
+			}
+			else if(_codeSecCount==1&&_prevmb==(byte)'%'&&mb!=(byte)this._endProcessorPar){
+				_codeSecCount++;
+				this.loadMaskCodeByte((byte)_prevmb);
+				this.loadMaskCodeByte((byte)mb);
+				_prevmb=mb;
+				continue;
+			}
+			else if(_codeSecCount==1&&_prevmb==(byte)'%'&&mb==(byte)this._endProcessorPar){
+				 _codeSecCount=0;
+				 _prevmb=0;
+				 // TODO performCodeAsItIsGenerated
+				 continue;
+			}
+			else if(_codeSecCount==1&&_prevmb==(byte)this._startProcessorPar&&mb==(byte)'%'){
+				_codeSecCount++;
+				_prevmb=0;
+				
+				if(_matchStartByte>0){
+					if(!this._widgetTagRead.equals("")){
+						for(byte wb:(this._startProcessorPar+this._widgetTagRead+(this._currentWidgetStartTag.equals("")?"":" "+this._currentWidgetStartTag)).getBytes()){
+							_processorResponseBuffer[_processorResponseBufferIndex++]=wb;
+							if(_processorResponseBuffer.length==_processorResponseBufferIndex){
+								this.codingScriptBroker().appendStringTocoding(new String(_processorResponseBuffer));
+								_processorResponseBufferIndex=0;
+							}
+						}
+						if(_processorResponseBufferIndex>0){
+							byte[] processorResponseBuffer=new byte[_processorResponseBufferIndex];
+							System.arraycopy(_processorResponseBuffer, 0, processorResponseBuffer, 0, _processorResponseBufferIndex);
+							this.appendStringTocoding(new String(processorResponseBuffer));
+							_processorResponseBufferIndex=0;
+						}
+						if(this._invalidWidgetTags.indexOf(this._widgetTagRead)==-1){
+							this._invalidWidgetTags.add(_widgetTagRead);
+						}
+						this._widgetTagRead="";
+						this._currentWidgetStartTag="";
+					}
+					_matchStartByte=0;
+					_matchNextStartByte=0;
+				}
+				else{
+					if(_processorResponseBufferIndex>0){
+						byte[] processorResponseBuffer=new byte[_processorResponseBufferIndex];
+						System.arraycopy(_processorResponseBuffer, 0, processorResponseBuffer, 0, _processorResponseBufferIndex);
+						_processorResponseBufferIndex=0;
+						this.appendStringTocoding(new String(processorResponseBuffer));
+						//this.maskCodeStageToUse(maskCodeStage.respond);
+						//this.maskCodeStageToUse(maskCodeStage.String);
+						//this.maskCodeContentToRead(new String(processorResponseBuffer));
+						//this.maskCodeStageToUse(maskCodeStage.commit);
+					 }
+					continue;
+				}
+			}
+			else if(_codeSecCount==1&&_prevmb==(byte)this._startProcessorPar&&mb!=(byte)'%'){
+				_maskBytesToProcess.add((Byte)_prevmb);
+				_maskBytesToProcess.add((Byte)mb);
+				_codeSecCount=0;
+				_prevmb=mb;
+			}
+			else if(_codeSecCount==0&&mb==(byte)this._startProcessorPar){
+				_codeSecCount++;
+				_prevmb=mb;
+				continue;
+			}
+			else if(_codeSecCount==0&&mb!=(byte)this._startProcessorPar){
+				_prevmb=mb;
+				_maskBytesToProcess.add((Byte)mb);
+			}
+			
+			while(!_maskBytesToProcess.isEmpty()){
+				this.processSingleMaskByte(mb=_maskBytesToProcess.remove(0));
+				
+				if(!_unmatchStartTags.isEmpty()){
+					while(!_unmatchStartTags.isEmpty()){
+						byte[]unmatchStartTag=_unmatchStartTags.remove(0);
+						for(byte ub:unmatchStartTag){
+							_bytesToRespond.add((Byte)ub);
+						}
+						unmatchStartTag=null;
+					}
+				}
+				
+				if(!_unmatchEndTags.isEmpty()){
+					while(!_unmatchEndTags.isEmpty()){
+						byte[]unmatchEndTag=_unmatchEndTags.remove(0);
+						for(byte ub:unmatchEndTag){
+							_bytesToRespond.add((Byte)ub);
+						}
+						unmatchEndTag=null;
+					}
+				}
+				
+				while(!_bytesToRespond.isEmpty()){
+					byte br=_bytesToRespond.remove(0);
+					_processorResponseBuffer[_processorResponseBufferIndex++]=br;
+					if(_processorResponseBuffer.length==_processorResponseBufferIndex){
+						//this.maskCodeStageToUse(maskCodeStage.respond);
+						//this.maskCodeStageToUse(maskCodeStage.String);
+						//this.maskCodeContentToRead(new String(_processorResponseBuffer));
+						//this.maskCodeStageToUse(maskCodeStage.commit);
+						this.appendStringTocoding(new String(_processorResponseBuffer));
+						_processorResponseBufferIndex=0;
+					}
+				}				
+			}
+		}
+		
+		if(_processorResponseBufferIndex>0){
+			byte[] processorResponseBuffer=new byte[_processorResponseBufferIndex];
+			System.arraycopy(_processorResponseBuffer, 0, processorResponseBuffer, 0, _processorResponseBufferIndex);
+			_processorResponseBufferIndex=0;
+			
+			this.appendStringTocoding(new String(processorResponseBuffer));
+			
+			_processorResponseBufferIndex=0;
+		}
+	}
+
+	private void processSingleMaskByte(byte mb) throws Exception{
+		
+		if(_matchStartByte==0&&_matchEndByte==0){
+			if(mb==(char)this._startProcessorPar){
+				_matchStartByte=mb;
+			}
+			else{
+				_bytesToRespond.add((Byte)mb);
+			}
+		}
+		else if(_matchStartByte==(char)this._startProcessorPar&&_matchEndByte==0){
+			if(_matchNextStartByte==0){
+				_matchNextStartByte=mb;
+				if(_matchNextStartByte==(byte)'!'){
+					_bytesToRespond.add((Byte)(byte)this._startProcessorPar);
+					_bytesToRespond.add((Byte)_matchNextStartByte);
+					_matchStartByte=0;
+					_matchNextStartByte=0;
+				}
+				else if(_matchNextStartByte==(byte)'/'){
+					_matchEndByte=_matchNextStartByte;
+					_matchStartByte=0;
+					_matchNextStartByte=0;
+				}
+				else{
+					this.processSingleMaskByte(_matchNextStartByte);
+				}
+			}
+			else{
+				if(mb==(byte)' '||mb==(byte)this._endProcessorPar){
+					if(this._widgetTagRead.equals("")){
+						_widgetTagRead=_currentWidgetStartTag.substring(0,_currentWidgetStartTag.length()).trim();
+						_currentWidgetStartTag=_currentWidgetStartTag.substring(_currentWidgetStartTag.length()).trim();
+						
+						if(mb==(byte)this._endProcessorPar){
+							this.processSingleMaskByte(mb);
+						}
+					}
+					else{
+						if(mb==(byte)this._endProcessorPar){
+							this._widgetTagProperties=(_currentWidgetStartTag.endsWith("/")?_currentWidgetStartTag.substring(0,_currentWidgetStartTag.length()-1):_currentWidgetStartTag);
+							if(_widgetTagRead.equals("widget")){
+								this.generateWidgetProperties();
+								if(!_currentWidgetStartTag.endsWith("/")){
+									_widgetEndTagRefs.add(0,(this._startProcessorPar+"/"+_widgetTagRead+this._endProcessorPar));
+								}
+								_widgetTagRead="";
+								_currentWidgetStartTag="";
+								_widgetTagProperties="";
+								_matchNextStartByte=0;
+								_matchStartByte=0;
+							}
+							else{
+								if(this._invalidWidgetTags.indexOf(this._widgetTagRead)>-1){
+									if(this._startProcessorPar=='<'){
+										for(byte bt:(this._startProcessorPar+this._widgetTagRead+(_currentWidgetStartTag.equals("")?"":" "+this._currentWidgetStartTag)+this._endProcessorPar).getBytes()){
+											this._bytesToRespond.add(bt);
+										}
+									}
+									_widgetTagRead="";
+									_currentWidgetStartTag="";
+									_widgetTagProperties="";
+									_matchNextStartByte=0;
+									_matchStartByte=0;
+								}
+								else{
+									if(_validWidgetTags.containsKey(this._widgetTagRead)){
+										IOWidgetHandle nextwidget=(_addedStartWidget?IOWidgetHandle.newIOWidgetHandle(_validWidgetTags.get(_widgetTagRead), this._currentWidget, this):this._currentWidget);
+										if(!_addedStartWidget) _addedStartWidget=true;
+										
+										this._currentWidgets.add(this._currentWidget=nextwidget);
+										
+										if(this._currentWidget.widgetHasMaskPaths())
+										while(!this._currentWidget.widgetLayoutMaskPaths().isEmpty()){
+											this._widgetStreamMaskPaths.add(0,this._currentWidget.widgetLayoutMaskPaths().remove(0));
+										}
+										
+										this.generateWidgetProperties();
+										
+										if(!_currentWidgetStartTag.endsWith("/")){
+											_widgetEndTagRefs.add(0,(this._startProcessorPar+"/"+_widgetTagRead+this._endProcessorPar));
+											_widgetTagRead="";
+											_currentWidgetStartTag="";
+											_widgetTagProperties="";
+											_matchNextStartByte=0;
+											_matchStartByte=0;
+										}
+										else{
+											_widgetTagRead="";
+											_currentWidgetStartTag="";
+											_widgetTagProperties="";
+											_matchNextStartByte=0;
+											_matchStartByte=0;
+											_matchEndByte=0;
+											
+											IOWidgetHandle currentWidget=this._currentWidget;
+											String possibleWidgetMaskPath="";
+											if(!(possibleWidgetMaskPath=currentWidget.nextlayoutStreamMaskPath()).equals("")){
+												this.processInputMaskStream(baasserver.reflection.REFUtils.getResourceAsStream(possibleWidgetMaskPath));
+											}
+											if(currentWidget.parentWidget()!=null&&possibleWidgetMaskPath.equals("")){
+												this._currentWidget=currentWidget.parentWidget();
+											}
+										}										
+									}
+									else{
+										String possibleWidgetClassPath=this._widgetTagRead;
+										Class<?> possibleWidgetClass=null;
+										if(possibleWidgetClassPath.indexOf(".")>-1){
+											debug("TEST FOR [possibleWidgetClassPath] - "+possibleWidgetClassPath);
+											possibleWidgetClass=baasserver.reflection.REFUtils.findClass(possibleWidgetClassPath, true);
+										}										
+										else{
+											debug("TEST FOR [ .reqUrl()+possibleWidgetClassPath] - "+this.requestHandle().reqURL().substring(1,this.requestHandle().reqURL().lastIndexOf("/"))+"."+possibleWidgetClassPath);
+											possibleWidgetClass=baasserver.reflection.REFUtils.findClass(this.requestHandle().reqURL().substring(1,this.requestHandle().reqURL().lastIndexOf("/"))+"."+possibleWidgetClassPath, true);
+											if(possibleWidgetClass==null){
+												debug("TEST FOR - "+"baasserver.web.system"+"."+possibleWidgetClassPath);
+												possibleWidgetClass=baasserver.reflection.REFUtils.findClass("baasserver.web.system"+"."+possibleWidgetClassPath, true);
+											}
+										}
+										if(possibleWidgetClass==null){
+											this._invalidWidgetTags.add(_widgetTagRead);
+											debug("ADD INVALID TAG - "+_widgetTagRead);
+											this.processSingleMaskByte(mb);
+										}
+										else{
+											_validWidgetTags.put(_widgetTagRead, possibleWidgetClass);
+											this.processSingleMaskByte(mb);
+										}
+									}
+								}
+							}
+						}
+						else{
+							_currentWidgetStartTag+=(char)mb;
+						}
+					}	
+				}
+				else{
+					_currentWidgetStartTag+=(char)mb;
+				}
+			}
+		}
+		else if(_matchStartByte==0&&_matchEndByte==(byte)'/'){
+			if(mb==(byte)'>'){
+				this._prevmb=0;
+				if(_widgetEndTagRefs.contains(this._startProcessorPar+"/"+this._widgetTagRead+this._endProcessorPar)){	
+					
+					if(!_widgetTagRead.equals("widget")){
+							
+							IOWidgetHandle currentWidget=_currentWidget;
+							
+							this.putCodingReadPhrase(codingSpecificIndex("handleWidgetContent"));
+							this.putCodingReadContent(currentWidget);
+							this.putCodingReadContent((this._widgetProperties.containsKey(_currentWidget)?this._widgetProperties.remove(_currentWidget):(HashMap<String,String>)null));
+							this.putCodingReadPhrase(codingSpecificIndex(";"));
+					
+					}
+					
+					if(_processorResponseBufferIndex>0){
+						byte[] processorResponseBuffer=new byte[_processorResponseBufferIndex];
+						System.arraycopy(_processorResponseBuffer, 0, processorResponseBuffer, 0, _processorResponseBufferIndex);
+						_processorResponseBufferIndex=0;
+						
+						this.appendStringTocoding(new String(processorResponseBuffer));
+					}
+					
+					this._matchEndByte=0;
+					if(!this._widgetTagRead.equals("widget")){
+						_widgetEndTagRefs.remove((this._startProcessorPar+"/"+_widgetTagRead+this._endProcessorPar));
+						
+						
+						this._widgetTagRead="";
+						if(this._currentWidget.widgetHasMaskPaths()){
+							if(!this._widgetStreamMaskPaths.isEmpty()){
+								this.processInputMaskStream(baasserver.reflection.REFUtils.getResourceAsStream(this._widgetStreamMaskPaths.remove(0)));
+							}
+						}
+						if(!_nolayoutMaskPaths){
+							if(this._startProcessorPar=='<'){
+								this.appendStringTocoding("<script type=\"text/javascript\">");
+							}
+						}
+						
+						if(this._currentWidget.widgetHashActiveScriptPaths()){
+							//this.maskCodeStageToUse(maskCodeStage.activeScript);
+							ArrayList<String> currentActiveScriptsMaskPaths=this._currentWidget.widgetActiveScriptsMaskPaths();
+							while(!currentActiveScriptsMaskPaths.isEmpty()){
+								this.processInputMaskStream(baasserver.reflection.REFUtils.getResourceAsStream(currentActiveScriptsMaskPaths.remove(0)));
+							}
+							//this.maskCodeStageToUse(maskCodeStage.activeScriptEnd);
+						}
+						if(!_nolayoutMaskPaths){
+							if(this._startProcessorPar=='<'){
+								this.appendStringTocoding("</script>");
+							}
+						}
+						if(this._currentWidgets.size()==1){
+							this._currentWidget=this._currentWidgets.get(0);
+						}
+						else{
+							this._currentWidget=this._currentWidgets.remove(0);
+						}
+					}
+					else if(this._widgetTagRead.equals("widget")){
+						_widgetTagRead="";
+						if(!this._widgetStreamMaskPaths.isEmpty()){
+							this.processInputMaskStream(this.widgetHandle().getClass().getResourceAsStream(this._widgetStreamMaskPaths.remove(0)));
+							this.processMaskBytes((this._startProcessorPar+"/widget"+this._endProcessorPar).getBytes(), 0);
+						}
+						else{
+							_widgetEndTagRefs.remove((this._startProcessorPar+"/"+this._widgetTagRead+this._endProcessorPar));
+						}
+					}
+				}
+				else{
+					this._matchEndByte=0;
+					if(this._startProcessorPar=='<'){
+						for(byte bt:(this._startProcessorPar+"/"+this._widgetTagRead+this._endProcessorPar).getBytes()){
+							this._bytesToRespond.add(bt);
+						}
+					}
+					this._widgetTagRead="";
+					_currentWidgetStartTag="";
+					_widgetTagProperties="";
+					_matchNextStartByte=0;
+					_matchStartByte=0;
+					_matchEndByte=0;
+				}
+			}
+			else{
+				this._widgetTagRead+=(char)mb;
+			}
+		}
+	}
+
+	private void generateWidgetProperties() {
+		if(!this._widgetTagProperties.equals("")){
+			HashMap<String,String> maskProperties=new HashMap<String,String>();
+			
+			if(!_widgetTagProperties.equals("")){
+				String propName="";
+				String propValue="";
+				boolean maskPropNameFound=false;
+				boolean maskPropValueFound=false;
+				
+				for(char cp:_widgetTagProperties.toCharArray()){
+					if(!maskPropNameFound){
+						if(cp=='='){
+							maskPropNameFound=true;
+							
+						}
+						else if(cp!=' '){
+							propName+=cp;
+						}
+					}
+					else{
+						if(!maskPropValueFound&&cp=='\"'){
+							maskPropValueFound=true;
+						}
+						else if(maskPropValueFound&&cp=='\"'){
+							maskPropNameFound=false;
+							maskPropValueFound=false;
+							
+							if(!propName.equals("")){
+								maskProperties.put(propName.toUpperCase(),(propValue.startsWith(":")?requestHandle().reqParameterString(propValue.substring(1)):propValue));
+							}
+							
+							propName="";
+							propValue="";
+						}
+						else if(maskPropValueFound&&cp!='\"'){
+							propValue+=cp;
+						}
+					}
+				}
+			}
+			this._widgetProperties.put(this._currentWidget,maskProperties);
+		}
+	}
+
+	private String _currentWidgetStartTag="";
+	private ArrayList<String> _invalidWidgetTags=new ArrayList<String>();
+	private HashMap<String,Class<?>> _validWidgetTags=new HashMap<String,Class<?>>();
+	private ArrayList<byte[]> _unmatchStartTags=new ArrayList<byte[]>();
+	private ArrayList<byte[]> _unmatchEndTags=new ArrayList<byte[]>();
+	private byte _matchStartByte=0;
+	private byte _matchNextStartByte=0;
+	private byte _matchEndByte=0;
+	
+	//private ArrayList<byte[]> _maskCode=new ArrayList<byte[]>();
+	/*public void processMaskCodeBytes() throws Exception{
+		if(_currentMaskCodeBytesIndex>0){
+			byte[] maskCodeBytes=new byte[_currentMaskCodeBytesIndex];
+			System.arraycopy(_currentMaskCodeBytes, 0, maskCodeBytes, 0, _currentMaskCodeBytesIndex);
+			_maskCode.add(maskCodeBytes);
+			_currentMaskCodeBytesIndex=0;
+		}
+		
+		while(!_maskCode.isEmpty()){
+			//this.executeMaskCodeBytes(_maskCode.remove(0),0);
+		}
+	}*/
+		
+	
+	private char _prevCC=0;
+
+	private byte[] _currentMaskCodeBytes=new byte[8912];
+	private int _currentMaskCodeBytesIndex=0;
+	
+	public void loadMaskCodeByte(byte br) {
+		this.loadMaskCodeByte(br, true);
+	}
+	
+	public void loadMaskCodeByte(byte br,boolean debug) {
+		char cc=(char)br;
+		if(debug) System.out.print(cc);
+		if(this._codingIndexStage==this.codingSpecificIndex("\"")){
+			this.nextMaskCodeCharToExecute(cc);
+		}
+		else{
+			if(!(cc+"").trim().equals("")){
+				this.nextMaskCodeCharToExecute(cc);
+				_prevCC=cc;
+			}
+		}
+	}
+}

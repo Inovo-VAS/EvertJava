@@ -1,0 +1,48 @@
+package baasserver.db.protocols;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+
+import baasserver.protocols.InputOutput;
+import baasserver.protocols.markup.IOMarkupRequestHandle;
+
+public class DBRequestHandle extends IOMarkupRequestHandle {
+	//public DBRequestHandle(InputOutput output) {
+	//	super(output);
+	//}
+	
+	ByteArrayOutputStream _sqlCommandBytesReceived=new ByteArrayOutputStream();
+	
+	private boolean _doneCapturingSQLCommand=false;
+	
+	private boolean _enableCapturingSQLCommand=false;
+	
+	public void enableCapturingSQLCommand(){
+		_enableCapturingSQLCommand=true;
+	}
+	
+	public void doneCapturingSQLCommand(){
+		this._doneCapturingSQLCommand=true;
+	}
+	
+	@Override
+	public void write(byte[] bytesToWrite) throws Exception {
+		if(!_doneCapturingSQLCommand&&_enableCapturingSQLCommand){
+			try {
+				this._sqlCommandBytesReceived.write(bytesToWrite);
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+		else{
+			super.write(bytesToWrite);
+		}
+	}
+	
+	@Override
+	public void reset() {
+		this._sqlCommandBytesReceived.reset();
+		this._sqlCommandBytesReceived=null;
+		super.reset();
+	}
+}

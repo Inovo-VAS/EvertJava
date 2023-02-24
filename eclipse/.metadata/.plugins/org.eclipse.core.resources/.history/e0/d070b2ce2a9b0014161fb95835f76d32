@@ -1,0 +1,20 @@
+package inovo.automated.work;
+
+import java.io.InputStream;
+
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+
+public class Configuration extends InovoHTMLPageWidget {
+
+	public Configuration(InovoWebWidget parentWidget, InputStream inStream) {
+		super(parentWidget, inStream);
+		// TODO Auto-generated constructor stub
+	}
+
+	
+	@Override
+	public void pageContent() throws Exception {
+		this.fieldInput("test", "test test", "text", true,	null);
+	}
+}

@@ -1,0 +1,81 @@
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.Date;
+
+import inovo.automation.AutomationControlQueue;
+import inovo.automation.AutomationControlRequest;
+import inovo.automation.db.Queue;
+import inovo.automation.db.Request;
+import inovo.db.Database;
+import inovo.servlet.InovoCoreEnvironmentManager;
+import javax.servlet.ServletContext;
+
+public class InovoEnvironmentManager extends InovoCoreEnvironmentManager
+{
+	//private AutomationControlQueue _automationControlQueue=null;
+	
+  public void initializeServletContext(ServletContext sc)
+  {
+    super.initializeServletContext(sc);
+    try {
+    	
+    	//_automationControlQueue=new AutomationControlQueue();
+    	//Queue.queue("AUTOMATIONCONTROLQUEUE").queueRequest(new AutomationControlRequest(), false);
+    	
+    	/*this._testQueue=new Queue("INOVOAUTOMATION"){
+			@Override
+			public void initiate() throws Exception{
+				try {
+					Calendar startCal=Calendar.getInstance();
+					
+					Calendar endCal=startCal.getInstance();
+					endCal.setTimeInMillis(startCal.getTimeInMillis()+(60*60*1000));
+					
+					this.queueRequest("LABEL",new Request(Queue.generateSchedules(startCal,endCal,15)){
+						@Override
+						public void executeRequest() {
+							System.out.println(this.requestAllias()+":"+new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()));
+						}
+					},false);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+		};*/
+		
+    	
+    	
+		/*this._testQueue=new Queue("INOVOAUTOMATION"){
+			@Override
+			public void initiate() throws Exception{
+				try {
+					Calendar startCal=Calendar.getInstance();
+					
+					Calendar endCal=startCal.getInstance();
+					endCal.setTimeInMillis(startCal.getTimeInMillis()+(60*60*1000));
+					
+					this.queueSQLRequest(Queue.generateSchedules("10:21|10:23".split("[|]"),"HH:mm"), "SQLALLIAS", "SELECT GETDATE() AS TODAYDATE", null, false); 
+					
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+			}
+		};*/
+	} catch (Exception e) {
+		System.out.println(e.getMessage());
+	}
+  }
+
+  public String defaultLocalPath(String suggestedlocalpah)
+  {
+    return super.defaultLocalPath(suggestedlocalpah);//"C:/projects/java/");
+  }
+
+  public void disposeServletContext(ServletContext sc)
+  {
+	  //Queue.killQueue("AUTOMATIONCONTROLQUEUE");
+	super.disposeServletContext(sc);
+	
+	//System.out.println("Automation Stopped");
+  }
+}

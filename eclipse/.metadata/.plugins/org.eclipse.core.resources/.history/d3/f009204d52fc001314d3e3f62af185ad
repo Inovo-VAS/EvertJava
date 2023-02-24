@@ -1,0 +1,12 @@
+package inovo.monitoring.monitors;
+
+import java.util.concurrent.ExecutorService;
+
+public class Monitor {
+	
+	private static ExecutorService _monitorsServices=
+	
+	public void requestCompleted(MonitorRequest monitorRequest) {
+		
+	}
+}

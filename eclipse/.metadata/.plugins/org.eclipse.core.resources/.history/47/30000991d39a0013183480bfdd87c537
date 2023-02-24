@@ -1,0 +1,100 @@
+package baasserver.io.nio.handlers;
+
+import java.util.ArrayList;
+
+public class MultiPartContentHandler extends RequestContentHandler {
+	public MultiPartContentHandler(RequestHandler requestHandler) {
+		super(requestHandler);
+	}	
+	
+	private enum MultiPartContentEnum{
+		generateBoundary,
+		multiPartHeaderName,
+		multiPartHeaderValue,
+		multiPartContent,
+		multiPartBoundary,
+		multiPartEnd
+	}
+	
+	private MultiPartContentEnum _multiPartContentStage=MultiPartContentEnum.generateBoundary;
+	private String _multiPartBoundary="";
+	private String _multiPartHeaderName="";
+	private String _multiPartHeaderValue="";
+	
+	private int _multiPartBoundaryIndex=0;
+	
+	private ArrayList<Byte> _multiPartBoundaryBytes=new ArrayList<Byte>();
+	private String _multiPartParamName="";
+	@Override
+	public void handleContentBytes(byte[] contentBytes) {
+		for(byte br:contentBytes){
+			switch(_multiPartContentStage){
+			case generateBoundary:
+				switch(br){
+				case 13:
+					continue;
+				case 10:
+					_multiPartBoundary="\r\n--"+_multiPartBoundary;
+					_multiPartContentStage=MultiPartContentEnum.multiPartHeaderName;
+					break;
+				default:
+					_multiPartBoundary+=(char)br;
+					break;
+				}
+				break;
+			case multiPartBoundary:
+				
+				break;
+			case multiPartContent:
+				
+				break;
+			case multiPartEnd:
+				break;
+			case multiPartHeaderName:
+				switch(br){
+				case 58:
+					_multiPartHeaderName=_multiPartHeaderName.toUpperCase().trim();
+					_multiPartContentStage=MultiPartContentEnum.multiPartHeaderValue;
+					break;
+				default:
+					_multiPartHeaderName+=(char)br;
+					break;
+				}
+				break;
+			case multiPartHeaderValue:
+				switch(br){
+				case 13: continue;
+				case 10:
+					_multiPartHeaderValue=_multiPartHeaderValue.trim();
+					if(!_multiPartHeaderName.equals("")){
+						if(_multiPartHeaderName.equals("CONTENT-DISPOSITION")){
+							String paramPropValue="";
+							String paramPropName="";
+							for(char cm:_multiPartHeaderValue.toCharArray()){
+								switch (cm) {
+								case ':':
+									
+									break;
+								default:
+									break;
+								}
+							}
+						}
+						else{
+							this.requestHandler().setReqParameterProperty(_multiPartParamName,_multiPartHeaderName,_multiPartHeaderValue);
+						}
+						_multiPartHeaderName="";
+						_multiPartHeaderValue="";
+					}
+					break;
+				default:
+					_multiPartHeaderValue+=(char)br;
+					break;
+				}
+				break;
+			default:
+				break;
+			}
+		}
+	}
+}

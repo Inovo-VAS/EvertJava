@@ -1,0 +1,13 @@
+package baasserver.db.protocols;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+import baasserver.protocols.markup.IOMarkupWidgetHandle;
+
+public class DBWidgetHandle extends IOMarkupWidgetHandle {
+
+	public DBWidgetHandle(IOWidgetHandle parentWidget,
+			IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+}

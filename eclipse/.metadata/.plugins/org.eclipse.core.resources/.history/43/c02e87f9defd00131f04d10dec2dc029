@@ -1,0 +1,7 @@
+package inovo.monitoring.monitors.db;
+
+import inovo.monitoring.monitors.Monitor;
+
+public class DBMonitor extends Monitor {
+
+}

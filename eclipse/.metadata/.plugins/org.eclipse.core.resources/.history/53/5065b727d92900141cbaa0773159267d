@@ -1,0 +1,18 @@
+package saas.tasks;
+
+import java.util.HashMap;
+
+public class Task {
+	private String _executionKey="";
+	private String _executionSession="";
+	private String _taskSessionKey="";
+	private TaskExecutor _taskExecutor=null;
+	
+	public Task(Task topTask,Task parentTask,Task nextTask){
+		
+	}
+	
+	public static void initiateTask(LayoutTemplate layoutTemplate,HashMap<String,Object> properties){
+		
+	}
+}

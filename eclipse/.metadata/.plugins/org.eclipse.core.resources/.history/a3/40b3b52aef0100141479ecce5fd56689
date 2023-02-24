@@ -1,0 +1,15 @@
+eclipse.preferences.version=1
+encoding//src/PcowsLibrary/PcowsService___AddCallData.java=UTF-8
+encoding//src/PcowsLibrary/PcowsService___GetCallData.java=UTF-8
+encoding//src/PcowsLibrary/PcowsService___GetCallDataResponse.java=UTF-8
+encoding//src/PcowsLibrary/PcowsService___GetErrorMessageResponse.java=UTF-8
+encoding//src/PcowsLibrary/PcowsService___InsertOutboundRecord.java=UTF-8
+encoding//src/PcowsLibrary/PcowsService___InsertOutboundRecord2.java=UTF-8
+encoding//src/PcowsLibrary/PcowsService___InsertOutboundRecord2Response.java=UTF-8
+encoding//src/PcowsLibrary/PcowsService___InsertOutboundRecordResponse.java=UTF-8
+encoding//src/PcowsLibrary/PcowsService___RefreshService.java=UTF-8
+encoding//src/PcowsLibrary/PcowsService___ReloadOutboundQueues.java=UTF-8
+encoding//src/PcowsLibrary/PcowsService___ReloadOutboundQueuesResponse.java=UTF-8
+encoding//src/PcowsLibrary/PcowsService___RequestOutboundACDCall2.java=UTF-8
+encoding//src/PcowsLibrary/PcowsService___Sum.java=UTF-8
+encoding//src/PcowsLibrary/PcowsService___SumResponse.java=UTF-8

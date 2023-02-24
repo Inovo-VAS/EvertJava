@@ -1,0 +1,37 @@
+import javax.mail.MessagingException;
+import javax.mail.internet.AddressException;
+import javax.servlet.ServletContext;
+
+import presence.Administrator;
+import inovo.mail.reports.VolvoReportsQueue;
+import inovo.servlet.InovoCoreEnvironmentManager;
+
+
+public class InovoEnvironmentManager extends InovoCoreEnvironmentManager {
+	
+	@Override
+	public String defaultLocalPath(String suggestedlocalpath) {
+		//suggestedlocalpath="D:/projects/clients/inovo/java/";
+		return super.defaultLocalPath(suggestedlocalpath);
+	}
+	
+	@Override
+	public void initializeServletContext(ServletContext sc) {
+		super.initializeServletContext(sc);
+		try {
+			VolvoReportsQueue.sendMail("Test Mail", "ejoubert@inovo.co.za", "ejoubert@inovo.co.za", "TEST BODY", "smtp.gmail.com", "587","ejoubert@inovo.co.za","Nan6inga");
+		} catch (AddressException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (MessagingException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+		
+	@Override
+	public void disposeServletContext(ServletContext sc) {
+		
+		super.disposeServletContext(sc);
+	}
+}

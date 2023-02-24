@@ -1,0 +1,424 @@
+package inovo.presence.pmconsol;
+
+import java.io.BufferedReader;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.InputStreamReader;
+import java.io.IOException;
+import java.net.Socket;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+
+import javax.xml.crypto.Data;
+
+import inovo.db.Database;
+import inovo.presence.pmconsol.utils.PresencePMConsoleEnterpreter;
+import inovo.presence.pmconsol.utils.PresencePMConsoleEnterpreter.cAgentInfo;
+import inovo.presence.pmconsol.utils.PresencePMConsoleEnterpreter.cCallInfo;
+import inovo.servlet.InovoCoreEnvironmentManager;
+import inovo.servlet.InovoServletContextListener;
+
+import org.apache.log4j.Logger;
+
+public class PMConsolClient implements Runnable {
+	
+	private static final class Lock { }
+	private static final Object _lock = new Lock();
+	
+	private static PresencePMConsoleEnterpreter _presInterpreter;
+	
+	private static Map<String,PresencePMConsoleEnterpreter.cAgentInfo> _agentMap = new TreeMap<String, PresencePMConsoleEnterpreter.cAgentInfo>();
+	private static Map<String,PresencePMConsoleEnterpreter.cCallInfo> _callMap = new TreeMap<String, PresencePMConsoleEnterpreter.cCallInfo>();
+	
+	
+	private Thread _listenerThread=null;
+	private String _presenceServerIP="";
+	private Socket _socket;
+	private DataOutputStream _dataOutputStream;
+	private DataInputStream _dataInputStream;
+	private int _pmconsolePort=6800;
+	private List<String> _resultList;
+	private String _currentCommand = "";
+	
+	public PMConsolClient(String presenceServerIP){
+		this._pmconsolePort=(presenceServerIP.indexOf(":")>-1?Integer.parseInt(presenceServerIP.substring(presenceServerIP.indexOf(":")+1)):6800);
+		this._presenceServerIP=(presenceServerIP.indexOf(":")==-1?presenceServerIP:presenceServerIP.substring(0, presenceServerIP.indexOf(":")));
+	}
+	
+	private void debug(String logmessage){
+		System.out.println("logmessage:"+logmessage);
+	}
+	
+	private boolean connect(String serverIP,int port){
+		try { 
+		    
+			this.debug("Connecting to Presence server : " + serverIP);
+			
+			  _socket = new Socket(serverIP, port); 
+		      _dataOutputStream = new DataOutputStream(_socket.getOutputStream()); 
+		      _dataInputStream = new DataInputStream(_socket.getInputStream()); 
+		      _resultList = new ArrayList<String>();
+		      _listenerThread = new Thread(this);
+		      _listenerThread.start(); 
+		      
+		    } catch (Exception e) { 
+		    	this.debug("Exception : " + e.getMessage());
+		    	return false;
+		      
+		    } 
+		    
+		    return true;
+	}
+	
+	public void close() { 
+	    
+	    try { 
+	      _socket.shutdownInput();
+	      _dataInputStream.close();
+	      _socket.close(); 
+	      this.debug("Closing socket connection.");
+	      
+	      _listenerThread.interrupt(); 
+	    } catch (IOException e) { 
+	    	this.debug("ADN" + e.getMessage()); 
+	    } 
+	  }
+
+	@Override
+	public void run() {
+		BufferedReader input;
+	      String line; 
+	      try { 
+	        // Stop here and doesn't progress 
+	    	input = new BufferedReader(new InputStreamReader(_socket.getInputStream()));
+	    	while((line = input.readLine()) != null) {
+	        	if(line.length() != 0){
+	        		_currentCommand += line + "\n";
+	        	}
+	        	else{
+	        		
+	        		synchronized (_lock) {
+	        			_resultList.add(_currentCommand);
+		        		_lock.notifyAll();
+					}
+	        	
+	        		_currentCommand = "";
+	        	}
+
+	        	
+//	          logger.debug("DBG Listener freed.");
+	        } 
+	      }  
+	      catch (IOException e) { this.debug(e.getMessage()); }
+	    this.debug("Closing listener thread...");
+	    this.debug("Closing listener");
+	    synchronized (_lock) {
+	    	_lock.notifyAll();
+	    }
+	}
+	
+	public void sendMessage(String message, String service, String type, String description,String serviceType) throws IOException, InterruptedException{
+		//cl = new TCPClient2();
+		synchronized (_lock) {
+			
+			this.debug("Request : " + description);
+			_dataOutputStream.writeBytes(message);
+			_lock.wait(100000);
+//			logger.debug("DBG Exit send wait loop");
+			//So the message came back
+			while(!_resultList.isEmpty()) {
+				String currentCommand;
+
+				currentCommand = _resultList.remove(0);
+				this.debug(currentCommand);
+				if(currentCommand.contains("Response: Error")){
+					this.debug("DBG Response : Error");
+					if(currentCommand.contains("Message: Calls for service"))
+						_presInterpreter.getCallsConnected(currentCommand,service,serviceType);
+					else if(currentCommand.contains("Message: There are no agents connected to the service"))
+						_presInterpreter.getAgentsConnected(currentCommand,service,serviceType);
+					else
+						this.debug("Msg : Error");
+				} else {
+					this.debug("DBG Response : Success");
+		    		if(currentCommand.contains("Message: Agents connected to service"))
+		    			_presInterpreter.getAgentsConnected(currentCommand,service,serviceType);
+		    		else if(currentCommand.contains("Message: Calls for service"))
+		    			_presInterpreter.getCallsConnected(currentCommand,service,serviceType);
+		    		else if(currentCommand.contains("Message: ;INITEXT;"))
+		    			_presInterpreter.getServiceList(currentCommand);
+		    		else {
+		    			this.debug("Msg : Unknown");
+		    		}
+				}
+			}
+			
+		}
+		if(type.equals("agent")){
+			this.debug("Adding agent info for service " + service);
+			cAgentInfo aInfo = _presInterpreter.getAgentInfo();
+			this.debug(""+aInfo);
+			_agentMap.put(service, aInfo);
+		}
+		if(type.equals("call")){
+			this.debug("Adding call info for service " + service);
+			cCallInfo cInfo = _presInterpreter.getCallInfo();
+			this.debug(""+cInfo);
+			_callMap.put(service,_presInterpreter.getCallInfo());
+		}
+	}
+	
+	public boolean startStatsCollection(int polingInterval) throws Exception{
+		try{
+			if(!this.connect(this._presenceServerIP,this._pmconsolePort)){
+				this.debug("Failed to connect to Presence server at " + this._presenceServerIP+":"+String.valueOf(this._pmconsolePort));
+				return false;
+			}
+			_presInterpreter = new PresencePMConsoleEnterpreter();
+			//Clear all the maps so we can start
+			PresencePMConsoleEnterpreter.getServiceList().clear();
+			_agentMap.clear();
+			_callMap.clear();
+			
+			//Get the service list
+			synchronized (_lock) {
+				try {
+					this.sendMessage("c:list\n1:services\n\n","None","Service","Services list","");
+					this.debug("Service map : " + PresencePMConsoleEnterpreter.getServiceList().size());
+				} catch (IOException e) {
+					this.debug("InterruptedException retrieving service list : " + e.getMessage());
+					return false;
+				} catch (InterruptedException e) {
+					this.debug("InterruptedException retrieving service list : " + e.getMessage());
+					return false;
+				} 
+			} //End lock
+			
+			//Now we get the stats for all the services
+			if(PresencePMConsoleEnterpreter.getServiceList().size() > 0){
+				Iterator<PresencePMConsoleEnterpreter.cService> it = PresencePMConsoleEnterpreter.getServiceList().iterator();
+				while(it.hasNext()){
+					PresencePMConsoleEnterpreter.cService service = it.next();
+					if(service.serviceStatus.equals("Enabled") && (service.serviceDirection.equals("Inbound")||service.serviceDirection.equals("Outbound"))){
+						this.debug("Retrieving information for service [" + service.serviceID + "]");
+						synchronized (_lock) {
+							try {
+								this.sendMessage("c:list\n1:agents\n2:"+service.serviceID+"\n\n",service.serviceID,"agent","Agents [" + service.serviceID + "-" + service.serviceName + "]",service.serviceType);
+							} catch (IOException e) {
+								this.debug("IOException retrieving service list : " + e.getMessage());
+								return false;
+							} catch (InterruptedException e) {
+								this.debug("InterruptedException retrieving service list : " + e.getMessage());
+								return false;
+							} 
+						}
+						synchronized (_lock) {
+							try {
+								this.sendMessage("c:list\n1:calls\n2:"+service.serviceID+"\n\n",service.serviceID,"call","Calls [" + service.serviceID + "-" + service.serviceName + "]",service.serviceType);
+							} catch (IOException e) {
+								this.debug("IOException retrieving service list : " + e.getMessage());
+								return false;
+							} catch (InterruptedException e) {
+								this.debug("InterruptedException retrieving service list : " + e.getMessage());
+								return false;
+							} 
+						}		
+					} else {
+						this.debug("Service [" + service.serviceID + "-" + service.serviceName + "] is disabled");
+					}
+				}
+			}
+			
+			//write some info out about out collection
+			this.debug("First run is done !");
+			this.debug("Service map : " + PresencePMConsoleEnterpreter.getServiceList().size());
+			this.debug("Agent map : " + _agentMap.size()+"\r\n");
+			this.debug("Agent map : " + _agentMap+"\r\n");
+			this.debug("Call map : " + _callMap.size());
+			this.debug("Call map : " + _callMap);
+			
+			//Then commit all this to the database
+			//PresencePMConsoleMSSqlDAO sqlDAO = new PresencePMConsoleMSSqlDAO();
+			//if(sqlDAO != null){
+				try {
+					
+					//Database.executeDBRequest("PMCONSOLREPORTS", "DELETE FROM <DBUSER>.WALLBOARD_SERVICESTATUS WHERE DATEADD(SECOND,-"+String.valueOf((polingInterval*2))+",LAST_UPDATED)<GETDATE()", null);
+					//Database.executeDBRequest("PMCONSOLREPORTS", "DELETE FROM <DBUSER>.WALLBOARD_SERVICE_AVAILABLE_AGENTS WHERE DATEADD(SECOND,-"+String.valueOf((polingInterval*2))+",LAST_UPDATED)<GETDATE())", null);
+					//Database.executeDBRequest("PMCONSOLREPORTS", "DELETE FROM <DBUSER>.WALLBOARD_SERVICEAGENTCALLSSTATUS WHERE DATEADD(SECOND,-"+String.valueOf((polingInterval*2))+",LAST_UPDATED)<GETDATE())", null);
+					
+					this.insertWallboardEntries(_agentMap, _callMap);
+					
+				} catch (Exception e) {
+					this.debug("DataAccessException : " + e.getMessage());
+					//System.out.println("DataAccessException : " + e.getMessage());
+				} 
+			//}
+			//Then finally we can disconnect
+			this.close();
+		}
+		catch(Exception se){
+			se.printStackTrace();
+		}
+		return true;
+	}
+	
+	public void insertWallboardEntries(Map<String, cAgentInfo> agentMap,
+			Map<String, cCallInfo> callMap) throws Exception {
+		// Lets go through the lists here and insert the entries
+		Iterator it = agentMap.entrySet().iterator();
+		String serviceids="";
+		
+		while (it.hasNext()) {
+			Map.Entry pairs = (Map.Entry)it.next();
+			String service = (String) pairs.getKey();
+			serviceids+=service+",";
+			cCallInfo cInfo = callMap.get(service);
+			cAgentInfo aInfo = (cAgentInfo) pairs.getValue();
+//			System.out.println("[" + service + "]" + cInfo + aInfo);
+			this.insertWallboardEntry(service,aInfo,cInfo);
+			this.debug("Update DB entry for service " + pairs.getKey());
+	        this.debug(pairs.getKey() + " = " + pairs.getValue());
+	        callMap.remove(pairs.getKey());
+	        it.remove(); // avoids a ConcurrentModificationException
+		}
+		
+		Database.executeDBRequest(null,"PMCONSOLREPORTS", "DELETE FROM <DBUSER>.WALLBOARD_SERVICESTATUS WHERE SERVICEID NOT IN ("+serviceids+"0)", null,null);
+		Database.executeDBRequest(null,"PMCONSOLREPORTS", "DELETE FROM <DBUSER>.WALLBOARD_SERVICE_AVAILABLE_AGENTS WHERE SERVICEID NOT IN ("+serviceids+"0)", null,null);
+		Database.executeDBRequest(null,"PMCONSOLREPORTS", "DELETE FROM <DBUSER>.WALLBOARD_SERVICEAGENTCALLSSTATUS WHERE SERVICEID NOT IN ("+serviceids+"0)", null,null);
+	}
+	
+	private void insertWallboardEntry(String serviceID, cAgentInfo agentInfo, cCallInfo callInfo) throws Exception{
+		String insertNewWALLBoardServiceStatusSql="INSERT INTO <DBUSER>.WALLBOARD_SERVICESTATUS  (SERVICEID  ,BOUNDTYPE ,CONTACTS_IN_PROGRESS_TOTAL  ,CONTACTS_IN_PROGRESS_TIME  ,CONTACTS_QUEUED_TOTAL  ,CONTACTS_QUEUED_TIME  ,CONTACTS_RINGING_TOTAL  ,CONTACTS_RINGING_TIME  ,CONTACTS_ANSWERED_TOTAL  ,CONTACTS_ANSWERED_TIME  ,CONTACTS_ACW_TOTAL  ,CONTACTS_ACW_TIME  ,TOTAL_CONTACTS  ,AGENTS_AVAILABLE_TOTAL  ,AGENTS_AVAILABLE_TIME  ,AGENTS_CALL_TOTAL  ,AGENTS_CALL_TIME  ,AGENTS_ACW_TOTAL  ,AGENTS_ACW_TIME  ,AGENTS_OTHER_TOTAL  ,AGENTS_OTHER_TIME  ,TOTAL_AGENTS  ,LAST_UPDATED)      VALUES  (:SERVICEID ,:BOUNDTYPE  ,:CONTACTS_IN_PROGRESS_TOTAL  ,:CONTACTS_IN_PROGRESS_TIME  ,:CONTACTS_QUEUED_TOTAL  ,:CONTACTS_QUEUED_TIME  ,:CONTACTS_RINGING_TOTAL  ,:CONTACTS_RINGING_TIME  ,:CONTACTS_ANSWERED_TOTAL  ,:CONTACTS_ANSWERED_TIME  ,:CONTACTS_ACW_TOTAL  ,:CONTACTS_ACW_TIME  ,:TOTAL_CONTACTS  ,:AGENTS_AVAILABLE_TOTAL  ,:AGENTS_AVAILABLE_TIME  ,:AGENTS_CALL_TOTAL  ,:AGENTS_CALL_TIME  ,:AGENTS_ACW_TOTAL  ,:AGENTS_ACW_TIME  ,:AGENTS_OTHER_TOTAL ,:AGENTS_OTHER_TIME  ,:TOTAL_AGENTS  ,GETDATE())";
+		String updateExistingWALLBoardServiceStatusSql="UPDATE <DBUSER>.WALLBOARD_SERVICESTATUS  SET BOUNDTYPE=:BOUNDTYPE  ,CONTACTS_IN_PROGRESS_TOTAL=:CONTACTS_IN_PROGRESS_TOTAL  ,CONTACTS_IN_PROGRESS_TIME=:CONTACTS_IN_PROGRESS_TIME  ,CONTACTS_QUEUED_TOTAL=:CONTACTS_QUEUED_TOTAL  ,CONTACTS_QUEUED_TIME=:CONTACTS_QUEUED_TIME  ,CONTACTS_RINGING_TOTAL=:CONTACTS_RINGING_TOTAL  ,CONTACTS_RINGING_TIME=:CONTACTS_RINGING_TIME  ,CONTACTS_ANSWERED_TOTAL=:CONTACTS_ANSWERED_TOTAL  ,CONTACTS_ANSWERED_TIME=:CONTACTS_ANSWERED_TIME  ,CONTACTS_ACW_TOTAL=:CONTACTS_ACW_TOTAL  ,CONTACTS_ACW_TIME=:CONTACTS_ACW_TIME  ,TOTAL_CONTACTS=:TOTAL_CONTACTS  ,AGENTS_AVAILABLE_TOTAL=:AGENTS_AVAILABLE_TOTAL  ,AGENTS_AVAILABLE_TIME=:AGENTS_AVAILABLE_TIME  ,AGENTS_CALL_TOTAL=:AGENTS_CALL_TOTAL  ,AGENTS_CALL_TIME=:AGENTS_CALL_TIME  ,AGENTS_ACW_TOTAL=:AGENTS_ACW_TOTAL  ,AGENTS_ACW_TIME=:AGENTS_ACW_TIME  ,AGENTS_OTHER_TOTAL=:AGENTS_OTHER_TOTAL  ,AGENTS_OTHER_TIME=:AGENTS_OTHER_TIME  ,TOTAL_AGENTS=:TOTAL_AGENTS  ,LAST_UPDATED=GETDATE() WHERE SERVICEID=:SERVICEID";
+		HashMap<String,String> sqlServiceStatsInfo=new HashMap<String,String>();
+		sqlServiceStatsInfo.put("SERVICEID",serviceID); 
+		sqlServiceStatsInfo.put("BOUNDTYPE", agentInfo.serviceType);
+		sqlServiceStatsInfo.put("CONTACTS_IN_PROGRESS_TOTAL",callInfo.callsInProgress);
+		sqlServiceStatsInfo.put("CONTACTS_IN_PROGRESS_TIME",callInfo.callsInProgressMaxT);
+		sqlServiceStatsInfo.put("CONTACTS_QUEUED_TOTAL",callInfo.callsInQueue);
+		sqlServiceStatsInfo.put("CONTACTS_QUEUED_TIME",callInfo.callsInQueueMaxT);
+		sqlServiceStatsInfo.put("CONTACTS_RINGING_TOTAL",callInfo.callsRinging);
+		sqlServiceStatsInfo.put("CONTACTS_RINGING_TIME",callInfo.callsRingingMaxT);
+		sqlServiceStatsInfo.put("CONTACTS_ANSWERED_TOTAL",callInfo.callsAnswered);
+		sqlServiceStatsInfo.put("CONTACTS_ANSWERED_TIME",callInfo.callsAnsweredMaxT);
+		sqlServiceStatsInfo.put("CONTACTS_ACW_TOTAL",callInfo.callsInACW);
+		sqlServiceStatsInfo.put("CONTACTS_ACW_TIME",callInfo.callsACWMaxT);
+		sqlServiceStatsInfo.put("TOTAL_CONTACTS",callInfo.callsTotal);
+		sqlServiceStatsInfo.put("AGENTS_AVAILABLE_TOTAL",agentInfo.agentsAvailible);
+		sqlServiceStatsInfo.put("AGENTS_AVAILABLE_TIME","00:00:00");
+		sqlServiceStatsInfo.put("AGENTS_CALL_TOTAL",agentInfo.agentsInCall);
+		sqlServiceStatsInfo.put("AGENTS_CALL_TIME",callInfo.callsAnsweredMaxT);
+		sqlServiceStatsInfo.put("AGENTS_ACW_TOTAL",agentInfo.agentsInACW);
+		sqlServiceStatsInfo.put("AGENTS_ACW_TIME",callInfo.callsACWMaxT);
+		sqlServiceStatsInfo.put("AGENTS_OTHER_TOTAL",agentInfo.agentsInOnter);
+		sqlServiceStatsInfo.put("AGENTS_OTHER_TIME","00:00:00");
+		sqlServiceStatsInfo.put("TOTAL_AGENTS",agentInfo.agentsTotalConnected);
+		
+		sqlServiceStatsInfo.put("SERVICECOUNT", "0");
+		Database.executeDBRequest(null,"PMCONSOLREPORTS", "SELECT COUNT(*) AS SERVICECOUNT FROM <DBUSER>.WALLBOARD_SERVICESTATUS WHERE SERVICEID=:SERVICEID", sqlServiceStatsInfo,null);
+		if(sqlServiceStatsInfo.get("SERVICECOUNT").equals("0")){
+			Database.executeDBRequest(null,"PMCONSOLREPORTS",insertNewWALLBoardServiceStatusSql,sqlServiceStatsInfo,null,null);
+			
+		}
+		else{
+			Database.executeDBRequest("PMCONSOLREPORTS",updateExistingWALLBoardServiceStatusSql,sqlServiceStatsInfo);
+		}
+		
+		this.debug("UPDATED SERVICE STATUSSES");
+		
+		String loginIds="";
+		if(!agentInfo.agentsInfoSet.isEmpty()){
+			this.debug("START UPDATING SERVICE AGENT STATUSSES");
+			
+			HashMap<String,String> serviceAgentsStatsInfo=new HashMap<String,String>();
+			
+			for(int rowIndex:agentInfo.agentsInfoSet.keySet()){
+				if(rowIndex==0) continue;
+				serviceAgentsStatsInfo.clear();
+				serviceAgentsStatsInfo.putAll(Database.rowData(agentInfo.agentsInfoSet, rowIndex));
+				serviceAgentsStatsInfo.put("SERVICEID", serviceID);
+				serviceAgentsStatsInfo.put("BOUNDTYPE", agentInfo.serviceType.toUpperCase());
+				serviceAgentsStatsInfo.put("SERVICELOGINCOUNT", "0");
+				
+				Database.executeDBRequest("PMCONSOLREPORTS", "SELECT COUNT(0) AS SERVICELOGINCOUNT FROM <DBUSER>.WALLBOARD_SERVICE_AVAILABLE_AGENTS WHERE SERVICEID = :SERVICEID AND LOGIN = :LOGIN", serviceAgentsStatsInfo);
+				
+				if(serviceAgentsStatsInfo.get("SERVICELOGINCOUNT").equals("0")){
+					Database.executeDBRequest("PMCONSOLREPORTS","INSERT INTO <DBUSER>.WALLBOARD_SERVICE_AVAILABLE_AGENTS (SERVICEID,BOUNDTYPE,LOGIN,STATION,IPADDRESS,REQUESTEDCALLS,LAST_UPDATED) VALUES (:SERVICEID ,:BOUNDTYPE ,:LOGIN ,:STATION ,:IPADDRESS ,:REQUESTEDCALLS ,GETDATE())",serviceAgentsStatsInfo);
+				}
+				else{
+					Database.executeDBRequest("PMCONSOLREPORTS","UPDATE <DBUSER>.WALLBOARD_SERVICE_AVAILABLE_AGENTS SET SERVICEID=:SERVICEID ,BOUNDTYPE=:BOUNDTYPE ,LOGIN=:LOGIN ,STATION=:STATION ,IPADDRESS=:IPADDRESS ,REQUESTEDCALLS=:REQUESTEDCALLS ,LAST_UPDATED=GETDATE() WHERE SERVICEID=:SERVICEID AND LOGIN=:LOGIN",serviceAgentsStatsInfo);
+				}
+				
+				loginIds+=serviceAgentsStatsInfo.get("LOGIN")+",";
+				
+			}
+		}
+		
+		this.debug("CLEANUP UPDATING SERVICE AGENT STATUSSES");
+		Database.executeDBRequest("PMCONSOLREPORTS", "DELETE FROM <DBUSER>.WALLBOARD_SERVICE_AVAILABLE_AGENTS WHERE SERVICEID = "+agentInfo.service+" AND LOGIN NOT IN ("+loginIds+"0)", null);
+		
+		loginIds="";
+		if(!callInfo.agentCalls.isEmpty()){
+			this.debug("START UPDATING SERVICE AGENT CALL STATUS");
+			HashMap<String,String> serviceCallsStatsInfo=new HashMap<String,String>();
+			
+			for(int rowIndex:callInfo.agentCalls.keySet()){
+				if(rowIndex==0) continue;
+				serviceCallsStatsInfo.clear();
+				serviceCallsStatsInfo.putAll(Database.rowData(callInfo.agentCalls, rowIndex));
+				serviceCallsStatsInfo.put("SERVICEID", serviceID);
+				serviceCallsStatsInfo.put("BOUNDTYPE", callInfo.serviceType.toUpperCase());
+				
+				serviceCallsStatsInfo.put("SERVICELOGINCALLCOUNT", "0");
+				
+				Database.executeDBRequest("PMCONSOLREPORTS", "SELECT COUNT(0) AS SERVICELOGINCALLCOUNT FROM <DBUSER>.WALLBOARD_SERVICEAGENTCALLSSTATUS WHERE SERVICEID = :SERVICEID AND LOGIN = :LOGIN", serviceCallsStatsInfo);
+				
+				if(serviceCallsStatsInfo.get("SERVICELOGINCALLCOUNT").equals("0")){
+					Database.executeDBRequest("PMCONSOLREPORTS","INSERT INTO <DBUSER>.WALLBOARD_SERVICEAGENTCALLSSTATUS (ID,SERVICEID,BOUNDTYPE,CALLID,PHONE,LOGIN,TIME,STATUS,LAST_UPDATED) VALUES (:ID ,:SERVICEID ,:BOUNDTYPE ,:CALLID ,:PHONE ,:LOGIN ,:TIME ,:STATUS ,GETDATE())",serviceCallsStatsInfo);
+				}
+				else{
+					Database.executeDBRequest("PMCONSOLREPORTS","UPDATE <DBUSER>.WALLBOARD_SERVICEAGENTCALLSSTATUS SET ID=:ID ,SERVICEID=:SERVICEID ,BOUNDTYPE=:BOUNDTYPE ,CALLID=:CALLID ,PHONE=:PHONE ,LOGIN=:LOGIN ,TIME=:TIME ,STATUS=:STATUS ,LAST_UPDATED=GETDATE() WHERE SERVICEID=:SERVICEID AND LOGIN=:LOGIN",serviceCallsStatsInfo);
+				}
+				
+				loginIds+=serviceCallsStatsInfo.get("LOGIN")+",";
+			}
+			this.debug("END UPDATING SERVICE AGENT CALL STATUS");
+		}
+		
+		this.debug("CLEANUP UPDATING SERVICE AGENT CALL STATUS");
+		Database.executeDBRequest("PMCONSOLREPORTS", "DELETE FROM <DBUSER>.WALLBOARD_SERVICEAGENTCALLSSTATUS WHERE SERVICEID = "+callInfo.service+" AND LOGIN NOT IN ("+loginIds+"0)", null);
+		
+		sqlServiceStatsInfo.clear();
+		sqlServiceStatsInfo=null;
+	/*	Connection conn = null;
+		PreparedStatement stmnt = null;
+		
+		try {
+			stmnt.setInt(17, Integer.parseInt(agentInfo.agentsInACW));
+			stmnt.setString(18, callInfo.callsACWMaxT); //agentsInACWMaxT
+			stmnt.setInt(19, Integer.parseInt(agentInfo.agentsInOnter));
+			stmnt.setString(20, "00:00:00"); //agentsInOnterMaxT
+			stmnt.setInt(21, Integer.parseInt(agentInfo.agentsTotalConnected));
+			
+			stmnt.execute();
+			
+		} catch (SQLException e) {
+			throw new DataAccessException(e);
+		} finally {
+			if (stmnt != null) {
+				try {
+					stmnt.close();
+				} catch (SQLException e) {}
+			}
+			if (conn != null) {
+				try {
+					conn.close();
+				} catch (SQLException e) {}
+			}
+		}*/
+	}
+}

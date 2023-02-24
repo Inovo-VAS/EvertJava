@@ -1,0 +1,185 @@
+package baasserver.io.nio.handlers;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.util.ArrayList;
+
+public class MultiPartContentHandler extends RequestContentHandler {
+	public MultiPartContentHandler(RequestHandler requestHandler) {
+		super(requestHandler);
+	}	
+	
+	private enum MultiPartContentEnum{
+		generateBoundary,
+		multiPartHeaderName,
+		multiPartHeaderValue,
+		multiPartContent,
+		multiPartBoundary,
+		multiPartEnd
+	}
+	
+	private MultiPartContentEnum _multiPartContentStage=MultiPartContentEnum.generateBoundary;
+	private String _multiPartBoundary="";
+	private String _multiPartHeaderName="";
+	private String _multiPartHeaderValue="";
+	
+	private int _multiPartBoundaryIndex=0;
+	
+	private byte[] _multiPartBoundaryBytes=null;
+	private String _multiPartParamName="";
+	
+	private OutputStream _multiPartContentStream=null;
+	
+	private byte[] _multiPartContentBufferBytes=new byte[8192];
+	private int _multiPartContentBufferBytesIndex=0;
+	@Override
+	public void handleContentBytes(byte[] contentBytes) {
+		for(byte br:contentBytes){
+			switch(_multiPartContentStage){
+			case generateBoundary:
+				switch(br){
+				case 13:
+					continue;
+				case 10:
+					_multiPartBoundary="\r\n--"+_multiPartBoundary;
+					_multiPartBoundaryBytes=_multiPartBoundary.getBytes();
+					_multiPartBoundaryIndex=0;
+					_multiPartContentStage=MultiPartContentEnum.multiPartHeaderName;
+					break;
+				default:
+					_multiPartBoundary+=(char)br;
+					break;
+				}
+				break;
+			case multiPartBoundary:
+				
+				break;
+			case multiPartContent:
+				if(br==_multiPartBoundaryBytes[_multiPartBoundaryIndex]){
+					_multiPartBoundaryIndex++;
+					if(_multiPartBoundaryIndex==_multiPartBoundaryBytes.length){
+						
+						break;
+					}
+				}
+				if(_multiPartBoundaryIndex>0){
+					int multiPartBoundaryIndex=0;
+					while(_multiPartBoundaryIndex<_multiPartBoundaryIndex){
+						_multiPartContentBufferBytes[_multiPartContentBufferBytesIndex++]=_multiPartBoundaryBytes[multiPartBoundaryIndex++];
+						if(_multiPartContentBufferBytes.length==_multiPartContentBufferBytesIndex){
+							if(_multiPartContentStream!=null){
+								try {
+									_multiPartContentStream.write(_multiPartContentBufferBytes);
+								} catch (IOException e) {
+									e.printStackTrace();
+								}
+							}
+							_multiPartBoundaryIndex=0;
+						}
+						
+					}
+					_multiPartBoundaryIndex=0;
+				}
+				
+				_multiPartContentBufferBytes[_multiPartContentBufferBytesIndex++]=br;
+				if(_multiPartContentBufferBytes.length==_multiPartContentBufferBytesIndex){
+					if(_multiPartContentStream!=null){
+						try {
+							_multiPartContentStream.write(_multiPartContentBufferBytes);
+						} catch (IOException e) {
+							e.printStackTrace();
+						}
+					}
+					_multiPartBoundaryIndex=0;
+				}
+				
+				break;
+			case multiPartEnd:
+				break;
+			case multiPartHeaderName:
+				switch(br){
+				case 13:continue;
+				case 10:
+					if(!this.reqParameterProperty(_multiPartParamName, "FILENAME").equals("")){
+						this.setReqParameter(_multiPartParamName, this.reqParameterProperty(_multiPartParamName, "FILENAME"), true);
+						try {
+							this.setReqFileParam(_multiPartParamName, File.createTempFile("mulity", ".ses"));
+							this._multiPartContentStream=new FileOutputStream(this.reqFileParam(_multiPartParamName));
+						} catch (IOException e) {
+							e.printStackTrace();
+							this._multiPartContentStream=null;
+						}
+					}
+					else{
+						this._multiPartContentStream=new ByteArrayOutputStream();
+					}
+					_multiPartContentStage=MultiPartContentEnum.multiPartContent;
+					break;
+				case 58:
+					_multiPartHeaderName=_multiPartHeaderName.toUpperCase().trim();
+					_multiPartContentStage=MultiPartContentEnum.multiPartHeaderValue;
+					break;
+				default:
+					_multiPartHeaderName+=(char)br;
+					break;
+				}
+				break;
+			case multiPartHeaderValue:
+				switch(br){
+				case 13: continue;
+				case 10:
+					_multiPartHeaderValue=_multiPartHeaderValue.trim();
+					if(!_multiPartHeaderName.equals("")){
+						if(_multiPartHeaderName.equals("CONTENT-DISPOSITION")){
+							String paramPropValue="";
+							String paramPropName="";
+							_multiPartHeaderValue+=";";
+							this._multiPartParamName="";
+							for(char cm:_multiPartHeaderValue.toCharArray()){
+								switch (cm) {
+								case ';':
+									if(paramPropName.indexOf("=")>-1){
+										paramPropValue=paramPropName.substring(paramPropName.indexOf("=")+1).trim();
+										paramPropName=paramPropName.substring(0,paramPropName.indexOf("=")).toUpperCase().trim();
+										while(paramPropValue.startsWith("\"")&&paramPropValue.endsWith("\"")){
+											paramPropValue=paramPropValue.substring(1,paramPropValue.length()-1);
+										}
+										if(paramPropName.equals("NAME")){
+											this._multiPartParamName=paramPropValue.toUpperCase();
+										}
+										else{
+											this.setReqParameterProperty(_multiPartParamName, paramPropName, paramPropValue);
+										}
+									}
+									paramPropName="";
+									paramPropValue="";
+									break;
+								default:
+									paramPropName+=cm;
+									break;
+								}
+							}
+						}
+						else{
+							this.requestHandler().setReqParameterProperty(_multiPartParamName,_multiPartHeaderName,_multiPartHeaderValue.trim());
+						}
+						_multiPartHeaderName="";
+						_multiPartHeaderValue="";
+						_multiPartContentStage=MultiPartContentEnum.multiPartHeaderName;
+					}
+					break;
+				default:
+					_multiPartHeaderValue+=(char)br;
+					break;
+				}
+				break;
+			default:
+				break;
+			}
+		}
+	}
+}

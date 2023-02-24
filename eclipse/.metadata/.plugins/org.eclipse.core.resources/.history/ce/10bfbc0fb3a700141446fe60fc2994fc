@@ -1,0 +1,46 @@
+package inovo.automated.work.steps;
+
+import java.io.File;
+import java.io.FilenameFilter;
+import java.util.HashMap;
+
+import inovo.automated.work.AutomatedWorker;
+import inovo.automated.work.AutomatedWorkerStep;
+import inovo.db.Database;
+
+public class ImportFileStep extends AutomatedWorkerStep {
+
+	public ImportFileStep(AutomatedWorker automatedWorker,
+			HashMap<String, String> stepProperties) {
+		super(automatedWorker, stepProperties);
+	}
+
+	private File _fileDir=null;
+	
+	@Override
+	public void performAutomationStep() {
+		this.stepProperties().put("INLINESQLCOMMAND", "");
+		this.stepProperties().put("COMADELIM", "");
+		this.stepProperties().put("SOURCEPATH", "");
+		this.stepProperties().put("CURRENTFILEFIELDS", "");
+		this.stepProperties().put("FILELOOKUPMASK", "");
+		
+		try {
+			Database.executeDBRequest(null, "AUTOMATEDWORK", "SELECT INLINESQLCOMMAND,COMADELIM,SOURCEPATH,CURRENTFILEFIELDS,FILELOOKUPMASK FROM <DBUSER>.AUTOMATED_STEP_TYPE_IMPORTFILE WHERE STEP_ID=:STEPID", this.stepProperties(), null);
+			
+		} catch (Exception e) {
+		}
+		
+		_fileDir=new File(this.stepProperties().get("SOURCEPATH"));
+		if(_fileDir.isDirectory()){
+			File[]	filesFound=_fileDir.listFiles(new FilenameFilter() {
+				
+				@Override
+				public boolean accept(File file, String name) {
+					// TODO Auto-generated method stub
+					return false;
+				}
+			})
+		}
+	}
+}

@@ -1,0 +1,47 @@
+package baasserver;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
+import java.nio.channels.spi.SelectorProvider;
+import java.util.Iterator;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class Client implements Runnable {
+	
+	private static ExecutorService _clientsService=Executors.newCachedThreadPool();
+	
+	private SocketChannel _socketChannel=null;
+	private Selector _socketSelector=null;
+	
+	public Client(String protocol,String url,int port) throws IOException{
+		this._socketChannel=SocketChannel.open();
+		this._socketChannel.connect(new InetSocketAddress(protocol+ ":"+url,port));
+		this._socketSelector=SelectorProvider.provider().openSelector();
+		this._socketChannel.register(this._socketSelector ,SelectionKey.OP_CONNECT );
+	}
+	
+	@Override
+	public void run() {
+		try {
+			while(this._socketSelector.select()>0){
+				Iterator<SelectionKey> keyIterator= this._socketSelector.keys().iterator();
+				while(keyIterator.hasNext()){
+					SelectionKey selKey=keyIterator.next();
+					if(selKey.isValid()){
+						if(selKey.isConnectable()){
+							
+						}
+					}
+				}
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+	
+}

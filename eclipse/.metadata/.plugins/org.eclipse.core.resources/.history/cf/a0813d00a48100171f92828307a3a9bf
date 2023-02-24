@@ -1,0 +1,34 @@
+package inovo.x.link;
+
+import java.io.InputStream;
+
+import org.datacontract.schemas._2004._07.TelephonyApi.SerialNoDetails;
+import org.tempuri.BasicHttpBinding_ITelephonyServiceStub;
+
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+
+public class XLink extends InovoHTMLPageWidget {
+
+	private BasicHttpBinding_ITelephonyServiceStub basicHttpBinding_ITelephonyServiceStub=null;
+	
+	public XLink(InovoWebWidget parentWidget, InputStream inStream) {
+		super(parentWidget, inStream);
+	}
+
+	@Override
+	public void pageContent() throws Exception {
+		
+	}
+	
+	public void xlink_connect() throws Exception{
+		try{
+			basicHttpBinding_ITelephonyServiceStub=new BasicHttpBinding_ITelephonyServiceStub();
+			SerialNoDetails serialNoDetails=basicHttpBinding_ITelephonyServiceStub.findServiceItem(this.requestParameter("serial_no"));
+		}
+		catch(Exception e){
+		
+		}
+		
+	}
+}

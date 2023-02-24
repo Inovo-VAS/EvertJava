@@ -1,0 +1,584 @@
+package paas.scripting;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.TreeMap;
+
+public class ScriptEngine {
+	private ScriptEngine _parentScriptEngine=null;
+	public ScriptEngine(ScriptEngine parentScriptEngine){
+		this._parentScriptEngine=parentScriptEngine;
+		this.resetScriptEngine();
+	}
+
+	private HashMap<String, ScriptCodeStage> _scriptCodeStageMap=new HashMap<String, ScriptEngine.ScriptCodeStage>();
+	public void resetScriptEngine(){
+		this._tempScriptString.setLength(0);
+		this._scriptSectionStage=ScriptSectionStage.content;
+		if(this._startCodeBoundary!=null) this._startCodeBoundary=null;
+		this._startCodeBoundary=this.startCodeBoundary().getBytes();
+		this._startCodeBoundaryIndex=0;
+		if(this._endCodeBoundary!=null)this._endCodeBoundary=null;
+		this._endCodeBoundary=this.endCodeBoundary().getBytes();
+		this._endCodeBoundaryIndex=0;
+		while(!_contentBytes.isEmpty()){
+			this._currentContent=_contentBytes.remove(0);
+			this._currentContent=null;
+		}
+		this._currentContent=null;
+		this._currentContentIndex=0;
+		this._prevChar=0;
+		
+		//SCRIPT INTERPRATING
+		this._interpratedScriptCodeStages.clear();
+		
+		while(!this._interpratedScriptCodeStages.isEmpty()){
+			this._interpratedScriptCodeIndex=(Integer)this._interpratedScriptCodeStages.size()-1;
+			this._scriptCodeStage=this._interpratedScriptCodeStages.remove(_interpratedScriptCodeIndex);
+			if(this._interpratedScriptCodeContent.containsKey(_interpratedScriptCodeIndex)){
+				//switch (_scriptCodeStage) {
+				
+				//}
+				this._interpratedScriptCodeContent.remove(_interpratedScriptCodeIndex);
+			}
+		}
+		
+		this._interpratedScriptCodeIndex=0;
+		this._scriptCodeStage=ScriptCodeStage.none;
+		this._scriptCodeBlockLevel=0;
+		
+		while(!this._scriptCodeStageMap.isEmpty()){
+			this._scriptCodeStageMap.remove(this._scriptCodeStageMap.keySet().toArray()[0]);
+		}
+		
+		this._scriptCodeStageMap.clear();
+		
+		this._scriptCodeStageMap.put(this.codeStartCodeBlock(),ScriptCodeStage.codeBlockStart);
+		this._scriptCodeStageMap.put(this.codeEndCodeBlock(),ScriptCodeStage.codeBlockEnd);
+		
+		this._scriptCodeStageMap.put(this.codeStartBracket(),ScriptCodeStage.codeBracketStart);
+		this._scriptCodeStageMap.put(this.codeEndBracket(),ScriptCodeStage.codeBracketEnd);
+		
+		this._scriptCodeStageMap.put(this.codeEndLine(),ScriptCodeStage.codeEOL);
+		this._scriptCodeStageMap.put(this.codeRespond(),ScriptCodeStage.codeRespond);
+		
+		this._scriptCodeStageMap.put(this.codeAssign(),ScriptCodeStage.codeAssign);
+		
+		this._scriptCodeStageMap.put(this.codeIf(),ScriptCodeStage.codeIf);
+		this._scriptCodeStageMap.put(this.codeElseIf(),ScriptCodeStage.codeElseIf);
+		this._scriptCodeStageMap.put(this.codeElse(),ScriptCodeStage.codeElse);
+		
+		this._scriptCodeStageMap.put(this.codeFor(),ScriptCodeStage.codeFor);
+		this._scriptCodeStageMap.put(this.codeWhile(),ScriptCodeStage.codeWhile);
+		
+		this._scriptCodeStageMap.put("\"",ScriptCodeStage.codeString);
+		this._scriptCodeStageMap.put(".",ScriptCodeStage.codeMethod);
+		
+		this._scriptCodeIfElseLevel=0;
+		this._currentScriptCodeIfElseLines=null;
+		while(!_scriptCodeIfElseLevelLines.isEmpty()){
+			this._currentScriptCodeIfElseLines=this._scriptCodeIfElseLevelLines.remove((Integer)this._scriptCodeIfElseLevelLines.keySet().toArray()[0]);
+			this._currentScriptCodeIfElseLines.clear();
+			this._currentScriptCodeIfElseLines=null;
+		}
+		this._currentScriptCodeIfElseLines=null;
+		this._scriptCodeIfElseLevelLines.clear();
+		this._scriptCodeForWhileLevel=0;
+		while(!_scriptCodeForWhileLevelLines.isEmpty()){
+			this._currentScriptCodeForWhileLines=this._scriptCodeForWhileLevelLines.remove((Integer)this._scriptCodeForWhileLevelLines.keySet().toArray()[0]);
+			this._currentScriptCodeForWhileLines.clear();
+			this._currentScriptCodeForWhileLines=null;
+		}
+		this._currentScriptCodeForWhileLines=null;		
+		this._scriptCodeForWhileLevelLines.clear();
+		
+		this._scriptCodeBlockOwners.clear();
+		this._lastScriptCodeBlockOwnerStage=ScriptCodeStage.none;
+		while(!this._scriptCodeBlockOwnerLines.isEmpty()){
+			Integer ownerLineIndex=this._scriptCodeBlockOwnerLines.remove(0);
+			if(this._scriptCodeBlockOwnerLineRouting.containsKey(ownerLineIndex)){
+				 this._scriptCodeBlockOwnerLineRouting.remove((Integer)ownerLineIndex).clear();
+			}
+		}
+		this._scriptCodeBlockOwnerLines.clear();
+		this._scriptCodeBlockOwnerLineRouting.clear();
+		
+		this._codeElseFound=false;
+		this._scriptCodeBlockCloseLineRouting.clear();
+	}
+	
+	public String startCodeBoundary(){
+		return "<%";
+	}
+	
+	public String endCodeBoundary(){
+		return "%>";
+	}
+	
+	private StringBuilder _tempScriptString=new StringBuilder();
+	
+	private enum ScriptSectionStage{
+		script,
+		content
+	}
+	
+	public void processScriptBytes(byte[] scriptBytes) throws Exception{
+		if(scriptBytes==null) return;
+		if(scriptBytes.length==0) return;
+		for(byte sb:scriptBytes){
+			this.processScriptByteChar(sb, (char)sb);
+		}
+	}
+	
+	public void processScriptString(String scriptString) throws Exception{
+		if(scriptString==null) return;
+		if((scriptString=scriptString.trim()).equals("")) return;
+		this.processScriptBytes(scriptString.getBytes());
+	}
+	
+	private ScriptSectionStage _scriptSectionStage=ScriptSectionStage.content;
+	private byte[] _startCodeBoundary=null;
+	private int _startCodeBoundaryIndex=0;
+	private byte[] _endCodeBoundary=null;
+	private int _endCodeBoundaryIndex=0;
+	private int _tempCodeBoundaryIndex=0;
+	private byte[] _currentContent=null;
+	private int _currentContentIndex=0;
+	private ArrayList<byte[]> _contentBytes=new ArrayList<byte[]>();
+	private char _prevChar=0;
+	
+	private int _scriptCodeBlockLevel=0;
+	
+	public void processScriptByteChar(byte b, char c) throws Exception{
+		switch(this._scriptSectionStage){
+		case content:
+			if(this._endCodeBoundaryIndex==0){
+				if(this._startCodeBoundary[this._startCodeBoundaryIndex]==b){
+					this._startCodeBoundaryIndex++;
+					if(this._startCodeBoundaryIndex==this._startCodeBoundary.length){
+						this._scriptSectionStage=ScriptSectionStage.script;
+						this._endCodeBoundaryIndex=0;
+						//RESPOND CONTENT
+						if(!this._contentBytes.isEmpty()){
+							this.respondCodeContent(this._contentBytes);
+						}
+						while(!this._contentBytes.isEmpty()){
+							this._currentContent=this._contentBytes.remove(0);
+						}
+						this._currentContent=null;
+						this._currentContentIndex=0;
+					}
+				}
+				else{
+					if(this._startCodeBoundaryIndex>0){
+						_tempCodeBoundaryIndex=0;
+						while(_tempCodeBoundaryIndex<this._startCodeBoundaryIndex){
+							this.appendContent(this._startCodeBoundary[_tempCodeBoundaryIndex],(char)this._startCodeBoundary[_tempCodeBoundaryIndex++]);
+						}	
+						this._tempCodeBoundaryIndex=0;
+						this._startCodeBoundaryIndex=0;
+					}
+					this.appendContent(b,c);
+				}
+			}
+			break;
+		case script:
+			if(this._startCodeBoundaryIndex==this._startCodeBoundary.length){
+				if(this._endCodeBoundary[this._endCodeBoundaryIndex]==b){
+					this._endCodeBoundaryIndex++;
+					if(this._endCodeBoundaryIndex==this._endCodeBoundary.length){
+						this._scriptSectionStage=ScriptSectionStage.content;
+						this._endCodeBoundaryIndex=0;
+						this._startCodeBoundaryIndex=0;
+					}
+				}
+				else{
+					if(this._endCodeBoundaryIndex>0){
+						_tempCodeBoundaryIndex=0;
+						while(_tempCodeBoundaryIndex<this._endCodeBoundaryIndex){
+							this.interprateScriptByteChar(this._endCodeBoundary[_tempCodeBoundaryIndex],(char)this._endCodeBoundary[_tempCodeBoundaryIndex++]);
+						}	
+						this._tempCodeBoundaryIndex=0;
+						this._endCodeBoundaryIndex=0;
+					}
+					this.interprateScriptByteChar(b,c);
+				}
+			}
+			break;		
+		}
+		this._prevChar=c;
+	}
+
+	public void respondCodeContent(ArrayList<byte[]> contentBytes){
+		ArrayList<byte[]> copyofcontentBytes=new ArrayList<byte[]>(contentBytes);
+		contentBytes.clear();
+		this._interpratedScriptCodeStages.put(this._interpratedScriptCodeIndex,this._scriptCodeStage=ScriptCodeStage.codeRespond);
+		this._interpratedScriptCodeContent.put(_interpratedScriptCodeIndex, copyofcontentBytes);
+		this._interpratedScriptCodeIndex++;
+		this._scriptCodeStage=ScriptCodeStage.none;
+	}
+	
+	public void flushContentBytes(ArrayList<byte[]> contentBytes) {
+		
+	}
+
+	private enum ScriptCodeStage{
+		done,
+		none,
+		codeBlockStart,
+		codeBlockEnd,
+		codeBracketStart,
+		codeBracketEnd,
+		codeEOL,
+		codeIf,
+		codeElseIf,
+		codeElse,
+		codeFor,
+		codeWhile,
+		codeGT, //GREATER THAN
+		codeGTE, //GREATER THAN EQUAL
+		codeLT, //LESS THAN
+		codeLTE, //LESS THAN EQUAL,
+		codeEqual,
+		codeNOTEqual,
+		codeNOT,
+		codeAnd,
+		codeOr,
+		codeAssign,
+		codeRespond,
+		codeString,
+		codeValue,
+		codeElement,
+		codeMethod
+	}
+
+	private ScriptCodeStage _scriptCodeStage=ScriptCodeStage.none;
+	private Integer _interpratedScriptCodeIndex=0;
+	private TreeMap<Integer,ScriptCodeStage> _interpratedScriptCodeStages=new TreeMap<Integer, ScriptEngine.ScriptCodeStage>();
+	private TreeMap<Integer,Object> _interpratedScriptCodeContent=new TreeMap<Integer, Object>();
+	private String _testedScriptStage="";
+	
+	private int _scriptCodeIfElseLevel=0;
+	private HashMap<Integer,ArrayList<Integer>> _scriptCodeIfElseLevelLines=new HashMap<Integer, ArrayList<Integer>>();
+	private ArrayList<Integer> _currentScriptCodeIfElseLines=null;
+	private int _scriptCodeForWhileLevel=0;
+	private HashMap<Integer,ArrayList<Integer>> _scriptCodeForWhileLevelLines=new HashMap<Integer, ArrayList<Integer>>();
+	private ArrayList<Integer> _currentScriptCodeForWhileLines=null;
+	
+	private ScriptCodeStage _lastScriptCodeBlockOwnerStage=ScriptCodeStage.none;
+	private ArrayList<ScriptCodeStage> _scriptCodeBlockOwners=new ArrayList<ScriptEngine.ScriptCodeStage>();
+	private ArrayList<Integer> _scriptCodeBlockOwnerLines=new ArrayList<Integer>();
+	private TreeMap<Integer,ArrayList<Integer>> _scriptCodeBlockOwnerLineRouting=new TreeMap<Integer,ArrayList<Integer>>();
+	private TreeMap<Integer,Integer> _scriptCodeBlockCloseLineRouting=new TreeMap<Integer,Integer>();
+	private boolean _codeElseFound=false;
+	
+	private void interprateScriptByteChar(byte b,char c) throws Exception{
+		if(this._scriptCodeStage==ScriptCodeStage.codeString){
+			if(c=='"'){
+				this._interpratedScriptCodeContent.put(_interpratedScriptCodeIndex, _tempScriptString.substring(0,this._tempScriptString.length()));
+				this._interpratedScriptCodeStages.put((Integer)this._interpratedScriptCodeIndex,this._scriptCodeStage=ScriptCodeStage.codeValue);
+				this._interpratedScriptCodeIndex++;
+				this._tempScriptString.setLength(0);
+			}
+			else{
+				this._tempScriptString.append(c);
+			}
+			return;
+		}
+		else if(this._scriptCodeStage==ScriptCodeStage.codeMethod){
+			if((""+c).trim().equals("")){
+				this._interpratedScriptCodeContent.put(_interpratedScriptCodeIndex, _tempScriptString.substring(0,this._tempScriptString.length()));
+				this._interpratedScriptCodeStages.put((Integer)this._interpratedScriptCodeIndex,this._scriptCodeStage);
+				this._interpratedScriptCodeIndex++;
+				
+				this._tempScriptString.setLength(0);
+				this._scriptCodeStage=ScriptCodeStage.none;
+				
+				return;
+			}
+			else if(c=='('){
+				this._interpratedScriptCodeContent.put(_interpratedScriptCodeIndex, _tempScriptString.substring(0,this._tempScriptString.length()));
+				this._interpratedScriptCodeStages.put((Integer)this._interpratedScriptCodeIndex,this._scriptCodeStage);
+				this._interpratedScriptCodeIndex++;
+				
+				this._tempScriptString.setLength(0);
+				this._scriptCodeStage=ScriptCodeStage.none;
+				
+				this.interprateScriptByteChar(b, c);
+			}
+			else{
+				_tempScriptString.append(c);
+			}
+			return;
+		}
+		
+		if((""+c).trim().equals("")){
+			return;
+		}
+		
+		if(this.testScriptStringStage(this._tempScriptString.append(c).substring(0,this._tempScriptString.length()))){
+			if(_scriptCodeStage==ScriptCodeStage.codeElse){
+				if(!this._codeElseFound) this._codeElseFound=true;
+				this._prevChar=c;
+				this._tempScriptString.setLength(0);
+				return;
+			}
+			else if(_scriptCodeStage==ScriptCodeStage.codeIf&&this._codeElseFound){
+				_scriptCodeStage=ScriptCodeStage.codeElseIf;
+				this._codeElseFound=false;
+			}
+			else if(this._codeElseFound){
+				String tempString=this._tempScriptString.substring(0,this._tempScriptString.length());
+				this._tempScriptString.setLength(0);
+				for(byte be:"else".getBytes()){
+					this.interprateScriptByteChar(be, (char)be);
+				}
+				for(byte be:tempString.getBytes()){
+					this.interprateScriptByteChar(be, (char)be);
+				}
+				return;
+			}
+			if((this._scriptCodeStage!=ScriptCodeStage.codeString)&&(this._scriptCodeStage!=ScriptCodeStage.codeMethod)){
+				this._interpratedScriptCodeStages.put((Integer)this._interpratedScriptCodeIndex,this._scriptCodeStage);
+				this._interpratedScriptCodeIndex++;
+			}
+			if(this._scriptCodeStage==ScriptCodeStage.codeBlockStart){
+				if((this._scriptCodeBlockLevel++)==0){
+					this._lastScriptCodeBlockOwnerStage=ScriptCodeStage.none;
+					this._scriptCodeBlockOwners.add(_lastScriptCodeBlockOwnerStage);
+				}
+				else{
+					if(((this._lastScriptCodeBlockOwnerStage=this._scriptCodeBlockOwners.get(this._scriptCodeBlockOwners.size()-1))==ScriptCodeStage.codeIf)||(this._lastScriptCodeBlockOwnerStage==ScriptCodeStage.codeElseIf)||(this._lastScriptCodeBlockOwnerStage==ScriptCodeStage.codeElse)){
+						this._currentScriptCodeIfElseLines=this._scriptCodeIfElseLevelLines.get((Integer)this._scriptCodeIfElseLevel);
+						
+						ArrayList<Integer>  currentRouting=this._scriptCodeBlockOwnerLineRouting.get((Integer)this._currentScriptCodeIfElseLines.get(this._currentScriptCodeIfElseLines.size()-1));
+						if(currentRouting==null){
+							this._scriptCodeBlockOwnerLineRouting.put((Integer)this._currentScriptCodeIfElseLines.get(this._currentScriptCodeIfElseLines.size()-1),currentRouting=new ArrayList<Integer>());
+						}
+						
+						currentRouting.add((Integer)(this._interpratedScriptCodeIndex-1));
+						
+					}
+				}
+			}
+			else if(this._scriptCodeStage==ScriptCodeStage.codeBlockEnd){
+				if((this._scriptCodeBlockLevel-=1)==0){
+					this._lastScriptCodeBlockOwnerStage=this._scriptCodeStage=ScriptCodeStage.done;
+					this.interprateScriptByteChar(b, c);
+				}
+				else{
+					if(((this._lastScriptCodeBlockOwnerStage=this._scriptCodeBlockOwners.remove(this._scriptCodeBlockOwners.size()-1))==ScriptCodeStage.codeIf)||(this._lastScriptCodeBlockOwnerStage==ScriptCodeStage.codeElseIf)||(this._lastScriptCodeBlockOwnerStage==ScriptCodeStage.codeElse)){
+						//this._currentScriptCodeIfElseLines.add((Integer)(this._interpratedScriptCodeIndex-1));
+						this._currentScriptCodeIfElseLines=this._scriptCodeIfElseLevelLines.get((Integer)this._scriptCodeIfElseLevel);
+						
+						for(Integer currentScriptCodeIfElseLineIndex:this._currentScriptCodeIfElseLines){
+							ArrayList<Integer>  currentRouting=this._scriptCodeBlockOwnerLineRouting.get((Integer)currentScriptCodeIfElseLineIndex);
+							if(currentRouting.size()==1){
+								currentRouting.add((Integer)(this._interpratedScriptCodeIndex-1));
+								_scriptCodeBlockCloseLineRouting.put((Integer)currentRouting.get(1), (Integer)(this._interpratedScriptCodeIndex));
+							}
+							else if(currentRouting.size()==2){
+								//TODO CHECK SETTING CORRECT DESTINATION
+								//currentRouting.set(1, (Integer)(this._interpratedScriptCodeIndex-1));
+								_scriptCodeBlockCloseLineRouting.put((Integer)currentRouting.get(1), (Integer)(this._interpratedScriptCodeIndex));
+							}
+						}
+						this._scriptCodeIfElseLevel--;
+					}
+					else if((this._lastScriptCodeBlockOwnerStage==ScriptCodeStage.codeFor)||(this._lastScriptCodeBlockOwnerStage==ScriptCodeStage.codeWhile)){
+						this._scriptCodeForWhileLevel--;
+					}
+				}
+			}
+			else if((this._scriptCodeStage==ScriptCodeStage.codeIf)||(this._scriptCodeStage==ScriptCodeStage.codeElseIf)||(this._scriptCodeStage==ScriptCodeStage.codeElse)){
+				//this._scriptCodeIfElseLevel++;
+				this._scriptCodeBlockOwnerLines.add((Integer)(this._interpratedScriptCodeIndex-1));
+				this._lastScriptCodeBlockOwnerStage=this._scriptCodeStage;
+				this._scriptCodeBlockOwners.add(_lastScriptCodeBlockOwnerStage);
+				this._scriptCodeIfElseLevel++;
+				if(this._scriptCodeStage==ScriptCodeStage.codeIf){
+					this._scriptCodeIfElseLevelLines.put((Integer)this._scriptCodeIfElseLevel,this._currentScriptCodeIfElseLines=new ArrayList<Integer>());
+					this._currentScriptCodeIfElseLines.add((Integer)(this._interpratedScriptCodeIndex-1));
+				}
+				else{
+					this._currentScriptCodeIfElseLines=this._scriptCodeIfElseLevelLines.get((Integer)this._scriptCodeIfElseLevel);
+					this._currentScriptCodeIfElseLines.add((Integer)(this._interpratedScriptCodeIndex-1));
+				}
+			}
+			else if((this._scriptCodeStage==ScriptCodeStage.codeFor)||(this._scriptCodeStage==ScriptCodeStage.codeWhile)){
+				this._scriptCodeBlockOwnerLines.add((Integer)(this._interpratedScriptCodeIndex-1));
+				this._lastScriptCodeBlockOwnerStage=this._scriptCodeStage;
+				this._scriptCodeBlockOwners.add(_lastScriptCodeBlockOwnerStage);
+				this._scriptCodeForWhileLevel++;
+			}
+			this._tempScriptString.setLength(0);
+		}
+	}
+
+	private int _currentInterpratedLineIndex=0;
+	private int _codeblocklevel=0;
+	private void executeScript() throws Exception{
+		this._currentInterpratedLineIndex=0;
+		this._codeblocklevel=0;
+		this.evalNextInterpratedScriptStage();
+	}
+	
+	protected void evalNextInterpratedScriptStage(){
+		//CODE BLOCK START
+		if((this._scriptCodeStage=this._interpratedScriptCodeStages.get((Integer)_currentInterpratedLineIndex))==ScriptCodeStage.codeBlockStart){
+			_codeblocklevel++;
+			_currentInterpratedLineIndex++;
+		}	
+		//CODE BLOCK END
+		else if(this._scriptCodeStage==ScriptCodeStage.codeBlockEnd){
+			if((_codeblocklevel-=1)==0){
+				_currentInterpratedLineIndex=-1;
+			}
+			else{
+				_currentInterpratedLineIndex++;
+			}
+		}
+		//CODE RESPOND CONTENT
+		else if(this._scriptCodeStage==ScriptCodeStage.codeRespond){
+			this.flushContentBytes((ArrayList<byte[]>) this._interpratedScriptCodeContent.get(_currentInterpratedLineIndex));
+			_currentInterpratedLineIndex++;
+		}
+		if(_currentInterpratedLineIndex>-1) this.evalNextInterpratedScriptStage();
+	}
+
+	private boolean testScriptStringStage(String testString) {
+		if(this._scriptCodeStageMap.containsKey(testString)){
+			this._testedScriptStage=testString;
+			this._scriptCodeStage=this._scriptCodeStageMap.get(_testedScriptStage);
+			return true;
+		}
+		return false;
+	}
+
+	private void appendContent(byte b, char c) {
+		(this._currentContent=(this._currentContent==null?this._contentBytes.add(this._currentContent=new byte[8192])?_currentContent:_currentContent:_currentContent))[_currentContentIndex++]=b;
+		if(_currentContentIndex==_currentContent.length){
+			_currentContent=null;
+			_currentContentIndex=0;
+		}
+	}
+	
+	//SCRIPT SYMBOLE 
+	public String codeStartCodeBlock(){
+		return "{";
+	}
+	
+	public String codeEndCodeBlock(){
+		return "}";
+	}
+	
+	public String codeStartBracket(){
+		return "(";
+	}
+	
+	public String codeEndBracket(){
+		return ")";
+	}
+	
+	//END CODE LINE - ;
+	public String codeEndLine(){
+		return ";";
+	}
+	
+	//IF,ELSE IF,ELSE
+	
+	public String codeIf(){
+		return "if";
+	}
+	
+	public String codeElseIf(){
+		return "else if";
+	}
+	
+	public String codeElse(){
+		return "else";
+	}
+	
+	//WHILE,FOR
+	
+	public String codeFor(){
+		return "for";
+	}
+	
+	public String codeWhile(){
+		return "while";
+	}
+	
+	//OPERATORS (LOGIC)
+	
+	//GREATER THAN - >
+	public String codeGreaterThan(){
+		return ">";
+	}
+	
+	//GREATER THAN EQUAL - >=
+	public String codeGreaterThanEqual(){
+		return ">=";
+	}
+
+
+	//LESS THAN - <
+	public String codeLessThan(){
+		return "<";
+	}
+	
+	//LESS THAN EQUAL - >=
+	public String codeLessThanEqual(){
+		return "<=";
+	}
+	
+	//EQUAL - ==
+	public String codeEqual(){
+		return "==";
+	}
+	
+	//NOT EQUAL - !=
+	public String codeNotEqual(){
+		return "!=";
+	}
+	
+	//IS NOT - !
+	public String codeIsNot(){
+		return "!";
+	}
+	
+	//AND - &&
+	public String codeAnd(){
+		return "&&";
+	}
+	
+	//AND - ||
+	public String codeOr(){
+		return "||";
+	}
+	
+	//OPERATORS
+	
+	//ASSIGN - =
+	public String codeAssign(){
+		return "=";
+	}
+	
+	//RESPOND - =
+	public String codeRespond(){
+		return "=";
+	}
+	
+	//STRING PARENTHASIS
+	//STRING START - "
+	public String codeStringStart(){
+		return "=";
+	}
+
+	//STRING END - "
+	public String codeStringEnd(){
+		return "=";
+	}
+	
+	//END SCRIPT SYMBOLE
+}

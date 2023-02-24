@@ -1,0 +1,16 @@
+package baasserver.web.system;
+
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class InputField extends InputElement {
+
+	public InputField(IOWidgetHandle parentWidget, IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+	
+	public String fieldId(){
+		String fieldid=this.property("ID");
+		return (fieldid.equals("")?this.widgetClassName():fieldid);
+	}
+}

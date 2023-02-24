@@ -1,0 +1,18 @@
+package inovo.monitoring;
+
+import java.io.InputStream;
+
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+
+public class Dashboard extends InovoHTMLPageWidget {
+
+	public Dashboard(InovoWebWidget parentWidget, InputStream inStream) {
+		super(parentWidget, inStream);
+	}
+
+	@Override
+	public void pageContent() throws Exception {
+		
+	}
+}

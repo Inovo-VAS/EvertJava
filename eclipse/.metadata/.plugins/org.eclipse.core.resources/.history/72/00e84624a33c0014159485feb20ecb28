@@ -1,0 +1,502 @@
+package inovo.flat.file.leads.importer;
+
+import inovo.db.Database;
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Set;
+import java.util.TreeMap;
+
+public class FlatFileLeadsConfiguration extends InovoHTMLPageWidget
+{
+  public FlatFileLeadsConfiguration(InovoWebWidget parentWidget, InputStream inStream)
+  {
+    super(parentWidget, inStream);
+  }
+
+  public void pageContent() throws Exception
+  {
+    startTable(new String[] { "class=ui-widget-content" });
+    	startRow(null);
+    		startCell(null);
+    			fieldLabel("FILE ALLIAS");
+    		endCell();
+    		startCell(null);
+    			fieldInput("ADHOCFILEALLIAS", "", "text", true, null);
+    		endCell();
+    	endRow();
+    	startRow(null);
+    		startCell(new String[] { "colspan=2" });
+			    action("ADD ALLIAS", "addfileallias", "", getClass().getName(), "", "", "ui-icon-circle-plus", "");
+			    action("SEARCH", "searchfileallias", "", getClass().getName(), "", "", "ui-icon-search", "");
+			    action("CLONE ALLIAS", "clonefileallias", "", getClass().getName(), "", "", "ui-icon-copy", "");
+			endCell();
+		endRow();
+    endTable();
+    startElement("div", new String[] { "id=filealliases" }, true); endElement("div", true);
+    endElement("div", true);
+  }
+
+  public void filealliases() throws Exception {
+    HashMap<String,String> filealliasesfoundparams = new HashMap<String,String>();
+    filealliasesfoundparams.put("ADHOCFILEALLIAS", requestParameter("ADHOCFILEALLIAS"));
+    TreeMap<Integer,ArrayList<String>> filealliasesfound = Database.executeDBRequest("FLATFILELEADSIMPORTER", "SELECT [ID],[ALLIAS] FROM <DBUSER>.[LEADSDATAFILEALLIAS] WHERE UPPER([ALLIAS]) LIKE :ADHOCFILEALLIAS + '%'", filealliasesfoundparams);
+    startTable(null);
+    	startRow(null);
+    		startColumn("");
+    			respondString("CONFIGURED FILE ALLIASSES");
+    		endColumn();
+    		startColumn("");
+    			respondString("FILE ALLIAS");
+    		endColumn();
+    	endRow();
+    	startRow(null);
+    		startCell(new String[] { "style=vertical-align:top;background-color:#A9A9A9" });
+    			ArrayList filealliasactions = new ArrayList();
+
+			    for (Iterator localIterator = filealliasesfound.keySet().iterator(); localIterator.hasNext(); ) { int rowindex = ((Integer)localIterator.next()).intValue();
+			      if (rowindex != 0)
+			        filealliasactions.add(new String[] { "caption=" + Database.rowField(filealliasesfound, rowindex, "ALLIAS").toUpperCase(), "title=" + Database.rowField(filealliasesfound, rowindex, "ALLIAS").toUpperCase(), "urlparams=SELECTEDFILEALLIASID=" + Database.rowField(filealliasesfound, rowindex, "ID"), "endicon=ui-icon-extlink", "widget=" + getClass().getName(), "command=selectedfileallias", "actiontarget=selectedfileallias" });
+			    }
+			    actions(filealliasactions, true);
+			endCell();
+			startCell(new String[] { "style=vertical-align:top", "id=selectedfileallias" });
+			endCell();
+		endRow();
+    endTable();
+  }
+
+  public void selectedfileallias() throws Exception {
+    String filealliasid = requestParameter("SELECTEDFILEALLIASID");
+    if (filealliasid.equals("")) filealliasid = requestParameter("FILEALLIASID");
+
+    fieldHidden("FILEALLIASID", filealliasid);
+
+    HashMap<String,String> filealliassettings = new HashMap<String,String>();
+
+    filealliassettings.putAll(Database.rowData(Database.executeDBRequest("FLATFILELEADSIMPORTER", "SELECT * FROM <DBUSER>.[LEADSDATAFILEALLIAS] WHERE [ID]=" + filealliasid, null), 1));
+    boolean enableFields = (filealliassettings.get("ENABLEALLIAS")).toUpperCase().equals("FALSE");
+    startTable(new String[] { "style=" + (enableFields ? "background-color:#FFFFFF" : "background-color:#EAEAEA") });
+    	startRow(null);
+    		startCell(null);
+    			startTable(new String[] { "width=100%" });
+    				startRow(null);
+    					startColumn("width:100%");
+    						respondString("BASIC SETTINGS");
+    					endColumn();
+    					startCell(null);
+    						action(enableFields ? "ENABLE FILE IMPORT" : "DISBALE FILE IMPORT", "enabledisablefileallias", "", getClass().getName(), "", "", "", "enabledisableimport=" + (enableFields ? "ENABLE" : "DISABLE"));
+
+					    if (enableFields) {
+					      action("UPDATE FILE IMPORT DETAILS", "updatefileimportdetails", "", getClass().getName(), "", "", "", "");
+					      endCell();
+					    }
+					    else {
+					      endCell();
+					    }
+					endRow();
+				endTable();
+			endCell();
+		endRow();
+		startRow(null);
+			startCell(null);
+				startTable(null);
+					startRow(null);
+						startCell(null);
+							fieldLabel("FILE ALLIAS " + (enableFields ? "(DISABLED)" : "(ENABLED)"));
+						endCell();
+						startCell(null);
+							fieldInput("ALLIAS", filealliassettings.get("ALLIAS"), "text", enableFields, null);
+						endCell();
+						startCell(null);
+							fieldLabel("FILE PICKUP PATH");
+						endCell();
+						startCell(null);
+							fieldInput("SOURCEPATH", filealliassettings.get("SOURCEPATH"), "text", enableFields, new String[] { "size=50" });
+						endCell();
+					this.endRow();
+					this.startRow(null);
+						this.startCell(null);
+						this.endCell();
+						this.startCell(null);
+						this.endCell();
+						startCell(null);
+							fieldLabel("FILE PICKUP MASK");
+						endCell();
+						startCell(null);
+							fieldInput("FILELOOKUPMASK", filealliassettings.get("FILELOOKUPMASK"), "text", enableFields, new String[] { "size=50" });
+						endCell();
+					endRow();
+				endTable();
+				startTable(null);
+					startRow(null);
+						startCell(null);
+							fieldLabel("IMPORT FILE FIELDS");
+						endCell();
+					endRow();
+					startRow(null);
+						startCell(null);
+							fieldInput("CURRENTFILEFIELDS", filealliassettings.get("CURRENTFILEFIELDS"), "multiline", enableFields, new String[] { "cols=100", "rows=3" });
+						endCell();
+					endRow();
+				endTable();
+			endCell();
+		endRow();
+		startRow(null);
+    		startCell(null);
+    			startTable(null);
+    				startRow(null);
+    					startCell(null);
+    						fieldLabel("SERVICE NR FIELD");
+    					endCell();
+    					startCell(null);
+    						fieldInput("SERVICEIDFIELD", filealliassettings.get("SERVICEIDFIELD"), "text", enableFields, null);
+    					endCell();
+    					startCell(null);
+    						fieldLabel("DEFAULT SERVICE NR");
+    					endCell();
+    					startCell(null);
+    						fieldInput("DEFAULTSERVICEID", filealliassettings.get("DEFAULTSERVICEID"), "text", enableFields, null);
+    					endCell();
+    				endRow();
+    				startRow(null);
+    					startCell(null);
+    						fieldLabel("SERVICE LOAD NR FIELD");
+    					endCell();
+    					startCell(null);
+    						fieldInput("LOADIDFIELD", filealliassettings.get("LOADIDFIELD"), "text", enableFields, null);
+    					endCell();
+    					startCell(null);
+    						fieldLabel("DEFAULT SERVICE LOAD NR");
+    					endCell();
+    					startCell(null);
+    						fieldInput("DEFAULTLOADID", filealliassettings.get("DEFAULTLOADID"), "text", enableFields, null);
+    					endCell();
+    				endRow();
+    				startRow(null);
+    					startCell(null);
+    						fieldLabel("SERVICE LOAD PRIORITY FIELD");
+    					endCell();
+    					startCell(null);
+    						fieldInput("PRIORITYFIELD", filealliassettings.get("PRIORITYFIELD"), "text", enableFields, null);
+    					endCell();
+    					startCell(null);
+    						fieldLabel("DEFAULT SERVICE LOAD PRIORITY");
+    					endCell();
+    					startCell(null);
+    						fieldInput("DEFAULTPRIORITY", filealliassettings.get("DEFAULTPRIORITY"), "text", enableFields, null);
+    					endCell();
+    				endRow();
+    				startRow(null);
+    					startCell(null);
+    						fieldLabel("SOURCE ID FIELD");
+    					endCell();
+    					startCell(null);
+    						fieldInput("SOURCEIDFIELD", filealliassettings.get("SOURCEIDFIELD"), "text", enableFields, null);
+    					endCell();
+    					startCell(null);
+    					endCell();
+    					startCell(null);
+    					endCell();
+    				endRow();
+    			endTable();
+    			startTable(null);
+    				startRow(null);
+    					startCell(null);
+    						startTable(null);
+    							startRow(null);
+    								startCell(null);
+    									fieldLabel("CALLER NAME FIELD(S) MASK");
+    								endCell();
+    							endRow();
+    							startRow(null);
+    								startCell(null);
+    									fieldInput("CALLERNAMEFIELDS", filealliassettings.get("CALLERNAMEFIELDS"), "multiline", enableFields, new String[] { "cols=50", "rows=5" });
+    								endCell();
+    							endRow();
+    						endTable();
+    					endCell();
+    					startCell(null);
+    						startTable(null);
+    							startRow(null);
+    								startCell(null);
+    									fieldLabel("COMMENTS FIELD(S) MASK");
+    								endCell();
+    							endRow();
+    							startRow(null);
+    								startCell(null);
+    									fieldInput("COMMENTSFIELDS", filealliassettings.get("COMMENTSFIELDS"), "multiline", enableFields, new String[] { "cols=50", "rows=5" });
+    								endCell();
+    							endRow();
+    						endTable();
+    					endCell();
+    				endRow();
+    			endTable();
+    		endCell();
+    	endRow();
+    	startRow(null);
+    		startColumn("");
+    			respondString("SERVICE (CAMPAIGN) LOAD AND CALL CREATION SETTINGS");
+    		endColumn();
+    	endRow();
+    	startRow(null);
+    		startCell(null);
+    			startTable(null);
+    				startRow(null);
+    					startCell(new String[]{"style=vertical-align:top"});
+    						startTable(new String[] { "style=border:solid 1px #A8A8A8" });
+    							startRow(null);
+    								startCell(null);
+    									fieldLabel("USE FILE NAME WHEN CREATING LOAD");
+    								endCell();
+    								startCell(null);
+    									fieldInput("USEFILENAMEASLOADNAME",(enableFields?"TRUE":(filealliassettings.get("USEFILENAMEASLOADNAME").toUpperCase().equals("TRUE")?"TRUE":"FALSE")), "checkbox", enableFields, (filealliassettings.get("USEFILENAMEASLOADNAME")).toUpperCase().equals("TRUE") ? new String[] { "checked=checked" } : null);
+    								endCell();
+    							endRow();
+    						endTable();
+    					endCell();
+    					startCell(new String[]{"style=vertical-align:top"});
+    						startTable(new String[] { "style=border:solid 1px #A8A8A8" });
+    							startRow(null);
+    								startCell(null);
+    									fieldLabel("FORCE CREATING LOAD");
+    								endCell();
+    								startCell(null);
+    									fieldInput("FORCECREATINGLOAD", (enableFields?"TRUE":(filealliassettings.get("FORCECREATINGLOAD").toUpperCase().equals("TRUE")?"TRUE":"FALSE")), "checkbox", enableFields, (filealliassettings.get("FORCECREATINGLOAD")).toUpperCase().equals("TRUE") ? new String[] { "checked=checked" } : null);
+    								endCell();
+    							endRow();
+    						endTable();
+    					endCell();
+    					startCell(null);
+    						startTable(new String[] { "style=border:solid 1px #A8A8A8" });
+	    						startRow(null);
+    								startCell(null);
+    									fieldLabel("ENABLE LOAD WHEN CREATED");
+    								endCell();
+    								startCell(null);
+    									fieldInput("ENABLENEWLOAD", (enableFields?"TRUE":(filealliassettings.get("ENABLENEWLOAD").toUpperCase().equals("TRUE")?"TRUE":"FALSE")), "checkbox", enableFields, (filealliassettings.get("ENABLENEWLOAD")).toUpperCase().equals("TRUE") ? new String[] { "checked=checked" } : null);
+    								endCell();
+   								endRow();
+   								startRow(null);
+									startCell(null);
+										fieldLabel("LOAD NAME MASK");
+									endCell();
+									startCell(null);
+										fieldInput("LOADNAMEMASK", filealliassettings.get("LOADNAMEMASK"), "text", enableFields, null);
+									endCell();
+								endRow();
+   							endTable();
+   						endCell();
+   					endRow();
+   				endTable();
+   			endCell();
+   		endRow();
+   		startRow(null);
+   			startColumn("");
+    				respondString("PHONE NUMBER FIELD(S) FILE MAPPING");
+   			endColumn();
+   		endRow();
+   		startRow(null);
+   			startCell(null);
+  				startTable(null);
+   					startRow(null);
+   						for (int phonenr = 1; phonenr <= 10; phonenr++) {
+							startCell(new String[] { "nowrap=nowrap" });
+								fieldLabel("PHONE NR " + String.valueOf(phonenr) + " FIELD");
+							endCell();
+							startCell(null);
+								fieldInput("PHONE" + String.valueOf(phonenr) + "FIELD", filealliassettings.get("PHONE" + String.valueOf(phonenr) + "FIELD"), "text", enableFields, null);
+							endCell();
+							if (phonenr % 2 == 0) {
+								endRow();
+								startRow(null);
+							}
+						}
+					endRow();
+				endTable();
+			endCell();
+		endRow();
+   		startRow(null);
+   			startColumn("");
+   				respondString("METAFIELD(S) FILE MAPPING - LEADS AUTOMATION STAGING TABLE");
+   			endColumn();
+   		endRow();
+   		startRow(null);
+			startCell(null);
+				startTable(null);
+					startRow(null);
+						for (int metafieldnr = 1; metafieldnr <= 20; metafieldnr++) {
+							startCell(null);
+								startTable(null);
+									startRow(null);
+										startCell(new String[] { "nowrap=nowrap" });
+											fieldLabel("METAFIELD" + String.valueOf(metafieldnr));
+										endCell();
+									endRow();
+									startRow(null);
+										startCell(null);
+											fieldInput("METAFIELD" + String.valueOf(metafieldnr), filealliassettings.get("METAFIELD" + String.valueOf(metafieldnr)), "multiline", enableFields, new String[] { "cols=50", "rows=3" });
+										endCell();
+									endRow();
+								endTable();
+							endCell();
+							if (metafieldnr % 2 == 0) {
+								endRow();
+								startRow(null);
+							}
+						}
+					endRow();
+				endTable();
+			endCell();
+		endRow();
+	endTable();
+  }
+
+  public void enabledisablefileallias()
+    throws Exception
+  {
+    if (requestParameter("enabledisableimport").equals("DISABLE")) {
+      Database.executeDBRequest("FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.[LEADSDATAFILEALLIAS] SET [ENABLEALLIAS]='FALSE' WHERE [ID]=" + requestParameter("FILEALLIASID"), null);
+      replaceComponentContent("selectedfileallias");
+      selectedfileallias();
+      endReplaceComponentContent();
+    }
+    else if (requestParameter("enabledisableimport").equals("ENABLE")) {
+      Database.executeDBRequest("FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.[LEADSDATAFILEALLIAS] SET [ENABLEALLIAS]='TRUE' WHERE [ID]=" + requestParameter("FILEALLIASID"), null);
+      replaceComponentContent("selectedfileallias");
+      selectedfileallias();
+      endReplaceComponentContent();
+    }
+  }
+
+  public void updatefileimportdetails() throws Exception {
+    HashMap<String,String> filesettingstoupdate = new HashMap<String,String>();
+    importRequestParametersIntoMap(filesettingstoupdate, "FILEALLIASID,ALLIAS,SOURCEIDFIELD,SERVICEIDFIELD,DEFAULTSERVICEID,LOADIDFIELD,DEFAULTLOADID,PRIORITYFIELD,DEFAULTPRIORITY,CALLERNAMEFIELDS,COMMENTSFIELDS,USEFILENAMEASLOADNAME,FORCECREATINGLOAD");
+    importRequestParametersIntoMap(filesettingstoupdate, "PHONE1FIELD,PHONE2FIELD,PHONE3FIELD,PHONE4FIELD,PHONE5FIELD,PHONE6FIELD,PHONE7FIELD,PHONE8FIELD,PHONE9FIELD,PHONE10FIELD");
+    importRequestParametersIntoMap(filesettingstoupdate, "METAFIELD1,METAFIELD2,METAFIELD3,METAFIELD4,METAFIELD5,METAFIELD6,METAFIELD7,METAFIELD8,METAFIELD9,METAFIELD10");
+    importRequestParametersIntoMap(filesettingstoupdate, "METAFIELD11,METAFIELD12,METAFIELD13,METAFIELD14,METAFIELD15,METAFIELD16,METAFIELD17,METAFIELD18,METAFIELD19,METAFIELD20");
+    importRequestParametersIntoMap(filesettingstoupdate, "SOURCEPATH,CURRENTFILEFIELDS,ENABLENEWLOAD,FILELOOKUPMASK,LOADNAMEMASK");
+
+    if ((filesettingstoupdate.get("DEFAULTPRIORITY")).equals("")) filesettingstoupdate.put("DEFAULTPRIORITY", "100");
+    if ((filesettingstoupdate.get("USEFILENAMEASLOADNAME")).equals("")) filesettingstoupdate.put("USEFILENAMEASLOADNAME", "FALSE");
+    if ((filesettingstoupdate.get("FORCECREATINGLOAD")).equals("")) filesettingstoupdate.put("FORCECREATINGLOAD", "FALSE");
+    if ((filesettingstoupdate.get("ENABLENEWLOAD")).equals("")) filesettingstoupdate.put("ENABLENEWLOAD", "FALSE");
+
+    ArrayList<String> filesettingstoupdateerrors = new ArrayList<String>();
+
+    ArrayList<String> currentFileFields = new ArrayList<String>();
+
+    for (String currentfilefield : (filesettingstoupdate.get("CURRENTFILEFIELDS")).split(",")) {
+      if (!currentfilefield.trim().equals("")) {
+        currentFileFields.add(currentfilefield.toUpperCase().trim());
+      }
+    }
+    if ((filesettingstoupdate.get("ALLIAS")).equals("")) {
+      filesettingstoupdateerrors.add("NO FILE ALLIAS ENTERED");
+    }
+
+    if (!(filesettingstoupdate.get("SERVICEIDFIELD")).equals("")) {
+      filesettingstoupdate.put("SERVICEIDFIELD", (filesettingstoupdate.get("SERVICEIDFIELD")).trim().toUpperCase());
+      if (currentFileFields.indexOf(filesettingstoupdate.get("SERVICEIDFIELD")) == -1) {
+        filesettingstoupdateerrors.add("THE FIELD SPECIFIED FOR SERVICE NR IS NOT VALID");
+      }
+    }
+    if (!(filesettingstoupdate.get("LOADIDFIELD")).equals("")) {
+      filesettingstoupdate.put("LOADIDFIELD", (filesettingstoupdate.get("LOADIDFIELD")).trim().toUpperCase());
+      if (currentFileFields.indexOf(filesettingstoupdate.get("LOADIDFIELD")) == -1) {
+        filesettingstoupdateerrors.add("THE FIELD SPECIFIED FOR SERVICE LOAD NR IS NOT VALID");
+      }
+    }
+    if (!(filesettingstoupdate.get("PRIORITYFIELD")).equals("")) {
+      filesettingstoupdate.put("PRIORITYFIELD", (filesettingstoupdate.get("PRIORITYFIELD")).trim().toUpperCase());
+      if (currentFileFields.indexOf(filesettingstoupdate.get("PRIORITYFIELD")) == -1) {
+        filesettingstoupdateerrors.add("THE FIELD SPECIFIED FOR CALL PRIORITY IS NOT VALID");
+      }
+    }
+
+    boolean firstPhonenrFound = false;
+    for (int phonenr = 1; phonenr <= 10; phonenr++) {
+      filesettingstoupdate.put("PHONE" + String.valueOf(phonenr) + "FIELD", (filesettingstoupdate.get("PHONE" + String.valueOf(phonenr) + "FIELD")).trim().toUpperCase());
+      String phonenrtouse = filesettingstoupdate.get("PHONE" + String.valueOf(phonenr) + "FIELD");
+      if (!firstPhonenrFound) {
+        firstPhonenrFound = !phonenrtouse.equals("");
+      }
+      if ((!phonenrtouse.equals("")) && 
+        (currentFileFields.indexOf(phonenrtouse) == -1)) {
+        filesettingstoupdateerrors.add("THE FIELD SPECIFIED FOR PHONE" + String.valueOf(phonenr) + "FIELD IS NOT VALID");
+      }
+
+    }
+
+    if (filesettingstoupdateerrors.isEmpty()) {
+      Database.executeDBRequest("FLATFILELEADSIMPORTER", "UPDATE <DBUSER>.[LEADSDATAFILEALLIAS] SET [ALLIAS] = UPPER(:ALLIAS) ,[SOURCEIDFIELD] = :SOURCEIDFIELD ,[SERVICEIDFIELD] = :SERVICEIDFIELD,[DEFAULTSERVICEID] = :DEFAULTSERVICEID ,[LOADIDFIELD] = :LOADIDFIELD,[DEFAULTLOADID] = :DEFAULTLOADID ,[PRIORITYFIELD] = :PRIORITYFIELD, [DEFAULTPRIORITY] = :DEFAULTPRIORITY,[CALLERNAMEFIELDS] = :CALLERNAMEFIELDS ,[COMMENTSFIELDS] = :COMMENTSFIELDS ,[USEFILENAMEASLOADNAME] = :USEFILENAMEASLOADNAME ,[FORCECREATINGLOAD] = :FORCECREATINGLOAD ,[PHONE1FIELD] = :PHONE1FIELD ,[PHONE2FIELD] = :PHONE2FIELD ,[PHONE3FIELD] = :PHONE3FIELD ,[PHONE4FIELD] = :PHONE4FIELD ,[PHONE5FIELD] = :PHONE5FIELD ,[PHONE6FIELD] = :PHONE6FIELD ,[PHONE7FIELD] = :PHONE7FIELD ,[PHONE8FIELD] = :PHONE8FIELD,[PHONE9FIELD] = :PHONE9FIELD ,[PHONE10FIELD] = :PHONE10FIELD ,[METAFIELD1] = :METAFIELD1,[METAFIELD2] = :METAFIELD2 ,[METAFIELD3] = :METAFIELD3,[METAFIELD4] = :METAFIELD4,[METAFIELD5] = :METAFIELD5 ,[METAFIELD6] = :METAFIELD6,[METAFIELD7] = :METAFIELD7,[METAFIELD8] = :METAFIELD8,[METAFIELD9] = :METAFIELD9,[METAFIELD10] = :METAFIELD10,[METAFIELD11] = :METAFIELD11,[METAFIELD12] = :METAFIELD12 ,[METAFIELD13] = :METAFIELD13,[METAFIELD14] = :METAFIELD14 ,[METAFIELD15] = :METAFIELD15,[METAFIELD16] = :METAFIELD16 ,[METAFIELD17] = :METAFIELD17,[METAFIELD18] = :METAFIELD18,[METAFIELD19] = :METAFIELD19,[METAFIELD20] = :METAFIELD20 ,[SOURCEPATH] = :SOURCEPATH ,[CURRENTFILEFIELDS] = :CURRENTFILEFIELDS ,[ENABLENEWLOAD] = :ENABLENEWLOAD,[FILELOOKUPMASK]=:FILELOOKUPMASK,[LOADNAMEMASK]=:LOADNAMEMASK WHERE [ID]=" + requestParameter("FILEALLIASID"), filesettingstoupdate);
+    }
+    else {
+      showDialog("", new String[] { "title=UPDATE FILE IMPORT ALLIAS", "contentid=filesettingstoupdateerrors" });
+      replaceComponentContent("filesettingstoupdateerrors");
+      startElement("ul", new String[] { "style=color:#EA3333" }, true);
+      for (; !filesettingstoupdateerrors.isEmpty(); 
+        endElement("li", true)) { startElement("li", null, true); respondString(encodeHTML(filesettingstoupdateerrors.remove(0)));
+      }
+
+      endElement("ul", true);
+      endReplaceComponentContent();
+    }
+
+    filesettingstoupdate.clear();
+  }
+
+  public void searchfileallias() throws Exception {
+    replaceComponentContent("filealliases");
+    filealliases();
+    endReplaceComponentContent();
+  }
+
+  public void addfileallias() throws Exception {
+    if (requestParameter("ADHOCFILEALLIAS").equals("")) {
+      showDialog("", new String[] { "title=ADDING FILE ALLIAS", "content=NO FILE ALLIAS ENTERED" });
+    }
+    else {
+      HashMap<String,String> addedfileallliasparams = new HashMap<String,String>();
+      importRequestParametersIntoMap(addedfileallliasparams, "ADHOCFILEALLIAS");
+      addedfileallliasparams.put("ADHOCFILEALLIASCOUNT", "0");
+      Database.executeDBRequest("FLATFILELEADSIMPORTER", "SELECT COUNT(*) AS ADHOCFILEALLIASCOUNT FROM <DBUSER>.[LEADSDATAFILEALLIAS] WHERE UPPER([ALLIAS]) LIKE UPPER(:ADHOCFILEALLIAS)", addedfileallliasparams);
+
+      if (!(addedfileallliasparams.get("ADHOCFILEALLIASCOUNT")).equals("0")) {
+        showDialog("", new String[] { "title=ADDING FILE ALLIAS", "content=FILE ALLIAS [" + (addedfileallliasparams.get("ADHOCFILEALLIAS")).toUpperCase() + "] ALREADY EXIST" });
+      }
+      else
+      {
+        Database.executeDBRequest("FLATFILELEADSIMPORTER", "INSERT INTO <DBUSER>.[LEADSDATAFILEALLIAS] ([ALLIAS],[ENABLEALLIAS]) VALUES(UPPER(:ADHOCFILEALLIAS),'FALSE')", addedfileallliasparams);
+        replaceComponentContent("filealliases");
+        filealliases();
+        endReplaceComponentContent();
+      }
+    }
+  }
+
+  public void clonefileallias() throws Exception {
+    if (requestParameter("ADHOCFILEALLIAS").equals("")) {
+      showDialog("", new String[] { "title=ADDING FILE ALLIAS", "content=NO FILE ALLIAS ENTERED" });
+    }
+    else {
+      HashMap<String,String> addedfileallliasparams = new HashMap<String,String>();
+      importRequestParametersIntoMap(addedfileallliasparams, "ADHOCFILEALLIAS");
+      addedfileallliasparams.put("ADHOCFILEALLIASCOUNT", "0");
+      Database.executeDBRequest("FLATFILELEADSIMPORTER", "SELECT COUNT(*) AS ADHOCFILEALLIASCOUNT FROM <DBUSER>.[LEADSDATAFILEALLIAS] WHERE UPPER([ALLIAS]) LIKE UPPER(:ADHOCFILEALLIAS)", addedfileallliasparams);
+      if (!(addedfileallliasparams.get("ADHOCFILEALLIASCOUNT")).equals("0")) {
+        showDialog("", new String[] { "title=CLONING FILE ALLIAS", "content=FILE ALLIAS [" + (addedfileallliasparams.get("ADHOCFILEALLIAS")).toUpperCase() + "] ALREADY EXIST" });
+      }
+      else {
+        addedfileallliasparams.put("ALLIAS", requestParameter("ALLIAS"));
+        Database.executeDBRequest("FLATFILELEADSIMPORTER", "INSERT INTO <DBUSER>.[LEADSDATAFILEALLIAS] ([ALLIAS],[ENABLEALLIAS],[SOURCEIDFIELD],[SERVICEIDFIELD],[DEFAULTSERVICEID],[LOADIDFIELD],[DEFAULTLOADID],[PRIORITYFIELD],[DEFAULTPRIORITY],[CALLERNAMEFIELDS],[COMMENTSFIELDS],[USEFILENAMEASLOADNAME],[FORCECREATINGLOAD],[PHONE1FIELD],[PHONE2FIELD],[PHONE3FIELD],[PHONE4FIELD],[PHONE5FIELD],[PHONE6FIELD],[PHONE7FIELD],[PHONE8FIELD],[PHONE9FIELD],[PHONE10FIELD],[METAFIELD1],[METAFIELD2],[METAFIELD3],[METAFIELD4],[METAFIELD5],[METAFIELD6],[METAFIELD7],[METAFIELD8],[METAFIELD9],[METAFIELD10],[METAFIELD11],[METAFIELD12],[METAFIELD13],[METAFIELD14],[METAFIELD15],[METAFIELD16],[METAFIELD17],[METAFIELD18],[METAFIELD19],[METAFIELD20],[SOURCEPATH],[CURRENTFILEFIELDS],[ENABLENEWLOAD],[LOADNAMEMASK],[FILELOOKUPMASK]) SELECT TOP 1 UPPER(:ADHOCFILEALLIAS) AS [ALLIAS],'FALSE' AS [ENABLEALLIAS],[SOURCEIDFIELD],[SERVICEIDFIELD],[DEFAULTSERVICEID],[LOADIDFIELD],[DEFAULTLOADID],[PRIORITYFIELD],[DEFAULTPRIORITY],[CALLERNAMEFIELDS],[COMMENTSFIELDS],[USEFILENAMEASLOADNAME],[FORCECREATINGLOAD],[PHONE1FIELD],[PHONE2FIELD],[PHONE3FIELD],[PHONE4FIELD],[PHONE5FIELD],[PHONE6FIELD],[PHONE7FIELD],[PHONE8FIELD],[PHONE9FIELD],[PHONE10FIELD],[METAFIELD1],[METAFIELD2],[METAFIELD3],[METAFIELD4],[METAFIELD5],[METAFIELD6],[METAFIELD7],[METAFIELD8],[METAFIELD9],[METAFIELD10],[METAFIELD11],[METAFIELD12],[METAFIELD13],[METAFIELD14],[METAFIELD15],[METAFIELD16],[METAFIELD17],[METAFIELD18],[METAFIELD19],[METAFIELD20],[SOURCEPATH],[CURRENTFILEFIELDS],[ENABLENEWLOAD],[LOADNAMEMASK],[FILELOOKUPMASK] FROM <DBUSER>.[LEADSDATAFILEALLIAS] WHERE UPPER([ALLIAS])=UPPER(:ALLIAS)", addedfileallliasparams);
+        replaceComponentContent("filealliases");
+        filealliases();
+        endReplaceComponentContent();
+      }
+    }
+  }
+}

@@ -1,0 +1,48 @@
+package inovo.x.link;
+
+import java.io.InputStream;
+import java.util.HashMap;
+
+import org.datacontract.schemas._2004._07.TelephonyApi.SerialNoDetails;
+import org.tempuri.BasicHttpBinding_ITelephonyServiceStub;
+import org.tempuri.ITelephonyService;
+import org.tempuri.TelephonyService2Locator;
+
+import inovo.web.InovoHTMLPageWidget;
+import inovo.web.InovoWebWidget;
+
+public class XLink extends InovoHTMLPageWidget {
+
+	private BasicHttpBinding_ITelephonyServiceStub basicHttpBinding_ITelephonyServiceStub=null;
+	
+	public XLink(InovoWebWidget parentWidget, InputStream inStream) {
+		super(parentWidget, inStream);
+	}
+
+	@Override
+	public void pageContent() throws Exception {
+		
+	}
+	
+	public void xlink_connect() throws Exception{
+		try{
+			TelephonyService2Locator telephonyService2Locator=new TelephonyService2Locator();
+			ITelephonyService iTelephonyService=telephonyService2Locator.getBasicHttpBinding_ITelephonyService();
+			SerialNoDetails serialNoDetails=iTelephonyService.findServiceItem(this.requestParameter("serial_no"));
+			HashMap<String,String> mappedInfo=new HashMap<String,String>();
+			mappedInfo.put("account-name", serialNoDetails.getAccountName());
+			mappedInfo.put("account-no", serialNoDetails.getAccountNo());
+			mappedInfo.put("contact-firstname", serialNoDetails.getContactFirstName());
+			mappedInfo.put("contact-lastname", serialNoDetails.getContactLastName());
+			mappedInfo.put("serial-no", serialNoDetails.getSerialNo());
+			mappedInfo.put("description", serialNoDetails.getDescription());
+			this.respondString(mappedInfo.toString());
+		}
+		catch(Exception e){
+			
+			inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug("ERROR:"+e.getMessage());
+			e.printStackTrace();
+		}
+		
+	}
+}

@@ -1,0 +1,48 @@
+package inovo.automation.scheduledsqljobs;
+
+import inovo.db.Database;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class ScheduledSqlJobsQueue implements Runnable{
+	
+	private static ScheduledSqlJobsQueue _scheduledSqlJobsQueue=null;
+	
+	private boolean _shutdownQueue=false;
+	
+	private ExecutorService _sheduledJobsService=Executors.newCachedThreadPool();
+	
+	public ScheduledSqlJobsQueue(){
+		_sheduledJobsService.execute(this);
+	}
+	
+	private void logDebug(String message){
+		inovo.servlet.InovoServletContextListener.inovoServletListener().logDebug(message);
+	}
+	
+	public void readRowData(Integer rowindex,ArrayList<String> rowData,ArrayList<String> rowColumns){
+		HashMap<String,String> scheduledSqlJobSettings=Database.rowData(rowColumns, rowData);
+		
+		
+	}
+
+	@Override
+	public void run() {
+		this.logDebug("STARTED ScheduledSqlJobsQueue");
+		while(!_shutdownQueue){
+			try {
+				Database.executeDBRequest(null, "SCHEDULEDSQLJOBS", "SELECT ID,SQLCOMMAND,SECONDSINTERVAL,ACTIVE,PARAM1NAME ,PARAM1VALUE ,PARAM2NAME ,PARAM2VALUE ,PARAM3NAME ,PARAM3VALUE ,PARAM4NAME ,PARAM4VALUE ,PARAM5NAME ,PARAM5VALUE ,PARAM6NAME ,PARAM6VALUE ,PARAM7NAME ,PARAM7VALUE ,PARAM8NAME ,PARAM8VALUE ,PARAM9NAME ,PARAM9VALUE ,PARAM10NAME ,PARAM10VALUE ,PARAM11NAME ,PARAM11VALUE ,PARAM12NAME ,PARAM12VALUE ,PARAM13NAME ,PARAM13VALUE ,PARAM14NAME ,PARAM14VALUE ,PARAM15NAME ,PARAM15VALUE ,PARAM16NAME ,PARAM16VALUE ,PARAM17NAME ,PARAM17VALUE ,PARAM18NAME ,PARAM18VALUE ,PARAM19NAME ,PARAM19VALUE ,PARAM20NAME ,PARAM20VALUE FROM <DBUSER>.SCHEDULEDSQLJOBS WHERE ACTIVE='E'", null, this);
+			} catch (Exception e1) {
+				
+			}
+			try {
+				Thread.sleep(30*1024);
+			} catch (InterruptedException e) {
+			}
+		}
+		this.logDebug("STOPPED ScheduledSqlJobsQueue");
+	}
+}

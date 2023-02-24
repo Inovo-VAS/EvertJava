@@ -1,0 +1,8 @@
+package baas.saas.graphics;
+
+public class Graphic implements IGraphic{
+	
+	public Graphic(){
+		
+	}
+}

@@ -1,0 +1,15 @@
+package inovo.queues;
+
+public class Request implements Runnable {
+
+	@Override
+	public void run() {
+		if()
+		
+	}
+	
+	public int requestDelay(){
+		return 2;
+	}
+
+}

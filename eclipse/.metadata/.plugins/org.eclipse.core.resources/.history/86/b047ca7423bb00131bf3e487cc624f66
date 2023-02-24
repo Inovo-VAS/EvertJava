@@ -1,0 +1,833 @@
+package baasserver.scripting;
+
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.TreeMap;
+
+public class CodingScriptBroker {
+
+	private Object _returnValue=null;
+	private ArrayList<Object> _returnValues=new ArrayList<Object>();
+	private ArrayList<Method> _methodsFound=new ArrayList<Method>();
+	private ArrayList<ArrayList<Object>> _methodParamsFound=new ArrayList<ArrayList<Object>>();
+	private ArrayList<Object> _objectValues=new ArrayList<Object>();
+	private ArrayList<Integer> _bracketCodingOwnerIndexes=new ArrayList<Integer>();
+	private HashMap<Long,ArrayList<Object>> _codingLoopIterators=new HashMap<Long,ArrayList<Object>>();
+	private Object _codingIteratorValue=null;
+	private ArrayList<Object> _codingIteratorSet=null;
+	private int _commitCodingRespondIndex=-1;
+	private boolean _returnValFromMethod=false;
+	
+	private Object _objectToScript=null;
+	
+	public CodingScriptBroker(Object objectToScript) {
+		this._objectToScript=objectToScript;
+	}
+	
+	public Object codingIteratorValue(){
+		return _codingIteratorValue;
+	}
+	
+	private String _replaceComponentStartMask="";
+	
+	public void setReplaceComponentStartMask(String replaceComponentMask){
+		this._replaceComponentStartMask=replaceComponentMask;
+	}
+	
+	private String _replaceComponentEndMask="";
+	
+	public void setReplaceComponentEndMask(String replaceComponentMask){
+		this._replaceComponentEndMask=replaceComponentMask;
+	}
+	
+	private int _codingSpecificLength=0;
+	private ArrayList<String> _codingSpecific=new ArrayList<String>(codingSpecific(
+				new String[]{";", // 0
+						"=", // 1
+						"{","}", //2,3
+						"(",")", //4,5
+						",", //6
+						"\"", // 7
+						"if","else if","else", //8,9,10
+						"for","while", //11,12
+						"iterator", //13
+						"iteratorSet",//14
+						"method", //15
+						"params", //16
+						"widget", //17
+						"script", //18
+						"handleWidgetContent", //19
+						"respond", //20
+						"replaceComponent", //21
+						"endReplaceComponent", //22
+						"appendScript" , //23
+						"endAppendScript" //24
+					}
+				));
+	
+	private TreeMap<Long,Integer> _codingReadPhrases=new TreeMap<Long,Integer>();
+	private TreeMap<Long,ArrayList<Object>> _codingReadContent=new TreeMap<Long,ArrayList<Object>>();
+	private long _codingReadPhrasesIndex=0;
+	
+	private int _codingIndexStage=-1;
+	private int _codingPrevIndexStage=-1;
+	private String _codingPhrase="";
+	
+	public Object executeScriptObjectMethod(String methodName,Object[]methodParams) throws Exception{
+		return this.executeObjectMethod(_objectToScript, methodName, methodParams);
+	}
+	
+	public Object executeObjectMethod(Object object,String methodName,Object[]methodParams) throws Exception{
+		Method objectMethod=baasserver.reflection.REFUtils.findMethod(methodName, object.getClass(), null, true);
+		if(objectMethod!=null){
+			return objectMethod.invoke(object, methodParams);
+		}
+		return null;
+	}
+	
+	public int codingSpecificIndex(String codingPhraseToTest){
+		if(codingPhraseToTest.length()>this._codingSpecificLength){
+			return -1;
+		}
+		return this._codingSpecific.indexOf(codingPhraseToTest);
+	}
+	
+	private ArrayList<Integer> _brasesLevelOwnersFound=new ArrayList<Integer>();
+	
+	private HashMap<Long,ArrayList<Long>> _codeblockCodePhrasePatterns=new HashMap<Long,ArrayList<Long>>();
+	
+	private HashMap<Long,ArrayList<Long>> _codeblockLevelCodePhrasePatterns=new HashMap<Long,ArrayList<Long>>();
+	
+	private ArrayList<Integer> _brasesCodeblockLevelOwnersFound=new ArrayList<Integer>();
+	
+	private long _codeblockLevel=0;
+	
+	private void reOrderCodingPhraseRead(int codingIndexStage,Long codingReadPhrasesIndex,long maxCodingSetIndex) {
+		int nextCodingPhraseIndex=(codingReadPhrasesIndex<maxCodingSetIndex? this._codingReadPhrases.get((Long) (codingReadPhrasesIndex+1)):-1);
+		
+		if(codingIndexStage==this.codingSpecificIndex("if")||codingIndexStage==this.codingSpecificIndex("else if")||codingIndexStage==this.codingSpecificIndex("else")||codingIndexStage==this.codingSpecificIndex("for")||codingIndexStage==this.codingSpecificIndex("while")){
+			this._brasesCodeblockLevelOwnersFound.add(codingIndexStage);
+			_codeblockCodePhrasePatterns.put((Long)codingReadPhrasesIndex, new ArrayList<Long>());
+			if(codingIndexStage==this.codingSpecificIndex("if")||codingIndexStage==this.codingSpecificIndex("for")||codingIndexStage==this.codingSpecificIndex("while")){
+				_codeblockLevelCodePhrasePatterns.put((Long)(_codeblockLevel+=1),new ArrayList<Long>());
+				if(codingIndexStage==this.codingSpecificIndex("while")){
+					_codeblockCodePhrasePatterns.get((Long)codingReadPhrasesIndex).add(codingReadPhrasesIndex);
+				}
+			}
+			_codeblockLevelCodePhrasePatterns.get((Long)(_codeblockLevel)).add(codingReadPhrasesIndex);
+		}
+		else if(codingIndexStage==this.codingSpecificIndex("{")){
+			ArrayList<Long> codeblockLevelCodePhrasePattern=_codeblockLevelCodePhrasePatterns.get((Long)(_codeblockLevel));
+			(codeblockLevelCodePhrasePattern=_codeblockCodePhrasePatterns.get(codeblockLevelCodePhrasePattern.get(codeblockLevelCodePhrasePattern.size()-1))).add(codingReadPhrasesIndex);
+		}
+		else if(codingIndexStage==this.codingSpecificIndex("}")){
+			int codeBockPhraseOwner=this._brasesCodeblockLevelOwnersFound.remove(this._brasesCodeblockLevelOwnersFound.size()-1);
+			
+			ArrayList<Long> codeblockCodeLevelPhrasePattern=_codeblockLevelCodePhrasePatterns.get((Long)(_codeblockLevel));
+			
+			ArrayList<Long> codeblockCodePhrasePattern=_codeblockCodePhrasePatterns.get(codeblockCodeLevelPhrasePattern.get(codeblockCodeLevelPhrasePattern.size()-1));
+			
+			codeblockCodePhrasePattern.add(codingReadPhrasesIndex);
+			if(nextCodingPhraseIndex==this.codingSpecificIndex("else if")||nextCodingPhraseIndex==this.codingSpecificIndex("else")){
+				codeblockCodePhrasePattern.add(codingReadPhrasesIndex+1);
+			}
+			if(
+					(codeBockPhraseOwner==this.codingSpecificIndex("for")||codeBockPhraseOwner==this.codingSpecificIndex("while"))
+						||((codeBockPhraseOwner==this.codingSpecificIndex("if")||codeBockPhraseOwner==this.codingSpecificIndex("else if")||codeBockPhraseOwner==this.codingSpecificIndex("else"))
+							&&
+							(nextCodingPhraseIndex!=this.codingSpecificIndex("if")&&nextCodingPhraseIndex!=this.codingSpecificIndex("else if")&&nextCodingPhraseIndex!=this.codingSpecificIndex("else"))
+							)
+					){
+				
+				if(codeBockPhraseOwner==this.codingSpecificIndex("if")||codeBockPhraseOwner==this.codingSpecificIndex("else if")||codeBockPhraseOwner==this.codingSpecificIndex("else")){
+					long lastCodeblockCodeLevelPhrasePatternKey=-1;
+					for(Long codeblockCodeLevelPhrasePatternKey:codeblockCodeLevelPhrasePattern){
+						codeblockCodePhrasePattern=_codeblockCodePhrasePatterns.get(lastCodeblockCodeLevelPhrasePatternKey=codeblockCodeLevelPhrasePatternKey);
+						codeblockCodePhrasePattern.add(codingReadPhrasesIndex+1);
+					}
+					if(codeBockPhraseOwner==this.codingSpecificIndex("if")&&codeblockCodeLevelPhrasePattern.size()==1){
+						codeblockCodePhrasePattern.add(codingReadPhrasesIndex+1);
+					}
+				}
+				else if(codeBockPhraseOwner==this.codingSpecificIndex("for")||codeBockPhraseOwner==this.codingSpecificIndex("while")){
+					codeblockCodePhrasePattern.add(codingReadPhrasesIndex+1);
+				}
+				
+				if(_codeblockLevel>0) _codeblockLevel--;
+			}
+		}
+	}
+	
+	private StringBuilder _mainActiveScriptResponse=new StringBuilder();
+	
+	private boolean _respondToEctiveScript=false;
+	
+	public void performCodingRead() throws Exception{
+		
+		this.putCodingReadPhrase(this.codingSpecificIndex(";"));
+		this._codingReadPhrasesIndex=0;
+		long maxCodingSetIndex=this._codingReadPhrases.lastKey();
+		
+		while((this._codingReadPhrasesIndex+=1)<=maxCodingSetIndex){
+			this._codingIndexStage=this._codingReadPhrases.get((Long) this._codingReadPhrasesIndex);
+			reOrderCodingPhraseRead(this._codingIndexStage,this._codingReadPhrasesIndex,maxCodingSetIndex);
+		}
+		
+		this._codingReadPhrasesIndex=0;
+		maxCodingSetIndex=this._codingReadPhrases.lastKey();
+			
+		this._codeblockLevel=0;
+		
+		this._brasesLevelOwnersFound.clear();
+		
+		this._codeblockLevelCodePhrasePatterns.clear();
+		
+		this._brasesCodeblockLevelOwnersFound.clear();
+		
+		this.incCodingReadPhraseIndex();
+		
+		while(this._codingReadPhrasesIndex<=maxCodingSetIndex){
+			this._codingIndexStage=this._codingReadPhrases.get((Long) this._codingReadPhrasesIndex);
+			this.performCodingPhraseRead(this._codingIndexStage,this._codingReadPhrasesIndex,maxCodingSetIndex);
+		}
+		
+		this._codingReadPhrasesIndex=0;
+	}
+	
+	private boolean _appendToScript=false;
+	
+	private boolean _evaluatedConditionFailed=false;
+	private void performCodingPhraseRead(int codingIndexStage,
+			long codingReadPhrasesIndex, long maxCodingSetIndex) throws Exception{
+		if(this.codingSpecificIndex(";")==codingIndexStage){
+			if(this.codingSpecificIndex("respond")==_commitCodingRespondIndex||this.codingSpecificIndex("replaceComponent")==_commitCodingRespondIndex||this.codingSpecificIndex("endReplaceComponent")==_commitCodingRespondIndex){
+				 if(this._commitCodingRespondIndex==this.codingSpecificIndex("respond")){
+					 if(!this._returnValues.isEmpty()) this._returnValue=this._returnValues.remove(this._returnValues.size()-1);
+					 if(this._returnValue!=null){
+						 if(this._returnValue instanceof String){
+							 System.out.print(this._returnValue);
+							 this.executeScriptObjectMethod("writeBytes", new Object[]{((String)_returnValue).getBytes()});
+						 }
+						 else{
+							 this.executeScriptObjectMethod("writeBytes", new Object[]{String.valueOf(_returnValue).getBytes()});
+						 }
+					 }
+				 }
+				 else if(this._commitCodingRespondIndex==this.codingSpecificIndex("replaceComponent")){
+					 if(!this._returnValues.isEmpty()) this._returnValue=this._returnValues.remove(this._returnValues.size()-1);
+					 if(this._returnValue!=null){
+						if(this._returnValue instanceof String){
+							 this.executeScriptObjectMethod("writeBytes", new Object[]{((String)_returnValue).getBytes()});
+						}
+					 }
+				 }
+				 else if(this._commitCodingRespondIndex==this.codingSpecificIndex("endReplaceComponent")){
+					 if(!this._returnValues.isEmpty()) this._returnValue=this._returnValues.remove(this._returnValues.size()-1);
+					 if(this._returnValue!=null){
+						if(this._returnValue instanceof String){
+							 this.executeScriptObjectMethod("writeBytes", new Object[]{((String)_returnValue).getBytes()});
+						}
+					 }
+				 }
+			}
+			 this._returnValue=null;
+			 this._commitCodingRespondIndex=-1;
+			 this._returnValFromMethod=false;
+			 this.incCodingReadPhraseIndex();
+		}
+		else if(codingIndexStage==this.codingSpecificIndex("appendScript")){
+			this._appendToScript=true;
+			this._returnValFromMethod=false;
+			 this.incCodingReadPhraseIndex();
+		}
+		else if(codingIndexStage==this.codingSpecificIndex("endAppendScript")){
+			this._appendToScript=false;
+			this._returnValFromMethod=false;
+			 this.incCodingReadPhraseIndex();
+		}
+		else if(this.codingSpecificIndex("respond")==codingIndexStage||this.codingSpecificIndex("replaceComponent")==codingIndexStage||this.codingSpecificIndex("endReplaceComponent")==codingIndexStage){ 
+			 _commitCodingRespondIndex=codingIndexStage;
+			 this._returnValFromMethod=false;
+			 this.incCodingReadPhraseIndex();
+		}
+		else if(this.codingSpecificIndex("\"")==codingIndexStage){
+			 this._returnValues.add(this.getCodingReadContent(codingReadPhrasesIndex).remove(0));
+			 if(!this._bracketCodingOwnerIndexes.isEmpty()){
+				 if(this._bracketCodingOwnerIndexes.get(this._bracketCodingOwnerIndexes.size()-1)==this.codingSpecificIndex("method")){
+					 if(!this._methodParamsFound.isEmpty()) this._methodParamsFound.get(this._methodParamsFound.size()-1).add(this._returnValues.remove(this._returnValues.size()-1));
+				 }
+			 }
+			 this._returnValFromMethod=false;
+			 this.incCodingReadPhraseIndex();
+		}
+		else if(codingIndexStage==this.codingSpecificIndex("for")||codingIndexStage==this.codingSpecificIndex("while")){
+			this._brasesLevelOwnersFound.add(codingIndexStage);
+			this._codeblockLevelCodePhrasePatterns.put((_codeblockLevel+=1), this._codeblockCodePhrasePatterns.get(codingReadPhrasesIndex));
+			this._returnValFromMethod=false;
+			this.incCodingReadPhraseIndex();
+		}
+		else if(codingIndexStage==this.codingSpecificIndex("if")||codingIndexStage==this.codingSpecificIndex("else if")||codingIndexStage==this.codingSpecificIndex("else")){
+			if(codingIndexStage==this.codingSpecificIndex("if")){
+				this._codeblockLevelCodePhrasePatterns.put((_codeblockLevel+=1), this._codeblockCodePhrasePatterns.get(codingReadPhrasesIndex));
+			}
+			else{
+				this._codeblockLevelCodePhrasePatterns.put((_codeblockLevel), this._codeblockCodePhrasePatterns.get(codingReadPhrasesIndex));
+			}
+			this._brasesLevelOwnersFound.add(codingIndexStage);
+			this._returnValFromMethod=false;
+			this.incCodingReadPhraseIndex();
+		}
+		else if(this.codingSpecificIndex("handleWidgetContent")==codingIndexStage){
+			 this.executeObjectMethod(this.getCodingReadContent(codingReadPhrasesIndex).remove(0), "handelContent", new Object[]{(HashMap<String,String>)this.getCodingReadContent(codingReadPhrasesIndex).remove(0),this._objectToScript});
+			 _commitCodingRespondIndex=codingIndexStage;
+			 this._returnValFromMethod=false;
+			 this.incCodingReadPhraseIndex();
+		 }
+		else if(this.codingSpecificIndex(",")==codingIndexStage){
+			 this._returnValFromMethod=false;
+			 this.incCodingReadPhraseIndex();
+		 }
+		 else if(this.codingSpecificIndex("(")==codingIndexStage){
+			 this._bracketCodingOwnerIndexes.add((_codingPrevIndexStage!=codingIndexStage?_codingPrevIndexStage:codingIndexStage));
+			 this.incCodingReadPhraseIndex();
+		 }
+		 else if(this.codingSpecificIndex(")")==codingIndexStage){
+			 int codeBracketOwnerIndex=this._bracketCodingOwnerIndexes.remove(this._bracketCodingOwnerIndexes.size()-1);
+			 if(codeBracketOwnerIndex==this.codingSpecificIndex("method")){
+				 if(!this._methodsFound.isEmpty()){
+					 Object methodOwner=_objectValues.remove(_objectValues.size()-1);
+					 Method methodToInvoke=this._methodsFound.remove(_methodsFound.size()-1);
+					 Object[] paramsFound=null;
+					 if(_returnValFromMethod){
+						 this._returnValues.add(_returnValue);
+						 if(!this._methodParamsFound.isEmpty()) this._methodParamsFound.get(this._methodParamsFound.size()-1).add(this._returnValues.remove(this._returnValues.size()-1));
+						 _returnValFromMethod=false;
+					 }
+					 ArrayList<Object> params=this._methodParamsFound.remove(this._methodParamsFound.size()-1);
+					 if(params.isEmpty()){
+						 paramsFound=null;
+					 }
+					 else{
+						 paramsFound=params.toArray();
+						 
+						 params.clear();
+					 }
+					 
+					 params=null;
+					 
+					 if(paramsFound!=null){
+						 if(methodToInvoke.getParameterTypes().length!=paramsFound.length){
+							Class<?>[] paramTypes=new Class<?>[paramsFound.length];
+							for(int paramIndex=0;paramIndex<paramsFound.length;paramIndex++){
+								paramTypes[paramIndex]=paramsFound[paramIndex].getClass();
+							}
+							methodToInvoke=baasserver.reflection.REFUtils.findMethod(methodToInvoke.getName(), methodOwner.getClass() ,paramTypes, false);
+						 }
+					 }
+					 else{
+						 if(methodToInvoke.getParameterTypes().length>0){
+							 Class<?>[] paramTypes=new Class<?>[0];
+							 methodToInvoke=baasserver.reflection.REFUtils.findMethod(methodToInvoke.getName(), methodOwner.getClass() ,paramTypes, false);
+						 }
+					 }
+					 
+					 if(methodToInvoke.getReturnType().equals(Void.TYPE)){
+						 methodToInvoke.invoke(methodOwner, paramsFound);
+					 }
+					 else{
+						try{
+							this._returnValue=methodToInvoke.invoke(methodOwner, paramsFound);
+							this._returnValFromMethod=true;
+							if(!this._methodParamsFound.isEmpty()){
+								ArrayList<Object> currentMethodParams=this._methodParamsFound.get(this._methodParamsFound.size()-1);
+								if(!currentMethodParams.isEmpty()){
+									if(currentMethodParams.get(currentMethodParams.size()-1).equals(methodOwner)){
+										currentMethodParams.set(currentMethodParams.size()-1, this._returnValue);
+										this._returnValFromMethod=false;
+									}
+								}
+							}
+						}
+						catch(Exception e){
+							System.out.println(methodOwner.toString());
+							
+							System.out.println(methodToInvoke.toString());
+							throw e;
+						}
+					 }
+				 }
+				 this.incCodingReadPhraseIndex();
+			 }
+			 else if(codeBracketOwnerIndex==this.codingSpecificIndex("if")||codeBracketOwnerIndex==this.codingSpecificIndex("else if")||codeBracketOwnerIndex==this.codingSpecificIndex("else")){
+				 ArrayList<Long> ifconditionCodePhraseDestinations=this._codeblockLevelCodePhrasePatterns.get(_codeblockLevel);
+				 this.incCodingReadPhraseIndex();
+				 if((boolean)this._returnValue||codeBracketOwnerIndex==this.codingSpecificIndex("else")){
+					 this._codingReadPhrasesIndex=ifconditionCodePhraseDestinations.get(0);
+					 this._evaluatedConditionFailed=false;
+				 }
+				 else{
+					 this._codingReadPhrasesIndex=ifconditionCodePhraseDestinations.get(1);
+					 this._evaluatedConditionFailed=true;
+				 }
+				 _returnValFromMethod=false;
+			 }
+			 else if(codeBracketOwnerIndex==this.codingSpecificIndex("for")||codeBracketOwnerIndex==this.codingSpecificIndex("while")){
+				 this.incCodingReadPhraseIndex();
+				 ArrayList<Long> codeblockPhraseDestinations=this._codeblockLevelCodePhrasePatterns.get(_codeblockLevel);
+				 
+				 this._codingReadPhrasesIndex=codeblockPhraseDestinations.get(0);
+				 
+				 if(codeBracketOwnerIndex==this.codingSpecificIndex("for")){
+					 
+					 ArrayList<Object> codingLoopIterator=null;
+					 if(_codingLoopIterators.containsKey((Long)this._codeblockLevel)){
+						 codingLoopIterator=_codingLoopIterators.get((Long)this._codeblockLevel);
+					 }
+					 else{
+						 if(this._returnValue!=null){
+							 if(this._returnValue instanceof Object[]){
+								 codingLoopIterator=new ArrayList<Object>();
+								 for(Object arrValue:(Object[])this._returnValue){
+									 codingLoopIterator.add(arrValue);
+								 }
+							 }
+							 else{
+								 codingLoopIterator=new ArrayList<Object>((ArrayList<Object>)this._returnValue);
+							 }
+						 }
+						 else{
+							 codingLoopIterator=new ArrayList<Object>(); 
+						 }
+						 
+						 if(codingLoopIterator.isEmpty()){
+							 this._codingReadPhrasesIndex=codeblockPhraseDestinations.get(codeblockPhraseDestinations.size()-2); 
+						 }
+						 else{
+							 this._codingIteratorValue=codingLoopIterator.get(0);
+							 _codingLoopIterators.put((Long)this._codeblockLevel, codingLoopIterator);
+						 }
+					 }	 
+				 }
+				 else if(codeBracketOwnerIndex==this.codingSpecificIndex("while")){
+					 if((boolean)this._returnValue){
+						 this._codingReadPhrasesIndex=codeblockPhraseDestinations.get(1);
+						 this._evaluatedConditionFailed=false;
+					 }
+					 else{
+						 this._codingReadPhrasesIndex=codeblockPhraseDestinations.get(2);
+						 this._evaluatedConditionFailed=true;
+					 }
+				 }
+				 _returnValFromMethod=false;
+			 }
+		 }
+		 else if(this.codingSpecificIndex("{")==codingIndexStage){
+			this.incCodingReadPhraseIndex();
+		 }
+		 else if(this.codingSpecificIndex("}")==codingIndexStage){
+			int codingBraseOwner=this._brasesLevelOwnersFound.remove(this._brasesLevelOwnersFound.size()-1);
+			this.incCodingReadPhraseIndex();			
+			if(codingBraseOwner==this.codingSpecificIndex("for")){
+				ArrayList<Long> brasesLevelOwnersCodeTargetsFound=this._codeblockLevelCodePhrasePatterns.get(_codeblockLevel);
+				ArrayList<Object> codingLoopIterator=this._codingLoopIterators.get((Long)this._codeblockLevel);
+				if(!codingLoopIterator.isEmpty()){
+					codingLoopIterator.remove(0);
+				}
+				if(!codingLoopIterator.isEmpty()){
+					this._codingIteratorValue=codingLoopIterator.get(0);
+					this._brasesLevelOwnersFound.add((Integer)codingBraseOwner);
+					this._codingReadPhrasesIndex=brasesLevelOwnersCodeTargetsFound.get(0);
+				}
+				else{
+					this._codingLoopIterators.remove((Long)this._codeblockLevel);
+					if(_codeblockLevel>0) _codeblockLevel--;
+					this._codingReadPhrasesIndex=brasesLevelOwnersCodeTargetsFound.get(brasesLevelOwnersCodeTargetsFound.size()-1);
+				}
+			}
+			else if(codingBraseOwner==this.codingSpecificIndex("while")){
+				ArrayList<Long> brasesLevelOwnersCodeTargetsFound=this._codeblockLevelCodePhrasePatterns.get(_codeblockLevel);
+				if(!_evaluatedConditionFailed){
+					this._codingReadPhrasesIndex=brasesLevelOwnersCodeTargetsFound.get(0);
+					if(_codeblockLevel>0) _codeblockLevel--;
+				}
+				else{
+					_evaluatedConditionFailed=false;
+					if(_codeblockLevel>0) _codeblockLevel--;
+					this._codingReadPhrasesIndex=brasesLevelOwnersCodeTargetsFound.get(brasesLevelOwnersCodeTargetsFound.size()-1);
+				}
+			}	
+			else if(codingBraseOwner==this.codingSpecificIndex("if")||codingBraseOwner==this.codingSpecificIndex("else if")||codingBraseOwner==this.codingSpecificIndex("else")){
+				ArrayList<Long> brasesLevelOwnersCodeTargetsFound=this._codeblockLevelCodePhrasePatterns.get(_codeblockLevel);
+				
+				if(!_evaluatedConditionFailed){
+					this._codingReadPhrasesIndex=brasesLevelOwnersCodeTargetsFound.get(brasesLevelOwnersCodeTargetsFound.size()-1);
+					if(_codeblockLevel>0) _codeblockLevel--;
+				}
+				else{
+					_evaluatedConditionFailed=false;
+					if(this._codingReadPhrasesIndex<maxCodingSetIndex){
+						if(codingBraseOwner==this.codingSpecificIndex("if")||codingBraseOwner==this.codingSpecificIndex("else if")){
+							int nextcodingBraseOwner=this._codingReadPhrases.get((Long) this._codingReadPhrasesIndex);
+							if(nextcodingBraseOwner!=this.codingSpecificIndex("else if")&&nextcodingBraseOwner!=this.codingSpecificIndex("else")){
+								if(_codeblockLevel>0) _codeblockLevel--;
+								this._codingReadPhrasesIndex=brasesLevelOwnersCodeTargetsFound.get(brasesLevelOwnersCodeTargetsFound.size()-1);
+							}
+							else{
+								return;
+							}
+						}
+						else{
+							this._codingReadPhrasesIndex=brasesLevelOwnersCodeTargetsFound.get(brasesLevelOwnersCodeTargetsFound.size()-1);
+						}
+					}
+				}
+			}
+			if(!this._brasesLevelOwnersFound.isEmpty()){
+				if(this._brasesLevelOwnersFound.get(this._brasesLevelOwnersFound.size()-1)==this.codingSpecificIndex("for")){
+					this._codingIteratorSet=_codingLoopIterators.get((Long)this._codeblockLevel);
+					this._codingIteratorValue=this._codingIteratorSet.get(0);
+				}
+			}
+		 }
+		 else if(this.codingSpecificIndex("widget")==codingIndexStage){
+			this._objectValues.add(this.getCodingReadContent(codingReadPhrasesIndex).remove(0));
+			this.incCodingReadPhraseIndex();
+		 }
+		 else if(this.codingSpecificIndex("script")==codingIndexStage){
+			this._objectValues.add(this);
+			this.incCodingReadPhraseIndex();
+		 }
+		 else if(this.codingSpecificIndex("iterator")==codingIndexStage){
+			this._returnValues.add(this._returnValue=this._codingIteratorValue);
+			if(!this._bracketCodingOwnerIndexes.isEmpty()){
+				 if(this._bracketCodingOwnerIndexes.get(this._bracketCodingOwnerIndexes.size()-1)==this.codingSpecificIndex("method")){
+					 if(!this._methodParamsFound.isEmpty()) this._methodParamsFound.get(0).add(this._returnValues.remove(this._returnValues.size()-1));
+				 }
+			 }
+			 this._returnValFromMethod=false;
+			 this.incCodingReadPhraseIndex();
+		 }
+		 else if(this.codingSpecificIndex("iteratorSet")==codingIndexStage){
+			 this._returnValues.add(this._returnValue=this._codingIteratorSet);
+				if(!this._bracketCodingOwnerIndexes.isEmpty()){
+					 if(this._bracketCodingOwnerIndexes.get(this._bracketCodingOwnerIndexes.size()-1)==this.codingSpecificIndex("method")){
+						 if(!this._methodParamsFound.isEmpty()) this._methodParamsFound.get(0).add(this._returnValues.remove(this._returnValues.size()-1));
+					 }
+				 }
+				 this._returnValFromMethod=false;
+				 this.incCodingReadPhraseIndex();
+		 }
+		 else if(this.codingSpecificIndex("method")==codingIndexStage){
+			String methodName=(String)this.getCodingReadContent(codingReadPhrasesIndex).remove(0);
+			Class<?> objClass=null;
+			if(!this._methodParamsFound.isEmpty()){
+				if(!this._methodParamsFound.get(this._methodParamsFound.size()-1).isEmpty()){
+					if(this._codingPrevIndexStage==this.codingSpecificIndex("\"")&&this._methodParamsFound.get(this._methodParamsFound.size()-1).get(this._methodParamsFound.get(this._methodParamsFound.size()-1).size()-1) instanceof String){
+						this._returnValues.add(this._methodParamsFound.get(this._methodParamsFound.size()-1).get(this._methodParamsFound.get(this._methodParamsFound.size()-1).size()-1));
+					}
+				}
+			}
+			if(methodName.charAt(0)=='.'){
+				methodName=methodName.substring(1);
+				if(_returnValFromMethod||!this._returnValues.isEmpty()){//this._codingPrevIndexStage==this.codingSpecificIndex("iterator")){
+					this._objectValues.add((!this._returnValues.isEmpty()?this._returnValues.remove(this._returnValues.size()-1): this._returnValue));
+					this._returnValFromMethod=false;
+				}
+				objClass=this._objectValues.get(this._objectValues.size()-1).getClass();
+			}
+			else{
+				objClass=Class.forName(methodName.substring(0,methodName.lastIndexOf(".")));
+				_objectValues.add(objClass);
+			}
+			
+			Method methodFound=baasserver.reflection.REFUtils.findMethod(methodName, objClass, null,true);
+			if(methodFound!=null){
+				this._methodParamsFound.add(new ArrayList<Object>());
+				this._methodsFound.add(methodFound);
+			}
+			this.incCodingReadPhraseIndex();
+		 }
+	}
+
+	private long incCodingReadPhraseIndex(){
+		_codingPrevIndexStage=this._codingIndexStage;
+		return (this._codingReadPhrasesIndex+=1);
+	}
+
+	public int putCodingReadPhrase(int codingPhraseIndex) {
+		if(codingPhraseIndex>-1){
+			if(codingPhraseIndex==this.codingSpecificIndex("if")){
+				if(this._codingPrevIndexStage==this.codingSpecificIndex("else")){
+					this._codingReadPhrases.put((Long)(_codingReadPhrasesIndex),this.codingSpecificIndex("else if"));
+				}
+				else{
+					this._codingReadPhrases.put((Long)(_codingReadPhrasesIndex+=1),codingPhraseIndex);
+				}
+				this._codingPrevIndexStage=-1;
+			}
+			else if(codingPhraseIndex==this.codingSpecificIndex("else")){
+				this._codingReadPhrases.put((Long)(_codingReadPhrasesIndex+=1),codingPhraseIndex);
+			}
+			else{
+				this._codingReadPhrases.put((Long)(_codingReadPhrasesIndex+=1),codingPhraseIndex);
+			}
+			this._codingPhrase="";
+		}
+		return codingPhraseIndex;
+	}
+	
+	public void putCodingReadContent(Object codingReadContent) {
+		ArrayList<Object> codingReadContentRead=null;
+		if(this._codingReadContent.containsKey((Long)this._codingReadPhrasesIndex)){
+			codingReadContentRead=this._codingReadContent.get((Long)this._codingReadPhrasesIndex);
+		}
+		else{
+			_codingReadContent.put((Long)this._codingReadPhrasesIndex, (codingReadContentRead=new ArrayList<Object>()));
+		}
+		codingReadContentRead.add(codingReadContent);
+	}
+	
+	public void appendStringTocoding(String stringToAppend) {
+		this.putCodingReadPhrase(codingSpecificIndex("respond"));
+		this.putCodingReadPhrase(codingSpecificIndex("\""));
+		this.putCodingReadContent(stringToAppend);
+		this.putCodingReadPhrase(codingSpecificIndex(";"));
+	}
+	
+	public void appendScript() {
+		this.putCodingReadPhrase(codingSpecificIndex("appendScript"));
+	}
+
+	public void endAppendScript() {
+		this.putCodingReadPhrase(codingSpecificIndex("endAppendScript"));
+	}
+	
+	public void replaceComponent(String component) {
+		this.putCodingReadPhrase(codingSpecificIndex("replaceComponent"));
+		this.putCodingReadPhrase(codingSpecificIndex("\""));
+		this.putCodingReadContent(this._replaceComponentStartMask.replace("[REPLACECOMPONENT]", component));
+		this.putCodingReadPhrase(codingSpecificIndex(";"));
+	}
+	
+	public void endReplaceComponent() {
+		this.putCodingReadPhrase(codingSpecificIndex("endReplaceComponent"));
+		this.putCodingReadPhrase(codingSpecificIndex("\""));
+		this.putCodingReadContent(this._replaceComponentEndMask);
+		this.putCodingReadPhrase(codingSpecificIndex(";"));
+	}
+	
+	private HashMap<Long,ArrayList<Object>> _codingReadContentMap=new HashMap<Long,ArrayList<Object>>();
+	
+	private ArrayList<Object> getCodingReadContent(long codingReadContentIndex) {
+		ArrayList<Object> codingReadContentRef=null;
+		if(_codingReadContentMap.containsKey((Long)codingReadContentIndex)){
+			codingReadContentRef=_codingReadContentMap.get((Long)codingReadContentIndex);
+			if(codingReadContentRef.isEmpty()){
+				codingReadContentRef=null;
+			}
+		}
+		if(codingReadContentRef==null){
+			_codingReadContentMap.put((Long)codingReadContentIndex,(codingReadContentRef=new ArrayList<Object>(this._codingReadContent.get((Long)codingReadContentIndex))));
+		}
+		return codingReadContentRef;
+	}
+
+	private char _prevCC=0;
+	
+	private ArrayList<String> codingSpecific(String[] codingWords) {
+		 ArrayList<String> codingSpecific=new ArrayList<String>();
+		for(String codingW:codingWords){
+			if(_codingSpecificLength<codingW.length()) _codingSpecificLength=codingW.length();
+			codingSpecific.add(codingW);
+		}
+		return codingSpecific;
+	}
+	
+	private void nextMaskCodeCharToExecute(char cc) throws Exception{
+		if(this._codingIndexStage==this.codingSpecificIndex("\"")){
+			if(this.codingSpecificIndex((cc+""))==this.codingSpecificIndex("\"")){
+				String codingString=this._codingPhrase;
+				this.putCodingReadPhrase(this.codingSpecificIndex("\""));
+				this.putCodingReadContent(codingString);
+				this._codingIndexStage=-1;
+			}
+			else{
+				this._codingPhrase+=cc;
+			}
+		}
+		else{
+			this._codingPhrase+=cc;
+			switch(cc){
+			case '=':
+				if(this._prevCC==0||"{}();".indexOf(_prevCC)>-1){
+					this.putCodingReadPhrase(this.codingSpecificIndex("respond"));
+				}
+				else{
+					this.putCodingReadPhrase(this.codingSpecificIndex((cc+"")));
+				}
+				break;
+			case '(':
+				this._codingPhrase=this._codingPhrase.substring(0,this._codingPhrase.length()-1);
+				if(!this._codingPhrase.equals("")){
+					if(this._codingPhrase.equals(".buttonScriptAction")){
+						this._codingPhrase=this._codingPhrase+"";
+					}
+					String methodName=this._codingPhrase;
+					this.putCodingReadPhrase(this.codingSpecificIndex("method"));
+					this.putCodingReadContent(methodName);
+				}
+				this.putCodingReadPhrase(this.codingSpecificIndex((cc+"")));
+				break;
+			case '\"':
+				this._codingIndexStage=this.codingSpecificIndex((cc+""));
+				this._codingPhrase="";
+				break;
+			case ')':
+				if(!this._codingPhrase.startsWith("iterator")){
+					if(this._codingPhrase.endsWith((""+cc))&&this._codingPhrase.length()>1){
+						Object codingValueFound=this.parseAsObjectValue(this._codingPhrase.substring(0,this._codingPhrase.length()-1));
+						this.putCodingReadPhrase(codingSpecificIndex("\""));
+						this.putCodingReadContent(codingValueFound);
+					}
+					this.putCodingReadPhrase(this.codingSpecificIndex((cc+"")));
+					break;
+				}
+			case '{':
+				if(!this._codingPhrase.startsWith("iterator")){
+					this.putCodingReadPhrase(this.codingSpecificIndex((cc+"")));
+					break;
+				}
+			case '}':
+				if(!this._codingPhrase.startsWith("iterator")){
+					this.putCodingReadPhrase(this.codingSpecificIndex((cc+"")));
+					break;
+				}
+			case ',':
+				if(!this._codingPhrase.startsWith("iterator")){
+					this.putCodingReadPhrase(this.codingSpecificIndex((cc+"")));
+					break;
+				}
+			case ';':
+				if(!this._codingPhrase.startsWith("iterator")){
+					this.putCodingReadPhrase(this.codingSpecificIndex((cc+"")));
+					break;
+				}
+			default:
+				if(this._codingPhrase.length()<=this._codingSpecificLength){
+					String remainingCodingPhrase="";
+					if(this._codingPhrase.equals("iterator")) return;
+					if(this._codingPhrase.startsWith("iterator")){
+						char ichar=this._codingPhrase.charAt(this._codingPhrase.length()-1);
+						if(ichar=='S') return;
+						if(ichar=='e') return;
+						
+						if(this._codingPhrase.startsWith("iteratorSet")){
+							remainingCodingPhrase=this._codingPhrase.substring("iteratorSet".length());
+							this._codingPhrase="iteratorSet";
+						}
+						else{
+							remainingCodingPhrase=this._codingPhrase.substring("iterator".length());
+							this._codingPhrase="iterator";
+						}
+					}
+					if((this._codingIndexStage=this.putCodingReadPhrase(this.codingSpecificIndex(this._codingPhrase)))>-1){
+						if(this._codingIndexStage==this.codingSpecificIndex("widget")){ //widget
+							this.putCodingReadContent(executeScriptObjectMethod("currentWidget",null));
+						}
+					}
+					if(!remainingCodingPhrase.equals("")){
+						if(this._codingIndexStage>-1) this._codingPrevIndexStage=this._codingIndexStage;
+						for(char cr:remainingCodingPhrase.toCharArray()){
+							nextMaskCodeCharToExecute(cr);
+						}
+						return;
+					}
+				}
+				else{
+					
+				}
+				break;
+			}
+		}
+		if(this._codingIndexStage>-1) this._codingPrevIndexStage=this._codingIndexStage;
+	}
+	
+	private Object parseAsObjectValue(String codingPhraseToTest) {
+		if(codingPhraseToTest.equals("")){
+			return "";
+		}
+		else{
+			
+			try{
+				return Integer.parseInt(codingPhraseToTest);
+			}
+			catch(Exception e){
+				
+			}
+			
+			try{
+				return Double.parseDouble(codingPhraseToTest);
+			}
+			catch(Exception e){
+				
+			}
+		}
+		
+		return codingPhraseToTest;
+	}
+
+	public void loadMaskCodeByte(byte br, boolean debug) throws Exception{
+		char cc=(char)br;
+		if(debug) System.out.print(cc);
+		if(this._codingIndexStage==this.codingSpecificIndex("\"")){
+			this.nextMaskCodeCharToExecute(cc);
+		}
+		else{
+			if(!(cc+"").trim().equals("")){
+				this.nextMaskCodeCharToExecute(cc);
+			}
+		}
+	}
+	
+	public void resetBroker(){
+		this._prevCC=0;
+		while(!this._codingReadContentMap.isEmpty()){
+			this._codingReadContentMap.remove(this._codingReadContentMap.keySet().toArray()[0]).clear();
+		}
+		this._returnValue=null;
+		
+		_codingReadPhrases.clear();
+		
+		while(!_codingReadContent.isEmpty()){
+			_codingReadContent.remove((Long)_codingReadContent.firstKey()).clear();
+		}
+		this._codingReadPhrasesIndex=0;
+		
+		this._codingIndexStage=-1;
+		this._codingPrevIndexStage=-1;
+		this._codingPhrase="";
+		
+		this._returnValues.clear();
+		this._methodsFound.clear();
+		while(!_methodParamsFound.isEmpty()) _methodParamsFound.remove(0).clear();
+		this._objectValues.clear();
+		this._bracketCodingOwnerIndexes.clear();
+		while(!_codingLoopIterators.isEmpty()){
+			this._codingLoopIterators.remove(_codingLoopIterators.keySet().toArray()[0]).clear();
+		}
+		
+		this._codingIteratorValue=null;
+		this._commitCodingRespondIndex=-1;
+		this._returnValFromMethod=false;
+		
+		this._codeblockLevelCodePhrasePatterns.clear();
+		this._brasesCodeblockLevelOwnersFound.clear();
+		this._codeblockCodePhrasePatterns.clear();
+		
+		this._codeblockLevel=0;
+		
+		this._replaceComponentStartMask="";
+		this._replaceComponentEndMask="";		
+	}
+}

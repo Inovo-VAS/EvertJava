@@ -1,0 +1,23 @@
+package baasserver.db.web.system.definitions;
+
+import baasserver.db.web.system.Field;
+import baasserver.protocols.IOProcessorHandle;
+import baasserver.protocols.IOWidgetHandle;
+
+public class VarcharField extends Field {
+
+	public VarcharField(IOWidgetHandle parentWidget, IOProcessorHandle processor) {
+		super(parentWidget, processor);
+	}
+
+	@Override
+	public String fieldDefinition() {
+		if(this.dbParentWidget().dbManager().dbType().equals("sqlserver")){
+			return "["+this.fieldName()+"] IDENTITY(1,1) [numeric](18,0) NOT NULL";
+		}
+		else if(this.dbParentWidget().dbManager().dbType().equals("postgresql")){
+			return "["+this.fieldName()+"] serial NOT NULL";
+		}
+		return super.fieldDefinition();
+	}
+}

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Rename resource &apos;sas&apos; to &apos;saas&apos;" description="Rename resource &apos;sas&apos;" flags="7" id="org.eclipse.ltk.core.refactoring.rename.resource" input="/sas" name="saas" stamp="1370241558804" updateReferences="true"/>
+</session>
